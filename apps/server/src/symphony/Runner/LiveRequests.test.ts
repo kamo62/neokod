@@ -2,8 +2,13 @@ import { describe, expect, it } from "@effect/vitest";
 import { RunAttemptId, WorkItemId } from "@neokod/contracts";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 
-import { LiveRequestNotFoundError, makeLiveRequests } from "./LiveRequests.ts";
+import {
+  LiveRequestNotFoundError,
+  makeLiveRequests,
+  makeLiveRequestsWithHooks,
+} from "./LiveRequests.ts";
 
 const workItemId = WorkItemId.make("wi-1");
 const runAttemptId = RunAttemptId.make("run-1");
@@ -210,6 +215,85 @@ describe("LiveRequests", () => {
       // And the agent observed that same outcome.
       const observed = yield* Effect.result(Deferred.await(deferred));
       expect(observed._tag).toBe(answered._tag === "Success" ? "Success" : "Failure");
+    }),
+  );
+
+  it.effect("an interrupt at the claim boundary still completes the request", () =>
+    Effect.gen(function* () {
+      const started = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      // The hook runs between removing the entry and completing its Deferred —
+      // the exact boundary an interruption used to strand.
+      const service = yield* makeLiveRequestsWithHooks({
+        afterClaim: Deferred.succeed(started, undefined).pipe(
+          Effect.andThen(Deferred.await(release)),
+        ),
+      });
+      const deferred = yield* service.registerApproval({
+        requestId: "req-boundary-1",
+        workItemId,
+        runAttemptId,
+        action: "command_execution",
+        prompt: "A",
+      });
+
+      const answer = yield* Effect.forkChild(
+        service.respondToApproval(runAttemptId, "req-boundary-1", "approved"),
+      );
+      yield* Deferred.await(started);
+      const interrupting = yield* Effect.forkChild(Fiber.interrupt(answer));
+      yield* Effect.yieldNow;
+      yield* Deferred.succeed(release, undefined);
+      yield* Fiber.join(interrupting);
+
+      // The claim and its Deferred completion are one uninterruptible step: the
+      // resolver was interrupted, yet nothing was removed without an outcome.
+      expect(yield* service.listPending(runAttemptId)).toHaveLength(0);
+      expect(yield* Deferred.isDone(deferred)).toBe(true);
+      expect(yield* Deferred.await(deferred)).toBe("approved");
+      // Nothing is left for a later settlement to find.
+      expect(yield* service.settleRequest(runAttemptId, "req-boundary-1", "late")).toBe(false);
+    }),
+  );
+
+  it.effect("an interrupt at the claim boundary still fails every claimed request", () =>
+    Effect.gen(function* () {
+      const started = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      const service = yield* makeLiveRequestsWithHooks({
+        afterClaim: Deferred.succeed(started, undefined).pipe(
+          Effect.andThen(Deferred.await(release)),
+        ),
+      });
+      const approval = yield* service.registerApproval({
+        requestId: "req-boundary-2a",
+        workItemId,
+        runAttemptId,
+        action: "command_execution",
+        prompt: "A",
+      });
+      const question = yield* service.registerUserInput({
+        requestId: "req-boundary-2b",
+        workItemId,
+        runAttemptId,
+        prompt: "Which branch?",
+      });
+
+      const settling = yield* Effect.forkChild(service.settleRun(runAttemptId, "cancelled"));
+      yield* Deferred.await(started);
+      const interrupting = yield* Effect.forkChild(Fiber.interrupt(settling));
+      yield* Effect.yieldNow;
+      yield* Deferred.succeed(release, undefined);
+      yield* Fiber.join(interrupting);
+
+      expect(yield* service.listPending(runAttemptId)).toHaveLength(0);
+      expect(yield* Deferred.isDone(approval)).toBe(true);
+      expect(yield* Deferred.isDone(question)).toBe(true);
+      // The removed requests are settled, so a late answer is refused.
+      const late = yield* Effect.result(
+        service.respondToApproval(runAttemptId, "req-boundary-2a", "approved"),
+      );
+      expect(late._tag).toBe("Failure");
     }),
   );
 

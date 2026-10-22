@@ -51,7 +51,7 @@ import { RunEventRepository } from "../../Persistence/Services/RunEventRepositor
 import { ApprovalService } from "../../Runner/ApprovalService.ts";
 import { RunDispatcher } from "../../Runner/Dispatcher.ts";
 import { EvidenceRepository } from "../../Persistence/Services/EvidenceRepository.ts";
-import { PullRequestService } from "../../Evidence/PullRequest.ts";
+import { PullRequestService, pullRequestRepositoryKey } from "../../Evidence/PullRequest.ts";
 import { WORKFLOW_DEFAULTS } from "../../Workflow/Config.ts";
 import { TrackerAdapterRegistry } from "../../Trackers/Adapter.ts";
 import { resolveTrackerAdapter, TrackerEnablement } from "../TrackerEnablement.ts";
@@ -630,6 +630,9 @@ const makeOrchestrator = Effect.gen(function* () {
   // only). A wrap to zero makes every merge-ready item reachable even when a
   // workflow holds more items than one repository page returns.
   const mergeSweepCursorRef = yield* Ref.make<ReadonlyMap<string, number>>(new Map());
+  // The merge sweep runs on its own maintenance loop, so it keeps its own
+  // per-workflow poll clock instead of sharing the scheduler's.
+  const lastMergeSweepByWorkflowRef = yield* Ref.make<ReadonlyMap<string, number>>(new Map());
   const dispatchScope = yield* Scope.make();
   yield* Effect.addFinalizer(() => Scope.close(dispatchScope, Exit.void));
   const workflowLoader = yield* Effect.serviceOption(WorkflowLoaderService);
@@ -775,9 +778,6 @@ const makeOrchestrator = Effect.gen(function* () {
         next.set(String(workflow.id), nowEpochMs);
         return next;
       });
-      // Same cadence as the poll above: the merged-PR detector must not hit the
-      // host from the 5-second scan.
-      yield* mergedPullRequestSweep(workflow.id).pipe(Effect.catch(() => Effect.void));
     }
     // Best-effort housekeeping: release orphaned claims, fire due retries and
     // expire approval requests whose wait window elapsed. Runs on the same
@@ -880,8 +880,9 @@ const makeOrchestrator = Effect.gen(function* () {
 
   // Merge detection (B-9): a merge-ready item is parked until the host says
   // the pull request merged. Nothing else looks at the host for it, so this
-  // sweep refreshes those items on the workflow's own poll cadence (never from
-  // the 5-second scan) and lets `refreshPullRequest` settle the outcome.
+  // sweep refreshes those items on the workflow's own poll cadence, from the
+  // dedicated maintenance loop (never from the scheduler tick), and lets
+  // `refreshPullRequest` settle the outcome.
   // A closed PR is still re-checked on the bounded backoff recorded by
   // `noteMergeDetectionStatus`, so a reopened or later-merged PR is detected.
   // Only one bounded page is visited per scan and the page rotates, so a
@@ -925,6 +926,43 @@ const makeOrchestrator = Effect.gen(function* () {
       }
     },
   );
+
+  /**
+   * Merge maintenance runs on its own bounded, non-overlapping loop: a slow or
+   * failing host lookup must never delay dispatch, retries, stale-claim
+   * reconciliation or approval expiry for any workflow. Each pass honours the
+   * same per-workflow poll interval as the scheduler, and `Schedule.spaced`
+   * guarantees a pass finishes before the next begins.
+   */
+  const mergeDetectionPass = Effect.fn("symphonyOrchestrator.mergeDetectionPass")(function* () {
+    if (!(yield* ensureLeadership())) {
+      return;
+    }
+    const now = yield* nowIso;
+    const nowEpochMs = nowMs(now);
+    const active = yield* workflows
+      .list()
+      .pipe(Effect.map((all) => all.filter((w) => w.status === "active")))
+      .pipe(Effect.catch(() => Effect.succeed([] as WorkflowRecord[])));
+    for (const workflow of active) {
+      const config = workflow.effectiveConfig;
+      if (config === null) {
+        continue;
+      }
+      const lastSweepByWorkflow = yield* Ref.get(lastMergeSweepByWorkflowRef);
+      const lastSweepAt = lastSweepByWorkflow.get(String(workflow.id));
+      const pollIntervalMs = config.pollIntervalMs ?? WORKFLOW_DEFAULTS.pollIntervalMs;
+      if (lastSweepAt !== undefined && nowEpochMs - lastSweepAt < pollIntervalMs) {
+        continue;
+      }
+      yield* Ref.update(lastMergeSweepByWorkflowRef, (current) => {
+        const next = new Map(current);
+        next.set(String(workflow.id), nowEpochMs);
+        return next;
+      });
+      yield* mergedPullRequestSweep(workflow.id).pipe(Effect.catch(() => Effect.void));
+    }
+  });
 
   const sweepExpiredApprovals = (now: string) =>
     Effect.gen(function* () {
@@ -1892,7 +1930,11 @@ const makeOrchestrator = Effect.gen(function* () {
     fresh: PullRequestEvidence,
   ): Effect.Effect<void> =>
     Effect.gen(function* () {
-      const tracked = previous !== null && previous.number === fresh.number;
+      const tracked =
+        previous !== null &&
+        previous.number === fresh.number &&
+        (pullRequestRepositoryKey(previous.url) === null ||
+          pullRequestRepositoryKey(previous.url) === pullRequestRepositoryKey(fresh.url));
       if (fresh.status === "merged") {
         if (!tracked) {
           yield* Effect.logWarning("symphony.merge.tracked_pull_request_mismatch", {
@@ -1989,6 +2031,9 @@ const makeOrchestrator = Effect.gen(function* () {
           ...(bundle?.pullRequest?.number !== undefined
             ? { pullRequestNumber: bundle.pullRequest.number }
             : {}),
+          ...(bundle?.pullRequest?.url !== undefined
+            ? { pullRequestUrl: bundle.pullRequest.url }
+            : {}),
         })
         .pipe(Effect.catch(() => Effect.succeed(null)));
       if (refreshed === null) {
@@ -1998,14 +2043,22 @@ const makeOrchestrator = Effect.gen(function* () {
         return false;
       }
       // Identity is pinned to the stored PR: overwriting #42 with a different PR
-      // that merely shares the head branch would corrupt the review evidence the
-      // merge decision is made on. Refuse and keep what we know.
+      // (even one with the same number in another repository) would corrupt the
+      // review evidence the merge decision is made on. Refuse and keep what we
+      // know.
       const trackedNumber = bundle.pullRequest?.number;
-      if (trackedNumber !== undefined && refreshed.number !== trackedNumber) {
+      const trackedRepository = pullRequestRepositoryKey(bundle.pullRequest?.url);
+      const refreshedRepository = pullRequestRepositoryKey(refreshed.url);
+      if (
+        (trackedNumber !== undefined && refreshed.number !== trackedNumber) ||
+        (trackedRepository !== null && refreshedRepository !== trackedRepository)
+      ) {
         yield* Effect.logWarning("symphony.pull_request.refresh_identity_mismatch", {
           workItemId: String(id),
-          tracked: trackedNumber,
+          tracked: trackedNumber ?? null,
           observed: refreshed.number,
+          trackedRepository,
+          refreshedRepository,
         });
         return false;
       }
@@ -2092,6 +2145,7 @@ const makeOrchestrator = Effect.gen(function* () {
       }
       const branch = deriveWorkingBranch(workspaceKey);
       const trackedNumber = previousEvidence?.pullRequest?.number;
+      const trackedRepository = pullRequestRepositoryKey(previousEvidence?.pullRequest?.url);
       const freshPullRequest = yield* pullRequestService
         .refresh({
           config,
@@ -2099,18 +2153,28 @@ const makeOrchestrator = Effect.gen(function* () {
           baseBranch,
           title: item.objective,
           ...(trackedNumber !== undefined ? { pullRequestNumber: trackedNumber } : {}),
+          ...(previousEvidence?.pullRequest?.url !== undefined
+            ? { pullRequestUrl: previousEvidence.pullRequest.url }
+            : {}),
         })
         .pipe(Effect.catch(() => Effect.succeed(null)));
       if (freshPullRequest === null) {
         return false;
       }
       // The gate may only judge the PR the run actually opened: a different PR
-      // on the same head branch is not evidence about this work item.
-      if (trackedNumber !== undefined && freshPullRequest.number !== trackedNumber) {
+      // (same number in another repository, or another PR on the branch) is not
+      // evidence about this work item.
+      const freshRepository = pullRequestRepositoryKey(freshPullRequest.url);
+      if (
+        (trackedNumber !== undefined && freshPullRequest.number !== trackedNumber) ||
+        (trackedRepository !== null && freshRepository !== trackedRepository)
+      ) {
         yield* Effect.logWarning("symphony.merge.approval_identity_mismatch", {
           workItemId: String(id),
-          tracked: trackedNumber,
+          tracked: trackedNumber ?? null,
           observed: freshPullRequest.number,
+          trackedRepository,
+          freshRepository,
         });
         return false;
       }
@@ -2210,6 +2274,9 @@ const makeOrchestrator = Effect.gen(function* () {
       );
       yield* Effect.forkScoped(
         Effect.repeat(renewLeadership().pipe(Effect.asVoid), Schedule.spaced("30 seconds")),
+      );
+      yield* Effect.forkScoped(
+        Effect.repeat(mergeDetectionPass(), Schedule.spaced(SCHEDULER_SCAN_INTERVAL)),
       );
       yield* scheduler;
     }),

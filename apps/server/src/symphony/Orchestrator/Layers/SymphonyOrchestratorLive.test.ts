@@ -20,6 +20,7 @@ import { expect, it } from "@effect/vitest";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
@@ -368,10 +369,15 @@ const setPullRequestRefresh = (value: PullRequestEvidence | null) =>
 // Every refresh input the orchestrator asked the host for. Used to prove the
 // PR identity (branch/base branch) came from the right evidence, not from a
 // stub that ignores its input.
+// Branches whose host lookup is slow, so a sweep can be observed running while
+// scheduling continues for other workflows.
+const slowPullRequestBranches = new Set<string>();
+
 const pullRequestRefreshInputs: Array<{
   readonly branch: string;
   readonly baseBranch: string;
   readonly pullRequestNumber?: number;
+  readonly pullRequestUrl?: string;
 }> = [];
 
 // Comment-body enrichment for FR-102-104 tests: `null` (the default) is the
@@ -446,15 +452,24 @@ const layer = it.layer(
             return {
               create: () => Effect.succeed(null as never),
               refresh: (input) =>
-                Effect.sync(() => {
-                  pullRequestRefreshInputs.push({
-                    branch: input.branch,
-                    baseBranch: input.baseBranch,
-                    ...(input.pullRequestNumber !== undefined
-                      ? { pullRequestNumber: input.pullRequestNumber }
-                      : {}),
-                  });
-                }).pipe(
+                (slowPullRequestBranches.has(input.branch)
+                  ? Effect.sleep("10 seconds")
+                  : Effect.void
+                ).pipe(
+                  Effect.andThen(
+                    Effect.sync(() => {
+                      pullRequestRefreshInputs.push({
+                        branch: input.branch,
+                        baseBranch: input.baseBranch,
+                        ...(input.pullRequestNumber !== undefined
+                          ? { pullRequestNumber: input.pullRequestNumber }
+                          : {}),
+                        ...(input.pullRequestUrl !== undefined
+                          ? { pullRequestUrl: input.pullRequestUrl }
+                          : {}),
+                      });
+                    }),
+                  ),
                   Effect.andThen(
                     Ref.get(pullRequestRefreshRef as Ref.Ref<PullRequestEvidence | null>),
                   ),
@@ -1380,14 +1395,17 @@ layer("SymphonyOrchestrator Observe", (it) => {
       expect(dispatchedIds).toEqual([]);
 
       // Let the 5-second scheduler scans carry the retry across its 10-second
-      // backoff boundary. The scan at 10s performs the dispatch; do not force
-      // a later explicit tick, because this intentionally minimal mock does
-      // not create the new run-attempt row that production dispatch records.
-      // The scan fans out over many queued leftovers (one latest-attempt
-      // read each), so allow several turns for the dispatch to land.
-      yield* TestClock.adjust("11 seconds");
-      yield* Effect.repeat(Effect.yieldNow, { times: 50 });
-      const after = yield* workItems.getById(workItemId);
+      // backoff boundary. The scan at or after 10s performs the dispatch; do
+      // not force an explicit tick, because this intentionally minimal mock
+      // does not create the new run-attempt row that production dispatch
+      // records. The scan fans out over many queued leftovers (one
+      // latest-attempt read each), so allow several scans for it to land.
+      let after = yield* workItems.getById(workItemId);
+      for (let tick = 0; tick < 10 && after?.lifecycle !== "preparing"; tick += 1) {
+        yield* TestClock.adjust("5 seconds");
+        yield* settle;
+        after = yield* workItems.getById(workItemId);
+      }
       expect(after?.lifecycle).toBe("preparing");
       expect(dispatchedIds).toContain("retry-1");
     }),
@@ -3138,6 +3156,58 @@ layer("SymphonyOrchestrator Observe", (it) => {
     }),
   );
 
+  it.effect("a merged PR with the same number in another repository never completes the item", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      const workItems = yield* WorkItemRepository;
+      const evidenceRepository = yield* EvidenceRepository;
+      const branch = "symphony/issue-merge-repo-1";
+      const { workItemId } = yield* seedMergeDetectionItem({
+        workItemId: "merge-repo-1",
+        workflowId: "wf-merge-repo-1",
+        repositoryPath: "/repo/merge-repo-1",
+        workspaceKey: "issue-merge-repo-1",
+        baseBranch: "main",
+        storedPullRequest: {
+          ...openPullRequest(42, branch),
+          url: "https://github.com/owner/a/pull/42",
+        },
+      });
+
+      // The checkout now resolves to repository B, which also has a PR #42 that
+      // is already merged. Equal numbers are not the same PR.
+      yield* setPullRequestRefresh({
+        number: 42,
+        title: "t",
+        branch,
+        baseBranch: "main",
+        status: "merged",
+        url: "https://github.com/owner/b/pull/42",
+      });
+      expect(yield* orchestrator.refreshPullRequest("merge-repo-1")).toBe(false);
+      expect((yield* workItems.getById(workItemId))?.lifecycle).toBe("ready_to_merge");
+      expect((yield* evidenceRepository.getByWorkItem(workItemId))?.pullRequest?.url).toBe(
+        "https://github.com/owner/a/pull/42",
+      );
+      expect(pullRequestRefreshInputs.at(-1)).toMatchObject({
+        pullRequestNumber: 42,
+        pullRequestUrl: "https://github.com/owner/a/pull/42",
+      });
+
+      // The tracked repository's PR merging is the evidence that closes it.
+      yield* setPullRequestRefresh({
+        number: 42,
+        title: "t",
+        branch,
+        baseBranch: "main",
+        status: "merged",
+        url: "https://github.com/owner/a/pull/42",
+      });
+      expect(yield* orchestrator.refreshPullRequest("merge-repo-1")).toBe(true);
+      expect((yield* workItems.getById(workItemId))?.lifecycle).toBe("completed");
+    }),
+  );
+
   it.effect("a merged pull request with a different number never completes the item", () =>
     Effect.gen(function* () {
       const orchestrator = yield* SymphonyOrchestrator;
@@ -3474,6 +3544,86 @@ layer("SymphonyOrchestrator Observe", (it) => {
         merged = (yield* workItems.getById(workItemId))?.lifecycle ?? "ready_to_merge";
       }
       expect(merged).toBe("completed");
+    }),
+  );
+
+  it.effect("a slow merge lookup does not delay the scheduling path", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      const workItems = yield* WorkItemRepository;
+      const approvals = yield* ApprovalService;
+      const approvalRepository = yield* ApprovalRepository;
+      const slowBranch = "symphony/issue-merge-slow-1";
+      // Workflow A: one merge-ready item whose host lookup takes 10 s.
+      yield* seedMergeDetectionItem({
+        workItemId: "merge-slow-1",
+        workflowId: "wf-merge-slow-1",
+        repositoryPath: "/repo/merge-slow-1",
+        workspaceKey: "issue-merge-slow-1",
+        baseBranch: "main",
+        storedPullRequest: openPullRequest(70, slowBranch),
+      });
+      slowPullRequestBranches.add(slowBranch);
+      yield* setPullRequestRefresh({
+        number: 70,
+        title: "t",
+        branch: slowBranch,
+        baseBranch: "main",
+        status: "open",
+      });
+
+      // Workflow B: a pending approval whose workflow timeout has already
+      // elapsed. Its expiry is the scheduling path's housekeeping marker.
+      yield* seedWorkflow("wf-merge-slow-2", "/repo/merge-slow-2", {
+        autonomy: "execute",
+        approvalsWaitTimeoutMs: 1_000,
+      });
+      const queuedId = WorkItemId.make("merge-slow-queued");
+      yield* workItems.upsert({
+        id: queuedId,
+        mode: "symphony",
+        projectId: TEST_PROJECT_ID,
+        objective: "Queued while the merge lookup is slow",
+        acceptanceCriteria: [],
+        source: { kind: "manual" },
+        trackerIssueId: "merge-slow-queued",
+        workflowId: WorkflowId.make("wf-merge-slow-2"),
+        lifecycle: "queued",
+        priority: 1,
+        eligibilityReasons: [],
+        evidence: null,
+        createdAt: "2026-08-03T00:00:00.000Z",
+        updatedAt: "2026-08-03T00:00:00.000Z",
+      });
+      const request = yield* approvals.recordPending({
+        id: "slow-sweep-approval",
+        workItemId: queuedId,
+        runAttemptId: RunAttemptId.make("run-merge-slow-1"),
+        requestId: "slow-sweep-approval",
+        action: "command_execution",
+        scope: "once",
+      });
+      yield* TestClock.adjust("2 seconds");
+
+      // Run one scheduling tick. With merge maintenance on the tick it would be
+      // stuck in the 10 s lookup; on its own loop the tick completes and its
+      // housekeeping expires the stale approval.
+      const tick = yield* Effect.forkChild(orchestrator.refreshNow());
+      for (let turn = 0; turn < 500 && tick.pollUnsafe() === undefined; turn += 1) {
+        yield* Effect.yieldNow;
+      }
+      expect(tick.pollUnsafe()).toBeDefined();
+      expect(pullRequestRefreshInputs.filter((entry) => entry.branch === slowBranch)).toHaveLength(
+        0,
+      );
+      expect((yield* approvalRepository.getById(request.id))?.state).toBe("expired");
+
+      // Release any slow lookup and stop the forked tick if the old blocking
+      // behaviour ever returns, so this test cannot leak into the next one.
+      yield* TestClock.adjust("11 seconds");
+      yield* settle;
+      yield* Fiber.interrupt(tick);
+      slowPullRequestBranches.delete(slowBranch);
     }),
   );
 

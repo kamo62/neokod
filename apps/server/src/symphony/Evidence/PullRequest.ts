@@ -55,6 +55,34 @@ export interface CreatePullRequestInput {
   readonly bodyFileDir: string;
 }
 
+/**
+ * Repository identity carried by a change-request URL: host plus repository
+ * path, with the provider's change-request segment (and the reference after it)
+ * removed. `null` means the URL cannot identify a repository; callers must not
+ * invent an identity from it.
+ *
+ * A tracked PR number is only unique inside its repository, so merge evidence
+ * must be bound to both.
+ */
+export const pullRequestRepositoryKey = (url: string | undefined): string | null => {
+  if (url === undefined) {
+    return null;
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+  const host = parsed.hostname.toLowerCase().replace(/^www\./, "");
+  const path = parsed.pathname.replace(/\/+$/, "");
+  const marker = path.search(/\/(pulls?|pull-requests|pullrequest|merge_requests)\//i);
+  const repositoryPath = (marker === -1 ? path : path.slice(0, marker))
+    .replace(/\/-$/, "")
+    .replace(/\.git$/i, "");
+  return `${host}${repositoryPath.toLowerCase()}`;
+};
+
 export class PullRequestService extends Context.Service<
   PullRequestService,
   {
@@ -79,6 +107,8 @@ export class PullRequestService extends Context.Service<
       readonly baseBranch: string;
       readonly title: string;
       readonly pullRequestNumber?: number;
+      /** URL of the tracked PR, used to bind the refresh to its repository. */
+      readonly pullRequestUrl?: string;
     }) => Effect.Effect<PullRequestEvidence | null, PullRequestCreationError>;
 
     /**
@@ -279,6 +309,14 @@ export const makePullRequestService = (
               })
               .pipe(Effect.catch(() => Effect.succeed(null)));
       if (found === null) {
+        return null;
+      }
+      // A PR number is only unique inside its repository: the tracked URL must
+      // name the same repository, or this is a different PR that merely shares
+      // the number (and perhaps the branch). Refuse rather than overwrite the
+      // stored evidence.
+      const trackedRepository = pullRequestRepositoryKey(input.pullRequestUrl);
+      if (trackedRepository !== null && pullRequestRepositoryKey(found.url) !== trackedRepository) {
         return null;
       }
       // Host-enriched status (plan 10.1, Phase 5): CI status, review state,

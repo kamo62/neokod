@@ -129,175 +129,207 @@ type RequestClaim =
 
 const EMPTY: Record<string, PendingApprovalRequest> = {};
 
-export const makeLiveRequests = Effect.gen(function* () {
-  const store = yield* Ref.make<Record<string, PendingApprovalRequest>>(EMPTY);
+/**
+ * Test-only seam for the claim→resolve critical section. Production callers
+ * never set it; it exists so a regression can interrupt a resolver at the
+ * exact boundary between removing a request and completing its Deferred.
+ */
+export interface LiveRequestsTestHooks {
+  readonly afterClaim?: Effect.Effect<void>;
+}
 
-  const keyOf = (runAttemptId: RunAttemptId, requestId: string): string =>
-    `${runAttemptId}:${requestId}`;
+export const makeLiveRequestsWithHooks = (hooks: LiveRequestsTestHooks) =>
+  Effect.gen(function* () {
+    const store = yield* Ref.make<Record<string, PendingApprovalRequest>>(EMPTY);
 
-  const put = (entry: PendingApprovalRequest) =>
-    Ref.update(store, (current) => ({
-      ...current,
-      [keyOf(entry.runAttemptId, entry.requestId)]: entry,
-    }));
+    const keyOf = (runAttemptId: RunAttemptId, requestId: string): string =>
+      `${runAttemptId}:${requestId}`;
 
-  /**
-   * Atomic compare-and-set: the caller that removes the entry owns the
-   * outcome. An answer and a timeout can therefore never both apply, and a
-   * request whose kind does not match is not claimed.
-   */
-  const claimEntry = (
-    runAttemptId: RunAttemptId,
-    requestId: string,
-    kind?: PendingApprovalRequest["kind"],
-  ): Effect.Effect<RequestClaim> =>
-    Ref.modify(
-      store,
-      (current): readonly [RequestClaim, Record<string, PendingApprovalRequest>] => {
-        const key = keyOf(runAttemptId, requestId);
-        const entry = current[key];
-        if (entry === undefined || (kind !== undefined && entry.kind !== kind)) {
-          return [{ _tag: "missing" }, current];
-        }
-        const next = { ...current };
-        delete next[key];
-        return [{ _tag: "claimed", entry }, next];
-      },
-    );
+    const put = (entry: PendingApprovalRequest) =>
+      Ref.update(store, (current) => ({
+        ...current,
+        [keyOf(entry.runAttemptId, entry.requestId)]: entry,
+      }));
 
-  const registerApproval: LiveRequestsService["registerApproval"] = (input) =>
-    Effect.gen(function* () {
-      const deferred = yield* Deferred.make<ApprovalDecision>();
-      yield* put({
-        requestId: input.requestId,
-        workItemId: input.workItemId,
-        runAttemptId: input.runAttemptId,
-        kind: "approval",
-        action: input.action,
-        prompt: input.prompt,
-        deferred: deferred as Deferred.Deferred<unknown>,
-      });
-      return deferred;
-    });
-
-  const registerUserInput: LiveRequestsService["registerUserInput"] = (input) =>
-    Effect.gen(function* () {
-      const deferred = yield* Deferred.make<string>();
-      yield* put({
-        requestId: input.requestId,
-        workItemId: input.workItemId,
-        runAttemptId: input.runAttemptId,
-        kind: "user_input",
-        action: "user_input",
-        prompt: input.prompt,
-        deferred: deferred as Deferred.Deferred<unknown>,
-      });
-      return deferred;
-    });
-
-  const respondToApproval: LiveRequestsService["respondToApproval"] = (
-    runAttemptId,
-    requestId,
-    decision,
-  ) =>
-    Effect.gen(function* () {
-      const claim = yield* claimEntry(runAttemptId, requestId, "approval");
-      if (claim._tag !== "claimed") {
-        return yield* Effect.fail(new LiveRequestNotFoundError(requestId, String(runAttemptId)));
-      }
-      // Winning the claim is the only way to answer: no other path holds this
-      // entry any more, so the decision the agent observes is the one recorded.
-      const answered = yield* Deferred.succeed(
-        claim.entry.deferred as Deferred.Deferred<ApprovalDecision>,
-        decision,
-      );
-      if (!answered) {
-        return yield* Effect.fail(new LiveRequestNotFoundError(requestId, String(runAttemptId)));
-      }
-    });
-
-  const respondToUserInput: LiveRequestsService["respondToUserInput"] = (
-    runAttemptId,
-    requestId,
-    text,
-  ) =>
-    Effect.gen(function* () {
-      const claim = yield* claimEntry(runAttemptId, requestId, "user_input");
-      if (claim._tag !== "claimed") {
-        return yield* Effect.fail(new LiveRequestNotFoundError(requestId, String(runAttemptId)));
-      }
-      const answered = yield* Deferred.succeed(
-        claim.entry.deferred as Deferred.Deferred<string>,
-        text,
-      );
-      if (!answered) {
-        return yield* Effect.fail(new LiveRequestNotFoundError(requestId, String(runAttemptId)));
-      }
-    });
-
-  const listPending: LiveRequestsService["listPending"] = (runAttemptId) =>
-    Effect.map(Ref.get(store), (current) =>
-      Object.values(current)
-        .filter((value) => value.runAttemptId === runAttemptId)
-        .map((value) => ({
-          requestId: value.requestId,
-          kind: value.kind,
-          action: value.action,
-          prompt: value.prompt,
-        })),
-    );
-
-  const settleRun: LiveRequestsService["settleRun"] = (runAttemptId, reason) =>
-    Effect.gen(function* () {
-      // Remove every entry for the run in one atomic step; a concurrent answer
-      // either claims its entry first or finds it gone.
-      const claimed = yield* Ref.modify(store, (current) => {
-        const entries = Object.entries(current).filter(
-          ([, entry]) => entry.runAttemptId === runAttemptId,
-        );
-        if (entries.length === 0) {
-          return [[] as ReadonlyArray<PendingApprovalRequest>, current] as const;
-        }
-        const next = { ...current };
-        for (const [key] of entries) {
+    /**
+     * Atomic compare-and-set: the caller that removes the entry owns the
+     * outcome. An answer and a timeout can therefore never both apply, and a
+     * request whose kind does not match is not claimed.
+     */
+    const claimEntry = (
+      runAttemptId: RunAttemptId,
+      requestId: string,
+      kind?: PendingApprovalRequest["kind"],
+    ): Effect.Effect<RequestClaim> =>
+      Ref.modify(
+        store,
+        (current): readonly [RequestClaim, Record<string, PendingApprovalRequest>] => {
+          const key = keyOf(runAttemptId, requestId);
+          const entry = current[key];
+          if (entry === undefined || (kind !== undefined && entry.kind !== kind)) {
+            return [{ _tag: "missing" }, current];
+          }
+          const next = { ...current };
           delete next[key];
-        }
-        return [
-          entries.map(([, entry]) => entry) as ReadonlyArray<PendingApprovalRequest>,
-          next,
-        ] as const;
-      });
-      yield* Effect.forEach(claimed, (entry) =>
-        Deferred.fail(
-          entry.deferred as unknown as Deferred.Deferred<unknown, Error>,
-          new Error(`Run settled: ${reason}`),
-        ).pipe(Effect.ignore),
+          return [{ _tag: "claimed", entry }, next];
+        },
       );
-    });
 
-  const settleRequest: LiveRequestsService["settleRequest"] = (runAttemptId, requestId, reason) =>
-    Effect.gen(function* () {
-      const claim = yield* claimEntry(runAttemptId, requestId);
-      if (claim._tag !== "claimed") {
-        return false;
-      }
-      yield* Deferred.fail(
-        claim.entry.deferred as unknown as Deferred.Deferred<unknown, Error>,
-        new Error(`Request settled: ${reason}`),
-      ).pipe(Effect.ignore);
-      return true;
-    });
+    /**
+     * Claim and resolve must be one interruption-safe step. Removing the entry
+     * without completing its Deferred would strand the agent: nobody could claim
+     * the request again and the runtime would wait on a Deferred that can never
+     * complete. The protected section is only in-memory work (a compare-and-set
+     * plus a Deferred completion); durable writes stay outside it.
+     */
+    const claimAndComplete = <A>(
+      runAttemptId: RunAttemptId,
+      requestId: string,
+      kind: PendingApprovalRequest["kind"] | undefined,
+      complete: (deferred: Deferred.Deferred<A>) => Effect.Effect<boolean>,
+    ): Effect.Effect<"claimed" | "missing" | "already-completed"> =>
+      Effect.uninterruptible(
+        Effect.gen(function* () {
+          const claim = yield* claimEntry(runAttemptId, requestId, kind);
+          if (claim._tag !== "claimed") {
+            return "missing" as const;
+          }
+          yield* hooks.afterClaim ?? Effect.void;
+          const completed = yield* complete(claim.entry.deferred as Deferred.Deferred<A>);
+          return completed ? ("claimed" as const) : ("already-completed" as const);
+        }),
+      );
 
-  return {
-    registerApproval,
-    registerUserInput,
-    respondToApproval,
-    respondToUserInput,
-    listPending,
-    settleRun,
-    settleRequest,
-  };
-});
+    const registerApproval: LiveRequestsService["registerApproval"] = (input) =>
+      Effect.gen(function* () {
+        const deferred = yield* Deferred.make<ApprovalDecision>();
+        yield* put({
+          requestId: input.requestId,
+          workItemId: input.workItemId,
+          runAttemptId: input.runAttemptId,
+          kind: "approval",
+          action: input.action,
+          prompt: input.prompt,
+          deferred: deferred as Deferred.Deferred<unknown>,
+        });
+        return deferred;
+      });
+
+    const registerUserInput: LiveRequestsService["registerUserInput"] = (input) =>
+      Effect.gen(function* () {
+        const deferred = yield* Deferred.make<string>();
+        yield* put({
+          requestId: input.requestId,
+          workItemId: input.workItemId,
+          runAttemptId: input.runAttemptId,
+          kind: "user_input",
+          action: "user_input",
+          prompt: input.prompt,
+          deferred: deferred as Deferred.Deferred<unknown>,
+        });
+        return deferred;
+      });
+
+    const respondToApproval: LiveRequestsService["respondToApproval"] = (
+      runAttemptId,
+      requestId,
+      decision,
+    ) =>
+      Effect.gen(function* () {
+        // Winning the claim is the only way to answer: no other path holds this
+        // entry any more, so the decision the agent observes is the one recorded.
+        const outcome = yield* claimAndComplete(runAttemptId, requestId, "approval", (deferred) =>
+          Deferred.succeed(deferred as Deferred.Deferred<ApprovalDecision>, decision),
+        );
+        if (outcome !== "claimed") {
+          return yield* Effect.fail(new LiveRequestNotFoundError(requestId, String(runAttemptId)));
+        }
+      });
+
+    const respondToUserInput: LiveRequestsService["respondToUserInput"] = (
+      runAttemptId,
+      requestId,
+      text,
+    ) =>
+      Effect.gen(function* () {
+        const outcome = yield* claimAndComplete(runAttemptId, requestId, "user_input", (deferred) =>
+          Deferred.succeed(deferred as Deferred.Deferred<string>, text),
+        );
+        if (outcome !== "claimed") {
+          return yield* Effect.fail(new LiveRequestNotFoundError(requestId, String(runAttemptId)));
+        }
+      });
+
+    const listPending: LiveRequestsService["listPending"] = (runAttemptId) =>
+      Effect.map(Ref.get(store), (current) =>
+        Object.values(current)
+          .filter((value) => value.runAttemptId === runAttemptId)
+          .map((value) => ({
+            requestId: value.requestId,
+            kind: value.kind,
+            action: value.action,
+            prompt: value.prompt,
+          })),
+      );
+
+    const settleRun: LiveRequestsService["settleRun"] = (runAttemptId, reason) =>
+      // Claiming the run's entries and failing each Deferred is one
+      // uninterruptible step: an interrupted settlement must not remove requests
+      // whose Deferreds stay unresolved.
+      Effect.uninterruptible(
+        Effect.gen(function* () {
+          const claimed = yield* Ref.modify(store, (current) => {
+            const entries = Object.entries(current).filter(
+              ([, entry]) => entry.runAttemptId === runAttemptId,
+            );
+            if (entries.length === 0) {
+              return [[] as ReadonlyArray<PendingApprovalRequest>, current] as const;
+            }
+            const next = { ...current };
+            for (const [key] of entries) {
+              delete next[key];
+            }
+            return [
+              entries.map(([, entry]) => entry) as ReadonlyArray<PendingApprovalRequest>,
+              next,
+            ] as const;
+          });
+          if (claimed.length > 0) {
+            yield* hooks.afterClaim ?? Effect.void;
+          }
+          yield* Effect.forEach(claimed, (entry) =>
+            Deferred.fail(
+              entry.deferred as unknown as Deferred.Deferred<unknown, Error>,
+              new Error(`Run settled: ${reason}`),
+            ).pipe(Effect.ignore),
+          );
+        }),
+      );
+
+    const settleRequest: LiveRequestsService["settleRequest"] = (runAttemptId, requestId, reason) =>
+      Effect.gen(function* () {
+        const outcome = yield* claimAndComplete(runAttemptId, requestId, undefined, (deferred) =>
+          Deferred.fail(
+            deferred as unknown as Deferred.Deferred<unknown, Error>,
+            new Error(`Request settled: ${reason}`),
+          ).pipe(Effect.ignore, Effect.as(true)),
+        );
+        return outcome === "claimed";
+      });
+
+    return {
+      registerApproval,
+      registerUserInput,
+      respondToApproval,
+      respondToUserInput,
+      listPending,
+      settleRun,
+      settleRequest,
+    };
+  });
+
+/** Production registry: no test hooks. */
+export const makeLiveRequests = makeLiveRequestsWithHooks({});
 
 export const LiveRequestsLive: Layer.Layer<LiveRequests> = Layer.effect(
   LiveRequests,

@@ -19,6 +19,7 @@ import * as Option from "effect/Option";
 import {
   makePullRequestService,
   PullRequestService,
+  pullRequestRepositoryKey,
   type PullRequestServiceDeps,
 } from "./PullRequest.ts";
 
@@ -380,6 +381,103 @@ it.effect(
       // A different PR on the branch is not a substitute for the tracked one.
       expect(listCalls).toEqual([]);
     }),
+);
+
+it("derives a comparable repository identity from change-request URLs", () => {
+  expect(pullRequestRepositoryKey("https://github.com/owner/a/pull/42")).toBe(
+    pullRequestRepositoryKey("https://www.github.com/owner/a/pull/7/"),
+  );
+  expect(pullRequestRepositoryKey("https://github.com/owner/a/pull/42")).not.toBe(
+    pullRequestRepositoryKey("https://github.com/owner/b/pull/42"),
+  );
+  expect(pullRequestRepositoryKey("https://gitlab.com/group/project/-/merge_requests/42")).toBe(
+    "gitlab.com/group/project",
+  );
+  expect(pullRequestRepositoryKey("https://bitbucket.org/owner/repo/pull-requests/42")).toBe(
+    "bitbucket.org/owner/repo",
+  );
+  expect(
+    pullRequestRepositoryKey("https://dev.azure.com/org/project/_git/repo/pullrequest/42"),
+  ).toBe("dev.azure.com/org/project/_git/repo");
+  expect(pullRequestRepositoryKey(undefined)).toBeNull();
+  expect(pullRequestRepositoryKey("not a url")).toBeNull();
+});
+
+it.effect("refresh refuses a same-number PR that belongs to another repository", () =>
+  Effect.gen(function* () {
+    const service = makePullRequestService(
+      makeDeps({
+        providers: {
+          resolveHandle: () =>
+            Effect.succeed({
+              provider: {
+                createChangeRequest: () => Effect.void,
+                getChangeRequestStatus: () => Effect.succeed(null),
+                // Same number, different repository: a number alone is not
+                // identity.
+                getChangeRequest: () =>
+                  Effect.succeed(
+                    makeChangeRequest({
+                      number: 42,
+                      url: "https://github.com/owner/b/pull/42",
+                    }),
+                  ),
+                listChangeRequests: () => Effect.succeed([]),
+              },
+              context: null,
+            }),
+        } as unknown as PullRequestServiceDeps["providers"],
+      }),
+    );
+
+    expect(
+      yield* service.refresh({
+        config: makeConfig(),
+        branch: "symphony/issue-42",
+        baseBranch: "main",
+        title: "Implement issue 42",
+        pullRequestNumber: 42,
+        pullRequestUrl: "https://github.com/owner/a/pull/42",
+      }),
+    ).toBeNull();
+  }),
+);
+
+it.effect("refresh accepts the tracked PR in the same repository", () =>
+  Effect.gen(function* () {
+    const service = makePullRequestService(
+      makeDeps({
+        providers: {
+          resolveHandle: () =>
+            Effect.succeed({
+              provider: {
+                createChangeRequest: () => Effect.void,
+                getChangeRequestStatus: () => Effect.succeed(null),
+                getChangeRequest: () =>
+                  Effect.succeed(
+                    makeChangeRequest({
+                      number: 42,
+                      url: "https://www.github.com/owner/a/pull/42/",
+                    }),
+                  ),
+                listChangeRequests: () => Effect.succeed([]),
+              },
+              context: null,
+            }),
+        } as unknown as PullRequestServiceDeps["providers"],
+      }),
+    );
+
+    const refreshed = yield* service.refresh({
+      config: makeConfig(),
+      branch: "symphony/issue-42",
+      baseBranch: "main",
+      title: "Implement issue 42",
+      pullRequestNumber: 42,
+      pullRequestUrl: "https://github.com/owner/a/pull/42",
+    });
+    expect(refreshed).toMatchObject({ number: 42, url: "https://www.github.com/owner/a/pull/42/" });
+  }),
 );
 
 it.effect("refresh returns null when no open PR exists for the branch", () =>
