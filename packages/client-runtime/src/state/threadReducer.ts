@@ -225,10 +225,7 @@ export function applyThreadDetailEvent(
       // running it — providers may emit several assistant messages per turn
       // (commentary between tool calls), and the turn must stay unsettled
       // until the provider reports turn end.
-      const turnStillRunning =
-        event.payload.turnId !== null &&
-        thread.session?.status === "running" &&
-        thread.session.activeTurnId === event.payload.turnId;
+      const turnStillRunning = sessionRunsTurn(thread.session, event.payload.turnId);
       const settlesTurn = !event.payload.streaming && !turnStillRunning;
       const existingLatestTurn = thread.latestTurn;
       const sameTurn = existingLatestTurn?.turnId === event.payload.turnId;
@@ -266,20 +263,10 @@ export function applyThreadDetailEvent(
           : existingLatestTurn;
 
       // Only a completed assistant message that closes its own turn supplies
-      // settlement evidence. A message that merely arrives after the turn was
-      // already terminal must not promote a provisional interrupt boundary.
-      const messageSettledTurn =
-        event.payload.role === "assistant" &&
-        event.payload.turnId !== null &&
-        settlesTurn &&
-        !existingSettled &&
-        latestTurn !== null &&
-        latestTurn.turnId === event.payload.turnId;
+      // settlement evidence; provisional interrupt boundaries stay provisional.
       const settlementEvidence = withSettlementEvidence(
         thread,
-        messageSettledTurn && latestTurn !== null
-          ? { turnId: latestTurn.turnId, completedAt: latestTurn.completedAt }
-          : null,
+        authoritativeSettlement(latestTurn, thread.session),
       );
       // Rebind checkpoint assistant message IDs for assistant messages.
       const checkpoints =
@@ -308,14 +295,10 @@ export function applyThreadDetailEvent(
     case "thread.session-set": {
       // Leaving the "running" session status is the turn-end signal: settle a
       // still-running latest turn so its duration reflects the whole turn. A
-      // turn the session was still running is also settled here when an
+      // turn the session was still running is settled here too, even when an
       // interrupt request already presented it as terminal: that boundary was
       // provisional, so the session event supplies the authoritative timing.
       const settledTurnState = settledTurnStateForSessionStatus(event.payload.session.status);
-      const latestTurnBoundToRunningSession =
-        thread.latestTurn !== null &&
-        thread.session?.status === "running" &&
-        thread.session.activeTurnId === thread.latestTurn.turnId;
       const latestTurn: OrchestrationLatestTurn | null =
         event.payload.session.status === "running" && event.payload.session.activeTurnId !== null
           ? {
@@ -336,7 +319,8 @@ export function applyThreadDetailEvent(
                   : null,
             }
           : thread.latestTurn !== null &&
-              (thread.latestTurn.state === "running" || latestTurnBoundToRunningSession) &&
+              (thread.latestTurn.state === "running" ||
+                sessionRunsTurn(thread.session, thread.latestTurn.turnId)) &&
               settledTurnState !== null
             ? {
                 ...thread.latestTurn,
@@ -354,51 +338,65 @@ export function applyThreadDetailEvent(
             : thread.latestTurn;
 
       // Starting a turn supersedes whatever turn the client was showing. A
-      // superseded running turn settles at the new session's observation. A
-      // terminal turn keeps its own authoritative completion, except while its
-      // session is still running it: that terminal state is only a provisional
-      // interrupt boundary, so it must not be frozen as a settlement.
+      // superseded running turn settles at the new session's observation; a
+      // terminal turn contributes its own authoritative settlement. A
+      // provisional interrupt boundary contributes nothing.
       const isRunningSession =
         event.payload.session.status === "running" && event.payload.session.activeTurnId !== null;
       const supersededTurn =
         isRunningSession &&
         thread.latestTurn !== null &&
         thread.latestTurn.turnId !== event.payload.session.activeTurnId &&
-        (thread.latestTurn.state === "running" || !latestTurnBoundToRunningSession)
+        (thread.latestTurn.state === "running" ||
+          authoritativeSettlement(thread.latestTurn, thread.session) !== null)
           ? thread.latestTurn
           : null;
-      const terminalTurnId =
-        settledTurnState === null
+      const supersededSettlement: TurnSettlement | null =
+        supersededTurn === null
           ? null
-          : (event.payload.interruptedTurnId ??
-            (thread.latestTurn !== null &&
-            (thread.latestTurn.state === "running" || latestTurnBoundToRunningSession)
-              ? thread.latestTurn.turnId
-              : null));
-      const settlement =
-        supersededTurn !== null
-          ? {
-              turnId: supersededTurn.turnId,
-              completedAt:
-                supersededTurn.state === "running"
-                  ? event.payload.latestTurnCompletedAt === undefined
-                    ? event.payload.session.updatedAt
-                    : event.payload.latestTurnCompletedAt
-                  : supersededTurn.completedAt,
-            }
-          : terminalTurnId === null
-            ? null
-            : {
-                turnId: terminalTurnId,
+          : supersededTurn.state === "running"
+            ? {
+                turnId: supersededTurn.turnId,
                 completedAt:
                   event.payload.latestTurnCompletedAt === undefined
                     ? event.payload.session.updatedAt
                     : event.payload.latestTurnCompletedAt,
-              };
+              }
+            : authoritativeSettlement(supersededTurn, thread.session);
+      // The event itself is closure evidence for the turn the session was
+      // running, unless the thread already holds that turn's settlement.
+      const closedTurnId =
+        settledTurnState === null
+          ? null
+          : (event.payload.interruptedTurnId ??
+            (thread.latestTurn !== null &&
+            (thread.latestTurn.state === "running" ||
+              sessionRunsTurn(thread.session, thread.latestTurn.turnId))
+              ? thread.latestTurn.turnId
+              : null));
+      const heldSettlement =
+        closedTurnId !== null &&
+        thread.latestTurn !== null &&
+        thread.latestTurn.turnId === closedTurnId
+          ? authoritativeSettlement(thread.latestTurn, thread.session)
+          : null;
+      const closedSettlement: TurnSettlement | null =
+        closedTurnId === null
+          ? null
+          : (heldSettlement ?? {
+              turnId: closedTurnId,
+              completedAt:
+                event.payload.latestTurnCompletedAt === undefined
+                  ? event.payload.session.updatedAt
+                  : event.payload.latestTurnCompletedAt,
+            });
       // First authoritative settlement wins. A later session stop or turn
       // start must not rewrite a turn that is already settled, and checkpoint
       // summaries keep the timing its settlement froze.
-      const { settledTurnCompletions, checkpoints } = withSettlementEvidence(thread, settlement);
+      const { settledTurnCompletions, checkpoints } = withSettlementEvidence(
+        thread,
+        supersededSettlement ?? closedSettlement,
+      );
 
       return {
         kind: "updated",
@@ -474,9 +472,7 @@ export function applyThreadDetailEvent(
 
       // Mid-turn diff updates produce placeholder checkpoints; record the
       // checkpoint, but don't settle a turn its session is still running.
-      const diffTurnStillRunning =
-        thread.session?.status === "running" &&
-        thread.session.activeTurnId === event.payload.turnId;
+      const diffTurnStillRunning = sessionRunsTurn(thread.session, event.payload.turnId);
       // Only a checkpoint that actually closes the turn supplies settlement
       // evidence. A placeholder checkpoint for a running turn must not freeze
       // a provisional interrupt boundary as if it were a completion.
@@ -496,9 +492,7 @@ export function applyThreadDetailEvent(
 
       const settlementEvidence = withSettlementEvidence(
         { ...thread, checkpoints },
-        settlesTurn && latestTurn !== null && latestTurn.state !== "running"
-          ? { turnId: latestTurn.turnId, completedAt: latestTurn.completedAt }
-          : null,
+        settlesTurn ? authoritativeSettlement(latestTurn, thread.session) : null,
       );
 
       return {
@@ -592,6 +586,41 @@ export function applyThreadDetailEvent(
 
 type SettledTurnCompletions = NonNullable<OrchestrationThread["settledTurnCompletions"]>;
 
+interface TurnSettlement {
+  readonly turnId: TurnId;
+  readonly completedAt: string | null;
+}
+
+/**
+ * Whether a session still reports `turnId` as running.
+ */
+function sessionRunsTurn(session: OrchestrationSession | null, turnId: TurnId | null): boolean {
+  return (
+    session !== null &&
+    session.status === "running" &&
+    turnId !== null &&
+    session.activeTurnId === turnId
+  );
+}
+
+/**
+ * Resolve a turn's authoritative settlement.
+ *
+ * A terminal turn is settlement evidence only when no session still reports it
+ * as running. An interrupt request marks the turn terminal immediately, but
+ * until the session observes the closure that state is intent, not evidence.
+ * Snapshots and live events share this decision so they cannot diverge.
+ */
+function authoritativeSettlement(
+  turn: OrchestrationLatestTurn | null,
+  session: OrchestrationSession | null,
+): TurnSettlement | null {
+  if (turn === null || turn.state === "running" || sessionRunsTurn(session, turn.turnId)) {
+    return null;
+  }
+  return { turnId: turn.turnId, completedAt: turn.completedAt };
+}
+
 /**
  * Record one turn's authoritative settlement completion, including an explicit
  * `null` for an unknown completion. Settlement evidence is write-once: the
@@ -678,9 +707,9 @@ export function withSnapshotSettlementEvidence(
     previous !== null && previous.id === thread.id ? (previous.settledTurnCompletions ?? {}) : {};
   const incomingRecord = thread.settledTurnCompletions ?? {};
   let record: SettledTurnCompletions = { ...previousRecord, ...incomingRecord };
-  const latestTurn = thread.latestTurn;
-  if (latestTurn !== null && latestTurn.state !== "running") {
-    record = recordSettledTurnCompletion(record, latestTurn.turnId, latestTurn.completedAt);
+  const settlement = authoritativeSettlement(thread.latestTurn, thread.session);
+  if (settlement !== null) {
+    record = recordSettledTurnCompletion(record, settlement.turnId, settlement.completedAt);
   }
   return sameSettledTurnCompletions(record, incomingRecord)
     ? thread

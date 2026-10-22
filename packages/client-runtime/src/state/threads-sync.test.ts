@@ -289,6 +289,37 @@ describe("EnvironmentThreads", () => {
     }),
   );
 
+  it.effect("does not seed a provisional interrupt boundary from the warm cache", () =>
+    Effect.gen(function* () {
+      const cachedThread: OrchestrationThread = {
+        ...BASE_THREAD,
+        latestTurn: {
+          turnId: TurnId.make("turn-pending"),
+          state: "interrupted",
+          requestedAt: "2026-04-01T00:00:00.000Z",
+          startedAt: "2026-04-01T00:00:00.000Z",
+          completedAt: "2026-04-01T00:00:10.000Z",
+          assistantMessageId: null,
+        },
+        session: {
+          threadId: THREAD_ID,
+          status: "running",
+          providerName: "codex",
+          runtimeMode: "full-access",
+          activeTurnId: TurnId.make("turn-pending"),
+          lastError: null,
+          updatedAt: "2026-04-01T00:00:00.000Z",
+        },
+      };
+      const harness = yield* makeHarness({ cached: cachedThread });
+      const state = yield* awaitThreadState(harness.observed, (value) => Option.isSome(value.data));
+
+      // The session still runs the turn, so the cached terminal state is only
+      // an interrupt request boundary, not settlement evidence.
+      expect(Option.getOrThrow(state.data).settledTurnCompletions).toBeUndefined();
+    }),
+  );
+
   it.effect("resumes a warm cache via afterSequence without an HTTP fetch", () =>
     Effect.gen(function* () {
       const harness = yield* makeHarness({ cached: BASE_THREAD });

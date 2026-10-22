@@ -728,6 +728,70 @@ describe("applyThreadDetailEvent", () => {
       expect(next.thread.latestTurn?.turnId).toBe(TurnId.make("turn-2"));
       expect(next.thread.settledTurnCompletions).toBeUndefined();
     });
+
+    it("keeps a pending interrupt provisional across a snapshot reload", () => {
+      const requestedAt = "2026-04-01T07:00:10.000Z";
+      const completedAt = "2026-04-01T07:00:30.000Z";
+
+      const interrupted = interruptRequested(runningTurnThread(), requestedAt);
+      expect(interrupted.kind).toBe("updated");
+      if (interrupted.kind !== "updated") return;
+
+      // A cache or server snapshot taken while the interruption is pending
+      // still reports the session as running the turn.
+      const reloaded = withSnapshotSettlementEvidence(interrupted.thread, null);
+      expect(reloaded.settledTurnCompletions).toBeUndefined();
+
+      // The interrupt fails and the provider keeps streaming the turn.
+      const streaming = applyThreadDetailEvent(reloaded, {
+        ...baseEventFields,
+        sequence: 31,
+        occurredAt: "2026-04-01T07:00:20.000Z",
+        aggregateKind: "thread",
+        aggregateId: ThreadId.make("thread-1"),
+        type: "thread.message-sent",
+        payload: {
+          threadId: ThreadId.make("thread-1"),
+          messageId: MessageId.make("msg-5"),
+          role: "assistant",
+          text: "Still working.",
+          turnId: TurnId.make("turn-1"),
+          streaming: true,
+          createdAt: "2026-04-01T07:00:20.000Z",
+          updatedAt: "2026-04-01T07:00:20.000Z",
+        },
+      });
+      expect(streaming.kind).toBe("updated");
+      if (streaming.kind !== "updated") return;
+
+      const settled = applyThreadDetailEvent(streaming.thread, {
+        ...baseEventFields,
+        sequence: 32,
+        occurredAt: completedAt,
+        aggregateKind: "thread",
+        aggregateId: ThreadId.make("thread-1"),
+        type: "thread.session-set",
+        payload: {
+          threadId: ThreadId.make("thread-1"),
+          session: {
+            threadId: ThreadId.make("thread-1"),
+            status: "idle",
+            providerName: "codex",
+            runtimeMode: "full-access",
+            activeTurnId: null,
+            lastError: null,
+            updatedAt: completedAt,
+          },
+        },
+      });
+      expect(settled.kind).toBe("updated");
+      if (settled.kind !== "updated") return;
+      // The reloaded provisional boundary must not shadow the real completion.
+      expect(settled.thread.settledTurnCompletions).toEqual({
+        [TurnId.make("turn-1")]: completedAt,
+      });
+      expect(settled.thread.latestTurn?.completedAt).toBe(completedAt);
+    });
   });
 
   describe("thread.session-set", () => {
@@ -1220,6 +1284,24 @@ describe("applyThreadDetailEvent", () => {
       const snapshotThread: OrchestrationThread = {
         ...baseThread,
         latestTurn: settledTurn(TurnId.make("turn-1"), "running", null),
+      };
+
+      expect(withSnapshotSettlementEvidence(snapshotThread, null)).toBe(snapshotThread);
+    });
+
+    it("does not seed a provisional interrupt boundary its session still runs", () => {
+      const snapshotThread: OrchestrationThread = {
+        ...baseThread,
+        latestTurn: settledTurn(TurnId.make("turn-1"), "interrupted", "2026-04-01T07:00:10.000Z"),
+        session: {
+          threadId: ThreadId.make("thread-1"),
+          status: "running",
+          providerName: "codex",
+          runtimeMode: "full-access",
+          activeTurnId: TurnId.make("turn-1"),
+          lastError: null,
+          updatedAt: "2026-04-01T07:00:00.000Z",
+        },
       };
 
       expect(withSnapshotSettlementEvidence(snapshotThread, null)).toBe(snapshotThread);
