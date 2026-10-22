@@ -41,7 +41,6 @@ import { ProjectionSnapshotQuery } from "../Services/ProjectionSnapshotQuery.ts"
 import { RuntimeReceiptBus } from "../Services/RuntimeReceiptBus.ts";
 import type { CheckpointStoreError } from "../../checkpointing/Errors.ts";
 import type { OrchestrationDispatchError } from "../Errors.ts";
-import { isGitRepository } from "../../git/Utils.ts";
 import { VcsStatusBroadcaster } from "../../vcs/VcsStatusBroadcaster.ts";
 import * as VcsProcess from "../../vcs/VcsProcess.ts";
 import * as WorkspaceEntries from "../../workspace/WorkspaceEntries.ts";
@@ -56,6 +55,22 @@ type ReactorInput =
   | {
       readonly source: "domain";
       readonly event: OrchestrationEvent;
+    };
+
+type RestoredTreeEntry = {
+  readonly mode: string;
+  readonly type: string;
+  readonly oid: string;
+  readonly path: string;
+};
+
+type IgnoredRevertCheck =
+  | { readonly state: "safe" }
+  | {
+      readonly state: "refused";
+      readonly reason: "rules" | "collision" | "both" | "evidence";
+      readonly paths: ReadonlyArray<string>;
+      readonly detail?: string;
     };
 
 function toTurnId(value: string | undefined): TurnId | null {
@@ -253,7 +268,7 @@ const make = Effect.gen(function* () {
     return project ? [project] : [];
   });
 
-  const isGitWorkspace = (cwd: string) => isGitRepository(cwd);
+  const isGitWorkspace = (cwd: string) => checkpointStore.isGitRepository(cwd);
 
   const runGit = Effect.fn("CheckpointReactor.runGit")(function* (input: {
     readonly operation: string;
@@ -272,161 +287,322 @@ const make = Effect.gen(function* () {
     });
   });
 
+  const runGitEvidence = (input: {
+    readonly operation: string;
+    readonly cwd: string;
+    readonly args: ReadonlyArray<string>;
+  }): Effect.Effect<
+    | { readonly ok: true; readonly result: VcsProcess.VcsProcessOutput }
+    | { readonly ok: false; readonly detail: string }
+  > =>
+    runGit({ ...input, allowNonZeroExit: true }).pipe(
+      Effect.map((result) =>
+        result.stdoutTruncated
+          ? { ok: false as const, detail: `${input.operation}: output was truncated` }
+          : { ok: true as const, result },
+      ),
+      Effect.catch((error) => Effect.succeed({ ok: false as const, detail: error.message })),
+    );
+
   const resolveRestoreCommit = Effect.fn("CheckpointReactor.resolveRestoreCommit")(
     function* (input: {
       readonly cwd: string;
       readonly checkpointRef: CheckpointRef;
       readonly fallbackToHead: boolean;
-    }) {
-      const target = yield* runGit({
+    }): Effect.fn.Return<
+      | { readonly state: "ok"; readonly commit: string }
+      | { readonly state: "refused"; readonly detail: string }
+    > {
+      const target = yield* runGitEvidence({
         operation: "CheckpointReactor.resolveRestoreCommit",
         cwd: input.cwd,
         args: ["rev-parse", "--verify", "--quiet", `${input.checkpointRef}^{commit}`],
-        allowNonZeroExit: true,
       });
-      if (target.exitCode === 0) {
-        const commit = target.stdout.trim();
+      if (!target.ok) {
+        return { state: "refused", detail: target.detail };
+      }
+      if (target.result.exitCode === 0) {
+        const commit = target.result.stdout.trim();
         if (commit.length > 0) {
-          return commit;
+          return { state: "ok", commit };
         }
+      } else if (target.result.exitCode !== 1) {
+        return {
+          state: "refused",
+          detail: `git rev-parse exited with ${target.result.exitCode}`,
+        };
       }
       if (!input.fallbackToHead) {
-        return null;
+        return { state: "refused", detail: "the checkpoint commit is not available" };
       }
-      const head = yield* runGit({
+      const head = yield* runGitEvidence({
         operation: "CheckpointReactor.resolveRestoreCommit",
         cwd: input.cwd,
         args: ["rev-parse", "--verify", "--quiet", "HEAD^{commit}"],
-        allowNonZeroExit: true,
       });
-      if (head.exitCode !== 0) {
-        return null;
+      if (!head.ok) {
+        return { state: "refused", detail: head.detail };
       }
-      const commit = head.stdout.trim();
-      return commit.length > 0 ? commit : null;
+      if (head.result.exitCode !== 0) {
+        return {
+          state: "refused",
+          detail: `git rev-parse HEAD exited with ${head.result.exitCode}`,
+        };
+      }
+      const commit = head.result.stdout.trim();
+      return commit.length > 0
+        ? { state: "ok", commit }
+        : { state: "refused", detail: "HEAD has no commit" };
     },
   );
 
   const trimTrailingSlash = (value: string): string => value.replace(/\/+$/, "");
 
-  // Restore reinstates the target tree's .gitignore rules before `git clean -fd`
-  // runs. An untracked file that is ignored now but not by the target tree would
-  // be deleted, and the recovery snapshot never captured it because it was
-  // ignored at capture time. Refuse when that would happen.
-  const findIgnoredPathsLostByRestore = Effect.fn(
-    "CheckpointReactor.findIgnoredPathsLostByRestore",
-  )(function* (input: {
-    readonly cwd: string;
-    readonly checkpointRef: CheckpointRef;
-    readonly fallbackToHead: boolean;
-  }) {
-    const repoRootResult = yield* runGit({
-      operation: "CheckpointReactor.findIgnoredPathsLostByRestore",
-      cwd: input.cwd,
-      args: ["rev-parse", "--show-toplevel"],
-      allowNonZeroExit: true,
-    });
-    if (repoRootResult.exitCode !== 0) {
-      return [];
+  const isGitIgnorePath = (entry: string): boolean =>
+    entry === ".gitignore" || entry.endsWith("/.gitignore");
+
+  const parseRestoredTreeEntries = (stdout: string): ReadonlyArray<RestoredTreeEntry> | null => {
+    const entries: Array<RestoredTreeEntry> = [];
+    for (const record of stdout.split("\0")) {
+      if (record.length === 0) {
+        continue;
+      }
+      const tabIndex = record.indexOf("\t");
+      if (tabIndex < 0) {
+        return null;
+      }
+      const header = record.slice(0, tabIndex).split(" ");
+      if (header.length < 3) {
+        return null;
+      }
+      const [mode, type, oid] = header;
+      if (!mode || !type || !oid) {
+        return null;
+      }
+      entries.push({ mode, type, oid, path: record.slice(tabIndex + 1) });
     }
-    const repoRoot = repoRootResult.stdout.trim();
-    if (repoRoot.length === 0) {
-      return [];
-    }
+    return entries;
+  };
 
-    const prefixResult = yield* runGit({
-      operation: "CheckpointReactor.findIgnoredPathsLostByRestore",
-      cwd: input.cwd,
-      args: ["rev-parse", "--show-prefix"],
-      allowNonZeroExit: true,
-    });
-    const cwdPrefix = prefixResult.exitCode === 0 ? prefixResult.stdout.trim() : "";
+  // Restore only rewrites the subtree under cwd. Ancestor ignore rules outside
+  // cwd are not restored, so they are not part of this comparison. Refuse
+  // conservatively when ignored content exists and either a .gitignore under
+  // cwd differs from the checkpoint, or a tracked checkpoint entry overlaps an
+  // ignored path. Any incomplete evidence also refuses.
+  const inspectIgnoredRevertRisk = Effect.fn("CheckpointReactor.inspectIgnoredRevertRisk")(
+    function* (input: {
+      readonly cwd: string;
+      readonly checkpointRef: CheckpointRef;
+      readonly fallbackToHead: boolean;
+    }): Effect.fn.Return<IgnoredRevertCheck> {
+      const refusedEvidence = (detail: string): IgnoredRevertCheck => ({
+        state: "refused",
+        reason: "evidence",
+        paths: [],
+        detail,
+      });
 
-    const ignored = yield* runGit({
-      operation: "CheckpointReactor.findIgnoredPathsLostByRestore",
-      cwd: repoRoot,
-      args: [
-        // An ignored directory is enough to assess: Git cannot re-include a
-        // descendant of an excluded directory, so either the target still
-        // ignores it or clean would remove the whole directory.
-        "ls-files",
-        "--others",
-        "--ignored",
-        "--exclude-standard",
-        "--directory",
-        "--full-name",
-        "-z",
-        ...(cwdPrefix.length > 0 ? ["--", cwdPrefix] : []),
-      ],
-    });
-    const currentIgnored = ignored.stdout.split("\0").filter((entry) => entry.length > 0);
-    if (currentIgnored.length === 0) {
-      return [];
-    }
+      const toplevel = yield* runGitEvidence({
+        operation: "CheckpointReactor.inspectIgnoredRevertRisk.toplevel",
+        cwd: input.cwd,
+        args: ["rev-parse", "--show-toplevel"],
+      });
+      if (!toplevel.ok) {
+        return refusedEvidence(toplevel.detail);
+      }
+      if (toplevel.result.exitCode !== 0) {
+        return refusedEvidence(
+          `git rev-parse --show-toplevel exited with ${toplevel.result.exitCode}`,
+        );
+      }
+      const repoRoot = toplevel.result.stdout.trim();
+      if (repoRoot.length === 0) {
+        return refusedEvidence("the repository root is empty");
+      }
 
-    const commit = yield* resolveRestoreCommit(input);
-    if (commit === null) {
-      return [];
-    }
+      const prefix = yield* runGitEvidence({
+        operation: "CheckpointReactor.inspectIgnoredRevertRisk.prefix",
+        cwd: input.cwd,
+        args: ["rev-parse", "--show-prefix"],
+      });
+      if (!prefix.ok) {
+        return refusedEvidence(prefix.detail);
+      }
+      if (prefix.result.exitCode !== 0) {
+        return refusedEvidence(`git rev-parse --show-prefix exited with ${prefix.result.exitCode}`);
+      }
+      const cwdPrefix = prefix.result.stdout.trim();
+      const pathArgs = cwdPrefix.length > 0 ? ["--", cwdPrefix] : [];
 
-    const tree = yield* runGit({
-      operation: "CheckpointReactor.findIgnoredPathsLostByRestore",
-      cwd: repoRoot,
-      args: ["ls-tree", "-r", "-z", "--name-only", commit],
-    });
-    const targetIgnorePaths = tree.stdout
-      .split("\0")
-      .filter((entry) => entry === ".gitignore" || entry.endsWith("/.gitignore"));
+      const ignored = yield* runGitEvidence({
+        operation: "CheckpointReactor.inspectIgnoredRevertRisk.ignored",
+        cwd: repoRoot,
+        args: [
+          // Directory-level enumeration is enough: Git cannot re-include a
+          // descendant of an excluded directory.
+          "ls-files",
+          "--others",
+          "--ignored",
+          "--exclude-standard",
+          "--directory",
+          "--full-name",
+          "-z",
+          ...pathArgs,
+        ],
+      });
+      if (!ignored.ok) {
+        return refusedEvidence(ignored.detail);
+      }
+      if (ignored.result.exitCode !== 0) {
+        return refusedEvidence(`git ls-files --ignored exited with ${ignored.result.exitCode}`);
+      }
+      const currentIgnored = ignored.result.stdout.split("\0").filter((entry) => entry.length > 0);
+      if (currentIgnored.length === 0) {
+        return { state: "safe" };
+      }
 
-    return yield* Effect.scoped(
-      Effect.acquireRelease(
-        fileSystem.makeTempDirectory({ prefix: "neokod-revert-ignore-check-" }),
-        (directory) =>
-          fileSystem.remove(directory, { recursive: true, force: true }).pipe(Effect.ignore),
-      ).pipe(
-        Effect.flatMap((tempDirectory) =>
-          Effect.gen(function* () {
-            for (const ignorePath of targetIgnorePaths) {
-              const contents = yield* runGit({
-                operation: "CheckpointReactor.findIgnoredPathsLostByRestore",
-                cwd: repoRoot,
-                args: ["show", `${commit}:${ignorePath}`],
-              });
-              const destination = path.join(tempDirectory, ignorePath);
-              yield* fileSystem.makeDirectory(path.dirname(destination), { recursive: true });
-              yield* fileSystem.writeFileString(destination, contents.stdout);
+      const commitResult = yield* resolveRestoreCommit(input);
+      if (commitResult.state === "refused") {
+        return refusedEvidence(commitResult.detail);
+      }
+
+      const tree = yield* runGitEvidence({
+        operation: "CheckpointReactor.inspectIgnoredRevertRisk.tree",
+        cwd: repoRoot,
+        args: ["ls-tree", "-r", "-z", commitResult.commit, ...pathArgs],
+      });
+      if (!tree.ok) {
+        return refusedEvidence(tree.detail);
+      }
+      if (tree.result.exitCode !== 0) {
+        return refusedEvidence(`git ls-tree exited with ${tree.result.exitCode}`);
+      }
+      const targetEntries = parseRestoredTreeEntries(tree.result.stdout);
+      if (targetEntries === null) {
+        return refusedEvidence("the checkpoint tree listing could not be parsed");
+      }
+
+      const currentFiles = yield* runGitEvidence({
+        operation: "CheckpointReactor.inspectIgnoredRevertRisk.currentFiles",
+        cwd: repoRoot,
+        args: ["ls-files", "--cached", "--others", "--exclude-standard", "-z", ...pathArgs],
+      });
+      if (!currentFiles.ok) {
+        return refusedEvidence(currentFiles.detail);
+      }
+      if (currentFiles.result.exitCode !== 0) {
+        return refusedEvidence(`git ls-files exited with ${currentFiles.result.exitCode}`);
+      }
+      const currentIgnorePaths = new Set(
+        [...currentFiles.result.stdout.split("\0"), ...currentIgnored]
+          .filter((entry) => entry.length > 0 && isGitIgnorePath(entry))
+          .map(trimTrailingSlash),
+      );
+
+      const targetIgnoreByPath = new Map(
+        targetEntries
+          .filter((entry) => isGitIgnorePath(entry.path))
+          .map((entry) => [entry.path, entry] as const),
+      );
+
+      let rulesChanged = false;
+      const allIgnorePaths = new Set([...currentIgnorePaths, ...targetIgnoreByPath.keys()]);
+      for (const ignorePath of allIgnorePaths) {
+        const target = targetIgnoreByPath.get(ignorePath);
+        if (target === undefined) {
+          rulesChanged = true;
+          break;
+        }
+        if (target.type !== "blob" || (target.mode !== "100644" && target.mode !== "100755")) {
+          // A symlink, submodule, or other non-regular .gitignore is a change.
+          rulesChanged = true;
+          break;
+        }
+        if (!currentIgnorePaths.has(ignorePath)) {
+          rulesChanged = true;
+          break;
+        }
+        const absolute = path.join(repoRoot, ignorePath);
+        const link = yield* fileSystem.readLink(absolute).pipe(Effect.option);
+        if (Option.isSome(link)) {
+          rulesChanged = true;
+          break;
+        }
+        const info = yield* fileSystem.stat(absolute).pipe(Effect.option);
+        if (Option.isNone(info)) {
+          rulesChanged = true;
+          break;
+        }
+        const currentExecutable = (info.value.mode & 0o111) !== 0;
+        if (currentExecutable !== (target.mode === "100755")) {
+          rulesChanged = true;
+          break;
+        }
+        const hashed = yield* runGitEvidence({
+          operation: "CheckpointReactor.inspectIgnoredRevertRisk.hashObject",
+          cwd: repoRoot,
+          args: ["hash-object", "--no-filters", "--", ignorePath],
+        });
+        if (!hashed.ok || hashed.result.exitCode !== 0) {
+          rulesChanged = true;
+          break;
+        }
+        if (hashed.result.stdout.trim() !== target.oid) {
+          rulesChanged = true;
+          break;
+        }
+      }
+
+      const targetPaths = new Set(targetEntries.map((entry) => entry.path));
+      const targetDirectoryPrefixes = new Set<string>();
+      for (const entry of targetEntries) {
+        const segments = entry.path.split("/");
+        for (let index = 1; index < segments.length; index += 1) {
+          targetDirectoryPrefixes.add(segments.slice(0, index).join("/"));
+        }
+      }
+
+      const collidingIgnored = [
+        ...new Set(
+          currentIgnored.map(trimTrailingSlash).filter((ignoredPath) => {
+            if (targetPaths.has(ignoredPath) || targetDirectoryPrefixes.has(ignoredPath)) {
+              return true;
             }
-
-            const checked = yield* runGit({
-              operation: "CheckpointReactor.findIgnoredPathsLostByRestore",
-              cwd: repoRoot,
-              args: ["--work-tree", tempDirectory, "check-ignore", "--no-index", "-z", "--stdin"],
-              stdin: `${currentIgnored.join("\0")}\0`,
-              allowNonZeroExit: true,
-            });
-            if (checked.exitCode !== 0 && checked.exitCode !== 1) {
-              // Unknown target rules: refuse rather than claim the files survive.
-              return currentIgnored;
+            const segments = ignoredPath.split("/");
+            for (let index = 1; index < segments.length; index += 1) {
+              if (targetPaths.has(segments.slice(0, index).join("/"))) {
+                return true;
+              }
             }
-
-            const targetIgnored = new Set(
-              checked.stdout
-                .split("\0")
-                .filter((entry) => entry.length > 0)
-                .map(trimTrailingSlash),
-            );
-            return currentIgnored
-              .filter((entry) => !targetIgnored.has(trimTrailingSlash(entry)))
-              .map((entry) =>
-                cwdPrefix.length > 0 && entry.startsWith(cwdPrefix)
-                  ? entry.slice(cwdPrefix.length)
-                  : entry,
-              );
+            return false;
           }),
         ),
-      ),
-    );
-  });
+      ];
+
+      if (!rulesChanged && collidingIgnored.length === 0) {
+        return { state: "safe" };
+      }
+
+      const display = (entry: string): string =>
+        cwdPrefix.length > 0 && entry.startsWith(cwdPrefix) ? entry.slice(cwdPrefix.length) : entry;
+      const atRiskPaths = [
+        ...new Set([
+          ...(rulesChanged ? currentIgnored.map(trimTrailingSlash).map(display) : []),
+          ...collidingIgnored.map(display),
+        ]),
+      ];
+      return {
+        state: "refused",
+        reason:
+          rulesChanged && collidingIgnored.length > 0
+            ? "both"
+            : rulesChanged
+              ? "rules"
+              : "collision",
+        paths: atRiskPaths,
+      };
+    },
+  );
 
   // Resolves the workspace CWD for checkpoint operations, preferring the
   // active provider session CWD and falling back to the thread/project config.
@@ -437,7 +613,7 @@ const make = Effect.gen(function* () {
     readonly thread: { readonly projectId: ProjectId; readonly worktreePath: string | null };
     readonly projects: ReadonlyArray<{ readonly id: ProjectId; readonly workspaceRoot: string }>;
     readonly preferSessionRuntime: boolean;
-  }): Effect.fn.Return<string | undefined> {
+  }): Effect.fn.Return<string | undefined, CheckpointStoreError> {
     const fromSession = yield* resolveSessionRuntimeForThread(input.threadId);
     const fromThread = resolveThreadWorkspaceCwd({
       thread: input.thread,
@@ -458,7 +634,7 @@ const make = Effect.gen(function* () {
     if (!cwd) {
       return undefined;
     }
-    if (!isGitWorkspace(cwd)) {
+    if (!(yield* isGitWorkspace(cwd))) {
       return undefined;
     }
     return cwd;
@@ -998,7 +1174,7 @@ const make = Effect.gen(function* () {
       }).pipe(Effect.catch(() => Effect.void));
       return;
     }
-    if (!isGitWorkspace(sessionRuntime.value.cwd)) {
+    if (!(yield* isGitWorkspace(sessionRuntime.value.cwd))) {
       yield* appendRevertFailureActivity({
         threadId: event.payload.threadId,
         turnCount: event.payload.turnCount,
@@ -1072,24 +1248,35 @@ const make = Effect.gen(function* () {
       return;
     }
 
-    // The recovery snapshot never captures ignored files. If restoring the
-    // target tree's ignore rules would make a currently ignored path
-    // non-ignored, git clean would delete it. Refuse before any mutation.
-    const ignoredPathsLostByRestore = yield* findIgnoredPathsLostByRestore({
+    // The recovery snapshot never captures ignored files. Refuse before any
+    // mutation when ignore rules under this folder differ from the checkpoint,
+    // or a tracked checkpoint entry overlaps an ignored path, or the evidence
+    // could not be read completely.
+    const ignoredCheck = yield* inspectIgnoredRevertRisk({
       cwd,
       checkpointRef: targetCheckpointRef,
       fallbackToHead: event.payload.turnCount === 0,
     });
-    if (ignoredPathsLostByRestore.length > 0) {
-      const shown = ignoredPathsLostByRestore.slice(0, 5).join(", ");
-      const more =
-        ignoredPathsLostByRestore.length > 5
-          ? ` and ${ignoredPathsLostByRestore.length - 5} more`
-          : "";
+    if (ignoredCheck.state === "refused") {
+      let detail: string;
+      if (ignoredCheck.reason === "evidence") {
+        detail = `Revert refused: Neokod could not verify the ignored files in this folder before reverting (${ignoredCheck.detail ?? "unknown error"}). Nothing was changed.`;
+      } else {
+        const count = ignoredCheck.paths.length;
+        const shown = ignoredCheck.paths.slice(0, 5).join(", ");
+        const more = count > 5 ? ` and ${count - 5} more` : "";
+        const cause =
+          ignoredCheck.reason === "rules"
+            ? `the .gitignore rules under this folder changed since checkpoint ${event.payload.turnCount}`
+            : ignoredCheck.reason === "collision"
+              ? `tracked paths under this folder changed since checkpoint ${event.payload.turnCount} and overlap ignored paths`
+              : `the .gitignore rules and tracked paths under this folder changed since checkpoint ${event.payload.turnCount}`;
+        detail = `Revert refused: ${count} ignored path${count === 1 ? "" : "s"} would be lost because ${cause}. At risk: ${shown}${more}. Nothing was changed.`;
+      }
       yield* appendRevertFailureActivity({
         threadId: event.payload.threadId,
         turnCount: event.payload.turnCount,
-        detail: `Revert refused: ${ignoredPathsLostByRestore.length} ignored path${ignoredPathsLostByRestore.length === 1 ? "" : "s"} would be deleted because the recovery snapshot does not include ignored files and checkpoint ${event.payload.turnCount}'s ignore rules do not cover: ${shown}${more}. Move the path out of this folder or keep it ignored in the checkpoint, then try again. Nothing was changed.`,
+        detail,
         createdAt: now,
       }).pipe(Effect.catch(() => Effect.void));
       return;
