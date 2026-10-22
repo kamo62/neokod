@@ -1,6 +1,5 @@
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
-import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import { ChildProcessSpawner } from "effect/unstable/process";
 import type * as EffectAcpErrors from "effect-acp/errors";
@@ -23,6 +22,7 @@ import {
   sanitizePrTitle,
   sanitizeThreadTitle,
 } from "./TextGenerationUtils.ts";
+import { collectAcpAssistantText } from "../provider/acp/AcpAssistantText.ts";
 import {
   applyGrokAcpModelSelection,
   currentGrokModelIdFromSessionSetup,
@@ -60,25 +60,12 @@ export const makeGrokTextGeneration = Effect.fn("makeGrokTextGeneration")(functi
   }): Effect.Effect<S["Type"], TextGenerationError, S["DecodingServices"]> =>
     Effect.gen(function* () {
       const resolvedModel = resolveGrokAcpBaseModelId(modelSelection.model);
-      const outputRef = yield* Ref.make("");
       const runtime = yield* makeGrokAcpRuntime({
         grokSettings,
         environment,
         childProcessSpawner: commandSpawner,
         cwd,
         clientInfo: { name: "neokod-git-text", version: "0.0.0" },
-      });
-
-      yield* runtime.handleSessionUpdate((notification) => {
-        const update = notification.update;
-        if (update.sessionUpdate !== "agent_message_chunk") {
-          return Effect.void;
-        }
-        const content = update.content;
-        if (content.type !== "text") {
-          return Effect.void;
-        }
-        return Ref.update(outputRef, (current) => current + content.text);
       });
 
       const promptResult = yield* Effect.gen(function* () {
@@ -95,8 +82,10 @@ export const makeGrokTextGeneration = Effect.fn("makeGrokTextGeneration")(functi
             }),
         });
 
-        return yield* runtime.prompt({
-          prompt: [{ type: "text", text: prompt }],
+        return yield* collectAcpAssistantText({
+          runtime,
+          prompt,
+          mapError: (cause) => cause,
         });
       }).pipe(
         Effect.timeoutOption(GROK_TIMEOUT_MS),
@@ -120,7 +109,7 @@ export const makeGrokTextGeneration = Effect.fn("makeGrokTextGeneration")(functi
         ),
       );
 
-      const trimmed = (yield* Ref.get(outputRef)).trim();
+      const trimmed = promptResult.text;
       if (!trimmed) {
         return yield* new TextGenerationError({
           operation,

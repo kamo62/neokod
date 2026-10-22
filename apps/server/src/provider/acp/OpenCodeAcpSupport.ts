@@ -1,13 +1,15 @@
+// Staged O2 parity spike. This module is not wired into the provider registry,
+// does not enable OpenCode 2 product support, and is not an adapter migration.
 import type { OpenCodeSettings } from "@neokod/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Ref from "effect/Ref";
 import * as Scope from "effect/Scope";
 import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
 import * as EffectAcpErrors from "effect-acp/errors";
 import type * as EffectAcpSchema from "effect-acp/schema";
 
 import * as AcpSessionRuntime from "./AcpSessionRuntime.ts";
+import { collectAcpAssistantText, type AcpAssistantTextResult } from "./AcpAssistantText.ts";
 import {
   collectSessionConfigOptionValues,
   findSessionModelConfigOption,
@@ -183,31 +185,37 @@ export function applyOpenCodeAcpSelection<E>(input: {
   readonly selection: OpenCodeAcpSelectionRequest;
   readonly mapError: (cause: EffectAcpErrors.AcpError) => E;
 }): Effect.Effect<OpenCodeAcpAppliedSelection, E> {
-  const applied: Array<OpenCodeAcpAppliedConfig> = [];
-
-  const applyValue = (
-    kind: "model" | "effort" | "mode",
-    category: OpenCodeAcpSelectableCategory,
-    value: string,
-  ): Effect.Effect<string, EffectAcpErrors.AcpError> =>
-    Effect.gen(function* () {
-      const configOptions = yield* input.runtime.getConfigOptions;
-      const option = findSelectConfigOptionByCategory(configOptions, category);
-      if (option === undefined) {
-        return yield* missingConfigOptionError(kind, value);
-      }
-      const allowedValues = collectSessionConfigOptionValues(option);
-      if (!allowedValues.includes(value)) {
-        return yield* unadvertisedConfigValueError(kind, option.id, value, allowedValues, applied);
-      }
-      if (option.currentValue.trim() !== value) {
-        yield* input.runtime.setConfigOption(option.id, value);
-        applied.push({ configId: option.id, value });
-      }
-      return value;
-    });
-
   return Effect.gen(function* () {
+    const applied: Array<OpenCodeAcpAppliedConfig> = [];
+
+    const applyValue = (
+      kind: "model" | "effort" | "mode",
+      category: OpenCodeAcpSelectableCategory,
+      value: string,
+    ): Effect.Effect<string, EffectAcpErrors.AcpError> =>
+      Effect.gen(function* () {
+        const configOptions = yield* input.runtime.getConfigOptions;
+        const option = findSelectConfigOptionByCategory(configOptions, category);
+        if (option === undefined) {
+          return yield* missingConfigOptionError(kind, value);
+        }
+        const allowedValues = collectSessionConfigOptionValues(option);
+        if (!allowedValues.includes(value)) {
+          return yield* unadvertisedConfigValueError(
+            kind,
+            option.id,
+            value,
+            allowedValues,
+            applied,
+          );
+        }
+        if (option.currentValue.trim() !== value) {
+          yield* input.runtime.setConfigOption(option.id, value);
+          applied.push({ configId: option.id, value });
+        }
+        return value;
+      });
+
     const requestedModel = trimToUndefined(input.selection.model);
     const requestedEffort = trimToUndefined(input.selection.effort);
     const requestedMode = trimToUndefined(input.selection.mode);
@@ -232,50 +240,28 @@ export function applyOpenCodeAcpSelection<E>(input: {
   }).pipe(Effect.mapError(input.mapError));
 }
 
-export interface OpenCodeAcpTextPromptResult {
-  readonly stopReason: EffectAcpSchema.PromptResponse["stopReason"];
-  readonly text: string;
-  readonly usage?: EffectAcpSchema.PromptResponse["usage"];
-}
+export type OpenCodeAcpTextPromptResult = AcpAssistantTextResult;
 
 /**
- * Collects streamed assistant text for model-backed text generation (for example
- * review or commit-message prompts). Timeout and structured-output policy stay
- * with the caller, as in the existing Cursor and Grok text-generation adapters.
- *
- * This replaces the runtime's session-update handler, so callers must choose
- * between this helper and consuming `getEvents` for the same runtime.
+ * Collects model-backed text through the shared filtered event collector. The
+ * runtime's load gate, replay suppression, and root-session filtering therefore
+ * remain active. Timeout and structured-output policy stay with the caller, as
+ * in the existing Cursor and Grok text-generation adapters.
  */
 export function runOpenCodeAcpTextPrompt<E>(input: {
   readonly runtime: Pick<
     AcpSessionRuntime.AcpSessionRuntime["Service"],
-    "handleSessionUpdate" | "start" | "prompt"
+    "drainEvents" | "getEvents" | "prompt" | "start"
   >;
   readonly prompt: string;
   readonly mapError: (cause: EffectAcpErrors.AcpError) => E;
 }): Effect.Effect<OpenCodeAcpTextPromptResult, E> {
   return Effect.gen(function* () {
-    const outputRef = yield* Ref.make("");
-    yield* input.runtime.handleSessionUpdate((notification) => {
-      const update = notification.update;
-      if (update.sessionUpdate !== "agent_message_chunk") {
-        return Effect.void;
-      }
-      const content = update.content;
-      if (content.type !== "text") {
-        return Effect.void;
-      }
-      return Ref.update(outputRef, (current) => current + content.text);
+    yield* input.runtime.start().pipe(Effect.mapError(input.mapError));
+    return yield* collectAcpAssistantText({
+      runtime: input.runtime,
+      prompt: input.prompt,
+      mapError: input.mapError,
     });
-
-    yield* input.runtime.start();
-    const response = yield* input.runtime.prompt({
-      prompt: [{ type: "text", text: input.prompt }],
-    });
-    return {
-      stopReason: response.stopReason,
-      text: (yield* Ref.get(outputRef)).trim(),
-      ...(response.usage === undefined ? {} : { usage: response.usage }),
-    };
-  }).pipe(Effect.mapError(input.mapError));
+  });
 }

@@ -36,11 +36,13 @@ function testEnvironment(extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
   };
 }
 
-async function makeFixtureWrapper(extraEnvironment: NodeJS.ProcessEnv = {}): Promise<string> {
-  const dir = await NodeFS.promises.mkdtemp(
+async function makeFixtureWrapper(
+  extraEnvironment: NodeJS.ProcessEnv = {},
+): Promise<{ readonly wrapperPath: string; readonly directory: string }> {
+  const directory = await NodeFS.promises.mkdtemp(
     NodePath.join(NodeOS.tmpdir(), "opencode2-acp-wrapper-"),
   );
-  const wrapperPath = NodePath.join(dir, "fake-opencode.sh");
+  const wrapperPath = NodePath.join(directory, "fake-opencode.sh");
   const envExports = Object.entries(extraEnvironment)
     .filter((entry): entry is [string, string] => entry[1] !== undefined)
     .map(([key, value]) => `export ${key}=${JSON.stringify(value)}`)
@@ -51,7 +53,22 @@ exec ${JSON.stringify(process.execPath)} ${JSON.stringify(fixturePath)} "$@"
 `;
   await NodeFS.promises.writeFile(wrapperPath, script, "utf8");
   await NodeFS.promises.chmod(wrapperPath, 0o755);
-  return wrapperPath;
+  return { wrapperPath, directory };
+}
+
+function waitForFileContent(filePath: string, attempts = 4000): Effect.Effect<string> {
+  return Effect.gen(function* () {
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      const raw = yield* Effect.promise(() =>
+        NodeFS.promises.readFile(filePath, "utf8").catch(() => ""),
+      );
+      if (raw.trim().length > 0) {
+        return raw;
+      }
+      yield* Effect.sleep("5 millis");
+    }
+    return yield* Effect.die(`Timed out waiting for file content at ${filePath}`);
+  });
 }
 
 const makeRuntime = (
@@ -63,11 +80,17 @@ const makeRuntime = (
 ) =>
   Effect.gen(function* () {
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-    const wrapperPath = yield* Effect.promise(() => makeFixtureWrapper(input.extraEnvironment));
+    const wrapper = yield* Effect.acquireRelease(
+      Effect.promise(() => makeFixtureWrapper(input.extraEnvironment)),
+      (created) =>
+        Effect.promise(() =>
+          NodeFS.promises.rm(created.directory, { recursive: true, force: true }),
+        ),
+    );
     const requestEvents: Array<AcpSessionRuntime.AcpSessionRequestLogEvent> = [];
     const runtime = yield* makeOpenCodeAcpRuntime({
       childProcessSpawner: spawner,
-      openCodeSettings: { binaryPath: wrapperPath },
+      openCodeSettings: { binaryPath: wrapper.wrapperPath },
       environment: testEnvironment(),
       cwd: process.cwd(),
       clientInfo: { name: "neokod-opencode2-acp-test", version: "0.0.0" },
@@ -78,7 +101,7 @@ const makeRuntime = (
           requestEvents.push(event);
         }),
     });
-    return { runtime, requestEvents };
+    return { runtime, requestEvents, wrapperDirectory: wrapper.directory };
   });
 
 const collectEvents = (
@@ -271,6 +294,27 @@ describe("OpenCode 2 ACP runtime parity", () => {
             (event.payload as { configId?: string }).configId === "effort",
         ),
       ).toHaveLength(0);
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("keeps each selection execution's applied evidence independent", () =>
+    Effect.gen(function* () {
+      const { runtime } = yield* makeRuntime();
+      yield* runtime.start();
+      const selection = applyOpenCodeAcpSelection({
+        runtime,
+        selection: { model: "deepseek/deepseek-flash" },
+        mapError: (cause) => cause,
+      });
+
+      const first = yield* selection;
+      yield* runtime.setConfigOption("model", "opencode/minimax-m3.1-flash-free");
+      const second = yield* selection;
+      const third = yield* selection;
+
+      expect(first.applied).toEqual([{ configId: "model", value: "deepseek/deepseek-flash" }]);
+      expect(second.applied).toEqual([{ configId: "model", value: "deepseek/deepseek-flash" }]);
+      expect(third.applied).toEqual([]);
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );
 
@@ -495,6 +539,45 @@ describe("OpenCode 2 ACP runtime parity", () => {
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );
 
+  it.effect("excludes load replay from text generation", () =>
+    Effect.gen(function* () {
+      const { runtime } = yield* makeRuntime({
+        resumeSessionId: "opencode-existing-session",
+        extraEnvironment: {
+          NEOKOD_OPENCODE_ACP_PROMPT_TEXT: "new output",
+        },
+      });
+
+      const result = yield* runOpenCodeAcpTextPrompt({
+        runtime,
+        prompt: "Generate after load.",
+        mapError: (cause) => cause,
+      });
+
+      expect(result.text).toBe("new output");
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("excludes assistant chunks from a foreign session in text generation", () =>
+    Effect.gen(function* () {
+      const { runtime } = yield* makeRuntime({
+        extraEnvironment: {
+          NEOKOD_OPENCODE_ACP_PROMPT_TEXT: "root output",
+          NEOKOD_OPENCODE_ACP_EMIT_FOREIGN_SESSION_UPDATE: "1",
+        },
+      });
+      yield* runtime.start();
+
+      const result = yield* runOpenCodeAcpTextPrompt({
+        runtime,
+        prompt: "Generate without child content.",
+        mapError: (cause) => cause,
+      });
+
+      expect(result.text).toBe("root output");
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  );
+
   it.effect("keeps child ownership inside the wrapper scope without claiming group identity", () =>
     Effect.gen(function* () {
       const { runtime } = yield* makeRuntime();
@@ -508,5 +591,42 @@ describe("OpenCode 2 ACP runtime parity", () => {
       // place the child in its own group by default.
       expect(identity).toBeNull();
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("removes the fixture wrapper directory when the wrapper scope ends", () =>
+    Effect.gen(function* () {
+      let wrapperDirectory = "";
+      yield* Effect.gen(function* () {
+        const made = yield* makeRuntime();
+        wrapperDirectory = made.wrapperDirectory;
+        yield* made.runtime.start();
+      }).pipe(Effect.scoped);
+
+      expect(wrapperDirectory).not.toBe("");
+      expect(NodeFS.existsSync(wrapperDirectory)).toBe(false);
+    }).pipe(Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("writes the fixture exit log when the wrapper scope ends", () =>
+    Effect.gen(function* () {
+      const logDirectory = yield* Effect.acquireRelease(
+        Effect.promise(() =>
+          NodeFS.promises.mkdtemp(NodePath.join(NodeOS.tmpdir(), "opencode2-acp-exit-")),
+        ),
+        (directory) =>
+          Effect.promise(() => NodeFS.promises.rm(directory, { recursive: true, force: true })),
+      );
+      const exitLogPath = NodePath.join(logDirectory, "exit.log");
+
+      yield* Effect.gen(function* () {
+        const { runtime } = yield* makeRuntime({
+          extraEnvironment: { NEOKOD_OPENCODE_ACP_EXIT_LOG_PATH: exitLogPath },
+        });
+        yield* runtime.start();
+      }).pipe(Effect.scoped);
+
+      const exitLog = yield* waitForFileContent(exitLogPath);
+      expect(exitLog).toContain("SIGTERM");
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer), TestClock.withLive),
   );
 });

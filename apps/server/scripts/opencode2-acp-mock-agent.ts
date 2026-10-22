@@ -5,6 +5,13 @@
 // OpenCode CLI and does not contact a provider. It exists so the shared
 // AcpSessionRuntime can be exercised against the methods and update shapes
 // OpenCode 2.0.32 actually exposes.
+//
+// Kept separate from scripts/acp-mock-agent.ts on purpose: that fixture models
+// Cursor/Grok auth, mode and config-option shapes and is shared by many existing
+// tests. OpenCode 2.0.32 differs in auth methods, absent `modes`, the
+// model/effort/mode config-option set, `session/set_model` being unsupported and
+// its MCP transport filter. Adding those as switches would change a shared
+// fixture's defaults for unrelated providers.
 import * as NodeFS from "node:fs";
 
 import * as Effect from "effect/Effect";
@@ -22,6 +29,8 @@ const hangPrompt = process.env.NEOKOD_OPENCODE_ACP_HANG_PROMPT === "1";
 const returnCancelled = process.env.NEOKOD_OPENCODE_ACP_RETURN_CANCELLED === "1";
 const failPrompt = process.env.NEOKOD_OPENCODE_ACP_FAIL_PROMPT === "1";
 const failLoadSession = process.env.NEOKOD_OPENCODE_ACP_FAIL_LOAD === "1";
+const emitForeignSessionUpdate =
+  process.env.NEOKOD_OPENCODE_ACP_EMIT_FOREIGN_SESSION_UPDATE === "1";
 const promptResponseText =
   process.env.NEOKOD_OPENCODE_ACP_PROMPT_TEXT ?? "opencode fixture response";
 
@@ -72,6 +81,14 @@ process.once("SIGINT", () => {
 
 process.once("exit", (code) => {
   logExit(`exit:${code}`);
+});
+
+// The ACP client closes stdin during shutdown. Exit promptly so the wrapper's
+// cleanup test observes the fixture's own exit evidence rather than a fallback
+// kill timeout.
+process.stdin.once("end", () => {
+  logExit("stdin-end");
+  process.exit(0);
 });
 
 function configOptions(): ReadonlyArray<AcpSchema.SessionConfigOption> {
@@ -402,6 +419,16 @@ const program = Effect.gen(function* () {
           availableCommands: [{ name: "review", description: "review changes" }],
         },
       });
+
+      if (emitForeignSessionUpdate) {
+        yield* agent.client.sessionUpdate({
+          sessionId: "mock-opencode2-child-session-1",
+          update: {
+            sessionUpdate: "agent_message_chunk",
+            content: { type: "text", text: "foreign session text" },
+          },
+        });
+      }
 
       yield* agent.client.sessionUpdate({
         sessionId: requestedSessionId,
