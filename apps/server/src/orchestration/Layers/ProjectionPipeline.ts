@@ -1318,17 +1318,27 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
           });
 
           if (Option.isSome(existingTurn)) {
+            // A turn that already settled keeps its durable completion. A late
+            // checkpoint must not rewrite the completion the settlement event
+            // published.
+            const existingSettled = existingTurn.value.state !== "running";
             yield* projectionTurnRepository.upsertByTurnId({
               ...existingTurn.value,
               assistantMessageId: event.payload.assistantMessageId,
-              state: turnStillRunning ? existingTurn.value.state : nextState,
+              state: turnStillRunning
+                ? existingTurn.value.state
+                : existingSettled
+                  ? existingTurn.value.state
+                  : nextState,
               checkpointTurnCount: event.payload.checkpointTurnCount,
               checkpointRef: event.payload.checkpointRef,
               checkpointStatus: event.payload.status,
               checkpointFiles: event.payload.files,
               startedAt: existingTurn.value.startedAt ?? event.payload.completedAt,
               requestedAt: existingTurn.value.requestedAt ?? event.payload.completedAt,
-              completedAt: event.payload.completedAt,
+              completedAt: existingSettled
+                ? existingTurn.value.completedAt
+                : event.payload.completedAt,
             });
             return;
           }

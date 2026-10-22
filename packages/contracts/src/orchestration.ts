@@ -869,6 +869,16 @@ const ThreadSessionSetCommand = Schema.Struct({
   createdAt: IsoDateTime,
 });
 
+const ThreadTurnSettleCommand = Schema.Struct({
+  type: Schema.Literal("thread.turn.settle"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  turnId: TurnId,
+  /** Completion already persisted by the durable turn projection. */
+  completedAt: Schema.NullOr(IsoDateTime),
+  createdAt: IsoDateTime,
+});
+
 const ThreadMessageAssistantDeltaCommand = Schema.Struct({
   type: Schema.Literal("thread.message.assistant.delta"),
   commandId: CommandId,
@@ -953,6 +963,7 @@ const ThreadRuntimeItemsCloseCommand = Schema.Struct({
 
 const InternalOrchestrationCommand = Schema.Union([
   ThreadSessionSetCommand,
+  ThreadTurnSettleCommand,
   ThreadMessageAssistantDeltaCommand,
   ThreadMessageAssistantCompleteCommand,
   ThreadProposedPlanUpsertCommand,
@@ -990,6 +1001,7 @@ export const OrchestrationEventType = Schema.Literals([
   "thread.reverted",
   "thread.session-stop-requested",
   "thread.session-set",
+  "thread.turn-settled",
   "thread.proposed-plan-upserted",
   "thread.turn-diff-completed",
   "thread.activity-appended",
@@ -1156,12 +1168,13 @@ export const ThreadSessionSetPayload = Schema.Struct({
   interruptedTurnId: Schema.optional(TurnId),
   // Omitted keeps the legacy session-time default; explicit null is unknown.
   latestTurnCompletedAt: Schema.optional(Schema.NullOr(IsoDateTime)),
-  /**
-   * Server-recorded settlement for every turn this session update closed.
-   * Clients store these values verbatim; a turn absent from the record is
-   * unknown, and a present `null` is an explicit unknown completion.
-   */
-  settledTurnCompletions: Schema.optional(Schema.Record(TurnId, Schema.NullOr(IsoDateTime))),
+});
+
+export const ThreadTurnSettledPayload = Schema.Struct({
+  threadId: ThreadId,
+  turnId: TurnId,
+  /** Durable per-turn completion as persisted by the turn projection. */
+  completedAt: Schema.NullOr(IsoDateTime),
 });
 
 export const ThreadProposedPlanUpsertedPayload = Schema.Struct({
@@ -1315,6 +1328,11 @@ export const OrchestrationEvent = Schema.Union([
     ...EventBaseFields,
     type: Schema.Literal("thread.session-set"),
     payload: ThreadSessionSetPayload,
+  }),
+  Schema.Struct({
+    ...EventBaseFields,
+    type: Schema.Literal("thread.turn-settled"),
+    payload: ThreadTurnSettledPayload,
   }),
   Schema.Struct({
     ...EventBaseFields,

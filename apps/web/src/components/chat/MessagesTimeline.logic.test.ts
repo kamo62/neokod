@@ -639,6 +639,7 @@ describe("deriveMessagesTimelineRows", () => {
 
     const collapsedRows = deriveMessagesTimelineRows({
       timelineEntries,
+      turnCompletionByTurnId: new Map([["turn-1" as never, "2026-01-01T00:00:22Z"]]),
       isWorking: false,
       activeTurnStartedAt: null,
       turnDiffSummaryByAssistantMessageId: new Map(),
@@ -651,7 +652,7 @@ describe("deriveMessagesTimelineRows", () => {
     );
     expect(foldRow?.turnId).toBe("turn-1");
     expect(foldRow?.expanded).toBe(false);
-    // User message boundary (00:00:00) → terminal message updatedAt (00:00:22).
+    // User message boundary (00:00:00) → server settlement (00:00:22).
     expect(foldRow?.label).toBe("Worked for 22s");
     expect(collapsedRows.map((row) => row.id)).toEqual([
       "user-entry",
@@ -661,6 +662,7 @@ describe("deriveMessagesTimelineRows", () => {
 
     const expandedRows = deriveMessagesTimelineRows({
       timelineEntries,
+      turnCompletionByTurnId: new Map([["turn-1" as never, "2026-01-01T00:00:22Z"]]),
       expandedTurnIds: new Set(["turn-1" as never]),
       isWorking: false,
       activeTurnStartedAt: null,
@@ -764,6 +766,7 @@ describe("deriveMessagesTimelineRows", () => {
       },
       isWorking: true,
       activeTurnStartedAt: "2026-01-01T00:00:14Z",
+      turnCompletionByTurnId: new Map([["turn-1" as never, "2026-01-01T00:00:12Z"]]),
       turnDiffSummaryByAssistantMessageId: new Map(),
       revertTurnCountByUserMessageId: new Map(),
     });
@@ -772,7 +775,7 @@ describe("deriveMessagesTimelineRows", () => {
       (row): row is Extract<(typeof rows)[number], { kind: "turn-fold" }> =>
         row.kind === "turn-fold",
     );
-    // User message (00:00:00) → trailing work entry (00:00:12).
+    // User message (00:00:00) → server settlement (00:00:12).
     expect(foldRow?.turnId).toBe("turn-1");
     expect(foldRow?.label).toBe("Worked for 12s");
   });
@@ -1074,15 +1077,26 @@ describe("deriveMessagesTimelineRows", () => {
           },
           interruptedTurnId: turnA,
           latestTurnCompletedAt: scenario.completedAt,
-          settledTurnCompletions: { [turnA]: scenario.completedAt },
         },
       });
       expect(recovered.kind).toBe("updated");
       if (recovered.kind !== "updated") continue;
 
-      const next = applyThreadDetailEvent(recovered.thread, {
+      const recoveredWithSettlement = applyThreadDetailEvent(recovered.thread, {
         ...baseEventFields,
         sequence: 2,
+        occurredAt: "2026-01-01T00:02:30.000Z",
+        aggregateKind: "thread",
+        aggregateId: baseThread.id,
+        type: "thread.turn-settled",
+        payload: { threadId: baseThread.id, turnId: turnA, completedAt: scenario.completedAt },
+      });
+      expect(recoveredWithSettlement.kind).toBe("updated");
+      if (recoveredWithSettlement.kind !== "updated") continue;
+
+      const next = applyThreadDetailEvent(recoveredWithSettlement.thread, {
+        ...baseEventFields,
+        sequence: 3,
         occurredAt: "2026-01-01T00:03:00.000Z",
         aggregateKind: "thread",
         aggregateId: baseThread.id,
@@ -1098,7 +1112,6 @@ describe("deriveMessagesTimelineRows", () => {
             lastError: null,
             updatedAt: "2026-01-01T00:03:00.000Z",
           },
-          settledTurnCompletions: { [turnA]: scenario.completedAt },
         },
       });
       expect(next.kind).toBe("updated");
@@ -1285,7 +1298,6 @@ describe("deriveMessagesTimelineRows", () => {
             lastError: null,
             updatedAt: "2026-01-01T00:03:00.000Z",
           },
-          settledTurnCompletions: { [turnA]: scenario.completedAt },
         },
       });
       expect(next.kind).toBe("updated");
@@ -1476,14 +1488,25 @@ describe("deriveMessagesTimelineRows", () => {
           lastError: null,
           updatedAt: completedAt,
         },
-        settledTurnCompletions: { [turnId]: completedAt },
       },
     });
     expect(settled.kind).toBe("updated");
     if (settled.kind !== "updated") return;
 
+    const settledWithServerCompletion = applyThreadDetailEvent(settled.thread, {
+      ...baseEventFields,
+      sequence: 4,
+      occurredAt: completedAt,
+      aggregateKind: "thread",
+      aggregateId: running.id,
+      type: "thread.turn-settled",
+      payload: { threadId: running.id, turnId, completedAt },
+    });
+    expect(settledWithServerCompletion.kind).toBe("updated");
+    if (settledWithServerCompletion.kind !== "updated") return;
+
     // The requested interrupt boundary must not shorten the turn.
-    expect(foldLabel(settled.thread)).toBe("Worked for 30s");
+    expect(foldLabel(settledWithServerCompletion.thread)).toBe("Worked for 30s");
   });
 
   it("uses the supersession boundary when a provisionally interrupted turn is superseded", () => {
@@ -1610,18 +1633,31 @@ describe("deriveMessagesTimelineRows", () => {
           lastError: null,
           updatedAt: supersededAt,
         },
-        settledTurnCompletions: { [turnId]: supersededAt },
       },
     });
     expect(next.kind).toBe("updated");
     if (next.kind !== "updated") return;
-    expect(next.thread.settledTurnCompletions).toEqual({ [turnId]: supersededAt });
-    expect(foldLabel(next.thread)).toBe("Worked for 30s");
+
+    const nextWithSettlement = applyThreadDetailEvent(next.thread, {
+      ...baseEventFields,
+      sequence: 3,
+      occurredAt: supersededAt,
+      aggregateKind: "thread",
+      aggregateId: running.id,
+      type: "thread.turn-settled",
+      payload: { threadId: running.id, turnId, completedAt: supersededAt },
+    });
+    expect(nextWithSettlement.kind).toBe("updated");
+    if (nextWithSettlement.kind !== "updated") return;
+    expect(nextWithSettlement.thread.settledTurnCompletions).toEqual({
+      [turnId]: supersededAt,
+    });
+    expect(foldLabel(nextWithSettlement.thread)).toBe("Worked for 30s");
 
     // A snapshot naming only the next turn must keep the supersession boundary.
     const refreshed = withSnapshotSettlementEvidence(
       {
-        ...next.thread,
+        ...nextWithSettlement.thread,
         latestTurn: {
           turnId: nextTurnId,
           state: "running",
@@ -1634,6 +1670,169 @@ describe("deriveMessagesTimelineRows", () => {
       next.thread,
     );
     expect(foldLabel(refreshed)).toBe("Worked for 30s");
+  });
+
+  it("treats a missing settlement as unknown instead of using entry timestamps", () => {
+    const rows = deriveMessagesTimelineRows({
+      timelineEntries: [
+        {
+          id: "user-entry-missing",
+          kind: "message",
+          createdAt: "2026-01-01T00:00:00.000Z",
+          message: {
+            id: "user-missing" as never,
+            role: "user",
+            text: "go",
+            turnId: null,
+            createdAt: "2026-01-01T00:00:00.000Z",
+            updatedAt: "2026-01-01T00:00:00.000Z",
+            streaming: false,
+          },
+        },
+        {
+          id: "work-entry-missing",
+          kind: "work",
+          createdAt: "2026-01-01T00:00:05.000Z",
+          entry: {
+            id: "work-missing",
+            createdAt: "2026-01-01T00:00:05.000Z",
+            turnId: "turn-missing" as never,
+            label: "Read file",
+            tone: "tool" as const,
+          },
+        },
+      ],
+      // No settlement evidence for the turn.
+      turnCompletionByTurnId: new Map(),
+      isWorking: false,
+      activeTurnStartedAt: null,
+      turnDiffSummaryByAssistantMessageId: new Map(),
+      revertTurnCountByUserMessageId: new Map(),
+    });
+
+    const fold = rows.find(
+      (row): row is Extract<(typeof rows)[number], { kind: "turn-fold" }> =>
+        row.kind === "turn-fold",
+    );
+    expect(fold?.label).toBe("Worked");
+  });
+
+  it("uses the checkpoint closure settlement the server publishes", () => {
+    const turnId = TurnId.make("turn-checkpoint");
+    const startedAt = "2026-01-01T00:00:00.000Z";
+    const checkpointAt = "2026-01-01T00:00:30.000Z";
+    const running: OrchestrationThread = {
+      id: ThreadId.make("thread-checkpoint"),
+      projectId: ProjectId.make("project-checkpoint"),
+      title: "Checkpoint thread",
+      modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      branch: null,
+      worktreePath: null,
+      latestTurn: {
+        turnId,
+        state: "running",
+        requestedAt: startedAt,
+        startedAt,
+        completedAt: null,
+        assistantMessageId: null,
+      },
+      createdAt: startedAt,
+      updatedAt: startedAt,
+      archivedAt: null,
+      deletedAt: null,
+      messages: [],
+      proposedPlans: [],
+      activities: [],
+      checkpoints: [],
+      session: null,
+    };
+    const baseEventFields = {
+      eventId: EventId.make("event-checkpoint"),
+      commandId: null,
+      causationEventId: null,
+      correlationId: null,
+      metadata: {},
+    } as const;
+    const foldLabel = (thread: OrchestrationThread) => {
+      const rows = deriveMessagesTimelineRows({
+        timelineEntries: [
+          {
+            id: "user-entry-checkpoint",
+            kind: "message",
+            createdAt: startedAt,
+            message: {
+              id: "user-checkpoint" as never,
+              role: "user",
+              text: "go",
+              turnId: null,
+              createdAt: startedAt,
+              updatedAt: startedAt,
+              streaming: false,
+            },
+          },
+          {
+            id: "work-entry-checkpoint",
+            kind: "work",
+            createdAt: "2026-01-01T00:00:05.000Z",
+            entry: {
+              id: "work-checkpoint",
+              createdAt: "2026-01-01T00:00:05.000Z",
+              turnId,
+              label: "Read file",
+              tone: "tool" as const,
+            },
+          },
+        ],
+        latestTurn: thread.latestTurn,
+        turnCompletionByTurnId: turnCompletionMap(thread),
+        isWorking: false,
+        activeTurnStartedAt: null,
+        turnDiffSummaryByAssistantMessageId: new Map(),
+        revertTurnCountByUserMessageId: new Map(),
+      });
+      return rows.find(
+        (row): row is Extract<(typeof rows)[number], { kind: "turn-fold" }> =>
+          row.kind === "turn-fold",
+      )?.label;
+    };
+
+    const checkpointed = applyThreadDetailEvent(running, {
+      ...baseEventFields,
+      sequence: 1,
+      occurredAt: checkpointAt,
+      aggregateKind: "thread",
+      aggregateId: running.id,
+      type: "thread.turn-diff-completed",
+      payload: {
+        threadId: running.id,
+        turnId,
+        checkpointTurnCount: 1,
+        checkpointRef: CheckpointRef.make("checkpoint-closure"),
+        status: "ready",
+        files: [],
+        assistantMessageId: null,
+        completedAt: checkpointAt,
+      },
+    });
+    expect(checkpointed.kind).toBe("updated");
+    if (checkpointed.kind !== "updated") return;
+    // No settlement has been published yet: the duration stays unknown.
+    expect(foldLabel(checkpointed.thread)).toBe("Worked");
+
+    const settled = applyThreadDetailEvent(checkpointed.thread, {
+      ...baseEventFields,
+      sequence: 2,
+      occurredAt: checkpointAt,
+      aggregateKind: "thread",
+      aggregateId: running.id,
+      type: "thread.turn-settled",
+      payload: { threadId: running.id, turnId, completedAt: checkpointAt },
+    });
+    expect(settled.kind).toBe("updated");
+    if (settled.kind !== "updated") return;
+    expect(foldLabel(settled.thread)).toBe("Worked for 30s");
   });
 
   it("keeps the previous turn folded while a newly sent message awaits its turn", () => {

@@ -42,6 +42,28 @@ const baseThread: OrchestrationThread = {
   session: null,
 };
 
+/**
+ * Apply the settlement event the durable turn projection publishes, which is
+ * the only client-side source of per-turn completion.
+ */
+const settleTurn = (
+  thread: OrchestrationThread,
+  turnId: TurnId,
+  completedAt: string | null,
+  sequence: number,
+): OrchestrationThread => {
+  const result = applyThreadDetailEvent(thread, {
+    ...baseEventFields,
+    sequence,
+    occurredAt: completedAt ?? thread.updatedAt,
+    aggregateKind: "thread",
+    aggregateId: thread.id,
+    type: "thread.turn-settled",
+    payload: { threadId: thread.id, turnId, completedAt },
+  });
+  return result.kind === "updated" ? result.thread : thread;
+};
+
 describe("applyThreadDetailEvent", () => {
   describe("project events", () => {
     it("returns unchanged for project.created", () => {
@@ -585,13 +607,13 @@ describe("applyThreadDetailEvent", () => {
             updatedAt: stoppedAt,
           },
           interruptedTurnId: TurnId.make("turn-1"),
-          settledTurnCompletions: { [TurnId.make("turn-1")]: stoppedAt },
         },
       });
       expect(stopped.kind).toBe("updated");
       if (stopped.kind !== "updated") return;
+      const afterSettlement = settleTurn(stopped.thread, TurnId.make("turn-1"), stoppedAt, 32);
       // The server-observed stop settles the turn, not the earlier request.
-      expect(stopped.thread.settledTurnCompletions).toEqual({
+      expect(afterSettlement.settledTurnCompletions).toEqual({
         [TurnId.make("turn-1")]: stoppedAt,
       });
     });
@@ -646,14 +668,14 @@ describe("applyThreadDetailEvent", () => {
             lastError: null,
             updatedAt: completedAt,
           },
-          settledTurnCompletions: { [TurnId.make("turn-1")]: completedAt },
         },
       });
       expect(settled.kind).toBe("updated");
       if (settled.kind !== "updated") return;
-      expect(settled.thread.latestTurn?.completedAt).toBe(completedAt);
+      const afterSettlement = settleTurn(settled.thread, TurnId.make("turn-1"), completedAt, 33);
+      expect(afterSettlement.latestTurn?.completedAt).toBe(completedAt);
       // The request timestamp never becomes the turn's completion.
-      expect(settled.thread.settledTurnCompletions).toEqual({
+      expect(afterSettlement.settledTurnCompletions).toEqual({
         [TurnId.make("turn-1")]: completedAt,
       });
     });
@@ -686,13 +708,13 @@ describe("applyThreadDetailEvent", () => {
             lastError: null,
             updatedAt: stoppedAt,
           },
-          settledTurnCompletions: { [TurnId.make("turn-1")]: stoppedAt },
         },
       });
       expect(settled.kind).toBe("updated");
       if (settled.kind !== "updated") return;
-      expect(settled.thread.latestTurn?.completedAt).toBe(stoppedAt);
-      expect(settled.thread.settledTurnCompletions).toEqual({
+      const afterSettlement = settleTurn(settled.thread, TurnId.make("turn-1"), stoppedAt, 32);
+      expect(afterSettlement.latestTurn?.completedAt).toBe(stoppedAt);
+      expect(afterSettlement.settledTurnCompletions).toEqual({
         [TurnId.make("turn-1")]: stoppedAt,
       });
     });
@@ -723,15 +745,18 @@ describe("applyThreadDetailEvent", () => {
             lastError: null,
             updatedAt: "2026-04-01T07:00:15.000Z",
           },
-          settledTurnCompletions: {
-            [TurnId.make("turn-1")]: "2026-04-01T07:00:15.000Z",
-          },
         },
       });
       expect(next.kind).toBe("updated");
       if (next.kind !== "updated") return;
-      expect(next.thread.latestTurn?.turnId).toBe(TurnId.make("turn-2"));
-      expect(next.thread.settledTurnCompletions).toEqual({
+      const afterSettlement = settleTurn(
+        next.thread,
+        TurnId.make("turn-1"),
+        "2026-04-01T07:00:15.000Z",
+        33,
+      );
+      expect(afterSettlement.latestTurn?.turnId).toBe(TurnId.make("turn-2"));
+      expect(afterSettlement.settledTurnCompletions).toEqual({
         [TurnId.make("turn-1")]: "2026-04-01T07:00:15.000Z",
       });
     });
@@ -793,15 +818,15 @@ describe("applyThreadDetailEvent", () => {
             lastError: null,
             updatedAt: confirmedAt,
           },
-          settledTurnCompletions: { [TurnId.make("turn-1")]: confirmedAt },
         },
       });
       expect(settled.kind).toBe("updated");
       if (settled.kind !== "updated") return;
-      expect(settled.thread.settledTurnCompletions).toEqual({
+      const afterSettlement = settleTurn(settled.thread, TurnId.make("turn-1"), confirmedAt, 33);
+      expect(afterSettlement.settledTurnCompletions).toEqual({
         [TurnId.make("turn-1")]: confirmedAt,
       });
-      expect(settled.thread.latestTurn?.completedAt).toBe(confirmedAt);
+      expect(afterSettlement.latestTurn?.completedAt).toBe(confirmedAt);
     });
 
     it("keeps a stop request from making an interrupt authoritative", () => {
@@ -850,15 +875,15 @@ describe("applyThreadDetailEvent", () => {
             lastError: null,
             updatedAt: stoppedAt,
           },
-          settledTurnCompletions: { [TurnId.make("turn-1")]: stoppedAt },
         },
       });
       expect(settled.kind).toBe("updated");
       if (settled.kind !== "updated") return;
-      expect(settled.thread.settledTurnCompletions).toEqual({
+      const afterSettlement = settleTurn(settled.thread, TurnId.make("turn-1"), stoppedAt, 33);
+      expect(afterSettlement.settledTurnCompletions).toEqual({
         [TurnId.make("turn-1")]: stoppedAt,
       });
-      expect(settled.thread.latestTurn?.completedAt).toBe(stoppedAt);
+      expect(afterSettlement.latestTurn?.completedAt).toBe(stoppedAt);
     });
 
     it("keeps a pending interrupt provisional across a snapshot reload", () => {
@@ -914,16 +939,16 @@ describe("applyThreadDetailEvent", () => {
             lastError: null,
             updatedAt: completedAt,
           },
-          settledTurnCompletions: { [TurnId.make("turn-1")]: completedAt },
         },
       });
       expect(settled.kind).toBe("updated");
       if (settled.kind !== "updated") return;
+      const afterSettlement = settleTurn(settled.thread, TurnId.make("turn-1"), completedAt, 33);
       // The reloaded provisional boundary must not shadow the real completion.
-      expect(settled.thread.settledTurnCompletions).toEqual({
+      expect(afterSettlement.settledTurnCompletions).toEqual({
         [TurnId.make("turn-1")]: completedAt,
       });
-      expect(settled.thread.latestTurn?.completedAt).toBe(completedAt);
+      expect(afterSettlement.latestTurn?.completedAt).toBe(completedAt);
     });
   });
 
@@ -1093,18 +1118,23 @@ describe("applyThreadDetailEvent", () => {
           },
           interruptedTurnId: TurnId.make("turn-1"),
           latestTurnCompletedAt: completedAt,
-          settledTurnCompletions: { [TurnId.make("turn-1")]: completedAt },
         },
       });
       expect(recovered.kind).toBe("updated");
       if (recovered.kind !== "updated") return;
-      expect(recovered.thread.settledTurnCompletions).toEqual({
+      const recoveredWithSettlement = settleTurn(
+        recovered.thread,
+        TurnId.make("turn-1"),
+        completedAt,
+        11,
+      );
+      expect(recoveredWithSettlement.settledTurnCompletions).toEqual({
         [TurnId.make("turn-1")]: completedAt,
       });
 
-      const next = applyThreadDetailEvent(recovered.thread, {
+      const next = applyThreadDetailEvent(recoveredWithSettlement, {
         ...baseEventFields,
-        sequence: 11,
+        sequence: 12,
         occurredAt: "2026-04-01T07:03:00.000Z",
         aggregateKind: "thread",
         aggregateId: ThreadId.make("thread-1"),
@@ -1164,18 +1194,18 @@ describe("applyThreadDetailEvent", () => {
           },
           interruptedTurnId: TurnId.make("turn-1"),
           latestTurnCompletedAt: null,
-          settledTurnCompletions: { [TurnId.make("turn-1")]: null },
         },
       });
       expect(recovered.kind).toBe("updated");
       if (recovered.kind !== "updated") return;
-      expect(recovered.thread.settledTurnCompletions).toEqual({
+      const recoveredWithSettlement = settleTurn(recovered.thread, TurnId.make("turn-1"), null, 13);
+      expect(recoveredWithSettlement.settledTurnCompletions).toEqual({
         [TurnId.make("turn-1")]: null,
       });
 
-      const next = applyThreadDetailEvent(recovered.thread, {
+      const next = applyThreadDetailEvent(recoveredWithSettlement, {
         ...baseEventFields,
-        sequence: 13,
+        sequence: 14,
         occurredAt: "2026-04-01T07:03:00.000Z",
         aggregateKind: "thread",
         aggregateId: ThreadId.make("thread-1"),

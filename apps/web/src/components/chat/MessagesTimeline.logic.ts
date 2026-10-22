@@ -74,16 +74,6 @@ function computeElapsedMs(startIso: string, endIso: string): number | null {
   return Math.max(0, end - start);
 }
 
-function maxIsoTimestamp(a: string | null, b: string | null): string | null {
-  if (a === null) return b;
-  if (b === null) return a;
-  const aMs = Date.parse(a);
-  const bMs = Date.parse(b);
-  if (!Number.isFinite(aMs)) return b;
-  if (!Number.isFinite(bMs)) return a;
-  return bMs > aMs ? b : a;
-}
-
 export interface TimelineDurationMessage {
   id: string;
   role: "user" | "assistant" | "system";
@@ -400,38 +390,18 @@ function deriveTurnFolds(input: {
       (input.latestTurn?.turnId === turnId ? input.latestTurn.startedAt : null) ??
       group.startBoundary ??
       firstEntry.createdAt;
-    const completion = input.turnCompletionByTurnId.get(turnId);
-    let elapsedMs: number | null;
-    if (completion !== undefined) {
-      const terminalElapsed = resolveTerminalElapsedEnd({
-        terminal: true,
-        completedAt: completion,
-      });
-      elapsedMs =
-        terminalElapsed.state === "known"
-          ? computeElapsedMs(startedAt, terminalElapsed.endedAt)
-          : null;
-    } else {
-      // Historical turns without authoritative completion may use their own
-      // observed entries, but never a synthetic reconciliation row.
-      const lastEvidenceEntry = [...group.entries]
-        .reverse()
-        .find((entry) => !(entry.kind === "work" && entry.entry.synthetic === true));
-      const lastEvidenceEnd =
-        lastEvidenceEntry === undefined
-          ? null
-          : lastEvidenceEntry.kind === "message"
-            ? lastEvidenceEntry.message.updatedAt
-            : lastEvidenceEntry.createdAt;
-      elapsedMs =
-        lastEvidenceEnd === null
-          ? null
-          : computeElapsedMs(
-              group.startBoundary ?? firstEntry.createdAt,
-              maxIsoTimestamp(group.terminalEntry?.message.updatedAt ?? null, lastEvidenceEnd) ??
-                lastEvidenceEnd,
-            );
-    }
+    // Settlement timing is server-owned. An absent key and an explicit null
+    // both mean the turn's completion is unknown: never substitute message or
+    // activity timestamps for it.
+    const completion = input.turnCompletionByTurnId.get(turnId) ?? null;
+    const terminalElapsed = resolveTerminalElapsedEnd({
+      terminal: true,
+      completedAt: completion,
+    });
+    const elapsedMs =
+      terminalElapsed.state === "known"
+        ? computeElapsedMs(startedAt, terminalElapsed.endedAt)
+        : null;
     const duration = elapsedMs !== null ? formatDuration(elapsedMs) : null;
     const label = isLatestInterruptedTurn
       ? duration

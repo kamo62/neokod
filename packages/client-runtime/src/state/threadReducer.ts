@@ -327,32 +327,35 @@ export function applyThreadDetailEvent(
                     : event.payload.latestTurnCompletedAt,
               }
             : thread.latestTurn;
-      // Settlement evidence is server-owned: store the values this event
-      // records for the turns it closed, verbatim.
-      const settledTurnCompletions = mergeServerSettlements(
-        thread.settledTurnCompletions,
-        event.payload.settledTurnCompletions,
-      );
-      // When the event settles the latest turn, align its presentation with the
-      // server's completion instead of the provisional boundary.
-      const settlements = event.payload.settledTurnCompletions;
-      const projectedLatestTurn =
-        latestTurn !== null &&
-        settlements !== undefined &&
-        Object.hasOwn(settlements, latestTurn.turnId)
-          ? {
-              ...latestTurn,
-              state: settledTurnState ?? latestTurn.state,
-              completedAt: settlements[latestTurn.turnId] ?? null,
-            }
-          : latestTurn;
 
       return {
         kind: "updated",
         thread: {
           ...thread,
           session: event.payload.session,
-          latestTurn: projectedLatestTurn,
+          latestTurn,
+          updatedAt: event.occurredAt,
+        },
+      };
+    }
+
+    // The durable turn projection owns settlement. This event republishes the
+    // per-turn completion it persisted, so the client stores it verbatim and
+    // never derives timing from session transitions or request events.
+    case "thread.turn-settled": {
+      const { turnId, completedAt } = event.payload;
+      const settledTurnCompletions = mergeServerSettlements(thread.settledTurnCompletions, {
+        [turnId]: completedAt,
+      });
+      const latestTurn =
+        thread.latestTurn !== null && thread.latestTurn.turnId === turnId
+          ? { ...thread.latestTurn, completedAt }
+          : thread.latestTurn;
+      return {
+        kind: "updated",
+        thread: {
+          ...thread,
+          latestTurn,
           settledTurnCompletions,
           updatedAt: event.occurredAt,
         },

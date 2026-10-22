@@ -9,6 +9,7 @@ import { CheckpointReactor } from "../Services/CheckpointReactor.ts";
 import { ProviderCommandReactor } from "../Services/ProviderCommandReactor.ts";
 import { ProviderRuntimeIngestionService } from "../Services/ProviderRuntimeIngestion.ts";
 import { ThreadDeletionReactor } from "../Services/ThreadDeletionReactor.ts";
+import { TurnSettlementReactor } from "../Services/TurnSettlementReactor.ts";
 import { OrchestrationReactor } from "../Services/OrchestrationReactor.ts";
 import { makeOrchestrationReactor } from "./OrchestrationReactor.ts";
 
@@ -63,6 +64,15 @@ describe("OrchestrationReactor", () => {
             drain: Effect.void,
           }),
         ),
+        Layer.provideMerge(
+          Layer.succeed(TurnSettlementReactor, {
+            start: () => {
+              started.push("turn-settlement-reactor");
+              return Effect.void;
+            },
+            drain: Effect.void,
+          }),
+        ),
       ),
     );
 
@@ -75,6 +85,7 @@ describe("OrchestrationReactor", () => {
       "provider-command-reactor",
       "checkpoint-reactor",
       "thread-deletion-reactor",
+      "turn-settlement-reactor",
     ]);
 
     await Effect.runPromise(Scope.close(scope, Exit.void));

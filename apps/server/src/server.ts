@@ -59,6 +59,7 @@ import { SymphonyLayerObserve } from "./symphony/Layers/SymphonyLayer.ts";
 import { WorkspaceOwnershipRepositoryLive } from "./symphony/Persistence/Layers/WorkspaceOwnershipRepository.ts";
 import { ProviderCommandReactorLive } from "./orchestration/Layers/ProviderCommandReactor.ts";
 import { CheckpointReactorLive } from "./orchestration/Layers/CheckpointReactor.ts";
+import { TurnSettlementReactorLive } from "./orchestration/Layers/TurnSettlementReactor.ts";
 import { ThreadDeletionReactorLive } from "./orchestration/Layers/ThreadDeletionReactor.ts";
 import { ManagedClientEvidenceForwarderLive } from "./provider/copilot/ManagedClientEvidenceForwarder.ts";
 import { ProviderRegistryLive } from "./provider/Layers/ProviderRegistry.ts";
@@ -165,6 +166,7 @@ const ReactorLayerLive = Layer.empty.pipe(
   Layer.provideMerge(ProviderRuntimeIngestionLive),
   Layer.provideMerge(ProviderCommandReactorLive),
   Layer.provideMerge(CheckpointReactorLive),
+  Layer.provideMerge(TurnSettlementReactorLive),
   Layer.provideMerge(ThreadDeletionReactorLive),
   Layer.provideMerge(ManagedClientEvidenceForwarderLive()),
   Layer.provideMerge(RuntimeReceiptBusLive),

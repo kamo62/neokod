@@ -230,11 +230,7 @@ const titleUpdated = (title: string, sequence = 2): OrchestrationThreadStreamIte
   },
 });
 
-const runningTurnSession = (
-  turnId: string,
-  updatedAt: string,
-  settledTurnCompletions?: Record<TurnId, string | null>,
-): OrchestrationThreadStreamItem => ({
+const runningTurnSession = (turnId: string, updatedAt: string): OrchestrationThreadStreamItem => ({
   kind: "event",
   event: {
     eventId: EventId.make(`event-session-${turnId}`),
@@ -258,7 +254,31 @@ const runningTurnSession = (
         lastError: null,
         updatedAt,
       },
-      ...(settledTurnCompletions === undefined ? {} : { settledTurnCompletions }),
+    },
+  },
+});
+
+const turnSettled = (
+  turnId: string,
+  completedAt: string | null,
+  sequence: number,
+): OrchestrationThreadStreamItem => ({
+  kind: "event",
+  event: {
+    eventId: EventId.make(`event-turn-settled-${turnId}`),
+    sequence,
+    occurredAt: completedAt ?? "2026-04-01T00:00:00.000Z",
+    commandId: null,
+    causationEventId: null,
+    correlationId: null,
+    metadata: {},
+    aggregateKind: "thread",
+    aggregateId: THREAD_ID,
+    type: "thread.turn-settled",
+    payload: {
+      threadId: THREAD_ID,
+      turnId: TurnId.make(turnId),
+      completedAt,
     },
   },
 });
@@ -322,6 +342,27 @@ describe("EnvironmentThreads", () => {
       // The session still runs the turn, so the cached terminal state is only
       // an interrupt request boundary, not settlement evidence.
       expect(Option.getOrThrow(state.data).settledTurnCompletions).toBeUndefined();
+    }),
+  );
+
+  it.effect("stores the live turn settlement the projection published", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({ cached: BASE_THREAD });
+      const turnId = TurnId.make("turn-live");
+      yield* Queue.offer(
+        harness.inputs,
+        turnSettled("turn-live", "2026-04-01T00:01:00.000Z", CACHED_SNAPSHOT_SEQUENCE + 1),
+      );
+
+      const state = yield* awaitThreadState(
+        harness.observed,
+        (value) =>
+          Option.isSome(value.data) && value.data.value.settledTurnCompletions !== undefined,
+      );
+
+      expect(Option.getOrThrow(state.data).settledTurnCompletions).toEqual({
+        [turnId]: "2026-04-01T00:01:00.000Z",
+      });
     }),
   );
 
@@ -541,10 +582,8 @@ describe("EnvironmentThreads", () => {
       });
 
       // A later turn supersedes it without losing the settlement.
-      yield* Queue.offer(
-        harness.inputs,
-        runningTurnSession("turn-b", "2026-04-01T00:03:00.000Z", { [turnA]: completedAt }),
-      );
+      yield* Queue.offer(harness.inputs, runningTurnSession("turn-b", "2026-04-01T00:03:00.000Z"));
+      yield* Queue.offer(harness.inputs, turnSettled("turn-a", completedAt, 3));
       const next = yield* awaitThreadState(
         harness.observed,
         (value) => Option.isSome(value.data) && value.data.value.latestTurn?.turnId === turnB,
