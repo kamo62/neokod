@@ -750,7 +750,7 @@ export const make = Effect.gen(function* () {
     getRepositoryCloneUrls: (input) =>
       execute({
         cwd: input.cwd,
-        args: ["repo", "view", input.repository, "--json", "nameWithOwner,url,sshUrl"],
+        args: ["repo", "view", "--json", "nameWithOwner,url,sshUrl", "--", input.repository],
       }).pipe(
         Effect.map((result) => result.stdout.trim()),
         Effect.flatMap((raw) =>
@@ -770,7 +770,7 @@ export const make = Effect.gen(function* () {
     createRepository: (input) =>
       execute({
         cwd: input.cwd,
-        args: ["repo", "create", input.repository, `--${input.visibility}`],
+        args: ["repo", "create", `--${input.visibility}`, "--", input.repository],
       }).pipe(
         Effect.map((result) =>
           deriveRepositoryCloneUrlsFromCreateOutput(result.stdout, input.repository),

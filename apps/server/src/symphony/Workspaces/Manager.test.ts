@@ -101,11 +101,19 @@ const makeDeps = (overrides: Partial<WorkspaceManagerDeps> = {}): WorkspaceManag
   ensureDir: () => Effect.void,
   pathExists: () => Effect.succeed(false),
   realpath: (p) => Effect.succeed(p),
+  removeUnderReservation: (input) => input.remove(),
   ...overrides,
 });
 
 describe("WorkspaceManager", () => {
   const key = deriveWorkspaceKey("issue-1");
+
+  it("requires removeUnderReservation in WorkspaceManagerDeps", () => {
+    const requiresReservation: undefined extends WorkspaceManagerDeps["removeUnderReservation"]
+      ? false
+      : true = true;
+    expect(requiresReservation).toBe(true);
+  });
 
   it.effect("creates a worktree at a deterministic path under the root", () =>
     Effect.gen(function* () {

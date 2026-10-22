@@ -305,6 +305,40 @@ describe("GitHubCli.layer", () => {
         url: "https://github.com/octocat/codething-mvp",
         sshUrl: "git@github.com:octocat/codething-mvp.git",
       });
+      expect(mockRun).toHaveBeenNthCalledWith(1, {
+        operation: "GitHubCli.execute",
+        command: "gh",
+        args: ["repo", "view", "--json", "nameWithOwner,url,sshUrl", "--", "octocat/codething-mvp"],
+        cwd: "/repo",
+        timeoutMs: 30_000,
+      });
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("passes a repository name starting with a dash after -- when reading clone URLs", () =>
+    Effect.gen(function* () {
+      mockRun.mockReturnValueOnce(
+        Effect.succeed(
+          processOutput(
+            encodeJson({
+              nameWithOwner: "octocat/codething-mvp",
+              url: "https://github.com/octocat/codething-mvp",
+              sshUrl: "git@github.com:octocat/codething-mvp.git",
+            }),
+          ),
+        ),
+      );
+
+      const gh = yield* GitHubCli.GitHubCli;
+      yield* gh.getRepositoryCloneUrls({ cwd: "/repo", repository: "--web" });
+
+      expect(mockRun).toHaveBeenNthCalledWith(1, {
+        operation: "GitHubCli.execute",
+        command: "gh",
+        args: ["repo", "view", "--json", "nameWithOwner,url,sshUrl", "--", "--web"],
+        cwd: "/repo",
+        timeoutMs: 30_000,
+      });
     }).pipe(Effect.provide(layer)),
   );
 
@@ -334,11 +368,34 @@ describe("GitHubCli.layer", () => {
       expect(mockRun).toHaveBeenNthCalledWith(1, {
         operation: "GitHubCli.execute",
         command: "gh",
-        args: ["repo", "create", "octocat/codething-mvp", "--private"],
+        args: ["repo", "create", "--private", "--", "octocat/codething-mvp"],
         cwd: "/repo",
         timeoutMs: 30_000,
       });
     }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect(
+    "passes a repository name starting with a dash after -- when creating a repository",
+    () =>
+      Effect.gen(function* () {
+        mockRun.mockReturnValueOnce(Effect.succeed(processOutput("")));
+
+        const gh = yield* GitHubCli.GitHubCli;
+        yield* gh.createRepository({
+          cwd: "/repo",
+          repository: "--source=.",
+          visibility: "public",
+        });
+
+        expect(mockRun).toHaveBeenNthCalledWith(1, {
+          operation: "GitHubCli.execute",
+          command: "gh",
+          args: ["repo", "create", "--public", "--", "--source=."],
+          cwd: "/repo",
+          timeoutMs: 30_000,
+        });
+      }).pipe(Effect.provide(layer)),
   );
 
   it.effect("falls back to constructed URLs when create output omits a URL", () =>
