@@ -13,7 +13,6 @@ import {
   XIcon,
 } from "lucide-react";
 import {
-  type EnvironmentId,
   type ResolvedKeybindingsConfig,
   type ScopedThreadRef,
   type ThreadId,
@@ -21,7 +20,8 @@ import {
 import {
   acquireTerminalInputQueue,
   disposeTerminalInputQueue,
-  type TerminalInputQueue,
+  type TerminalInputLease,
+  type TerminalInputTarget,
 } from "@neokod/client-runtime/state/terminal";
 import { getTerminalLabel } from "@neokod/shared/terminalLabels";
 import { Terminal, type ITheme } from "@xterm/xterm";
@@ -312,6 +312,11 @@ interface TerminalLaunchLocation {
   readonly runtimeEnv?: Record<string, string>;
 }
 
+interface TerminalInputBinding {
+  readonly target: TerminalInputTarget;
+  lease: TerminalInputLease;
+}
+
 export function TerminalViewport({
   threadRef,
   threadId,
@@ -331,12 +336,7 @@ export function TerminalViewport({
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
-  const terminalWriteTargetRef = useRef<{
-    readonly queue: TerminalInputQueue;
-    readonly environmentId: EnvironmentId;
-    readonly threadId: ThreadId;
-    readonly terminalId: string;
-  } | null>(null);
+  const terminalInputRef = useRef<TerminalInputBinding | null>(null);
   const environmentId = threadRef.environmentId;
   const serverConfig = useAtomValue(serverEnvironment.configValueAtom(environmentId));
   const openInPreferredEditor = useOpenInPreferredEditor(
@@ -379,12 +379,24 @@ export function TerminalViewport({
     },
   });
   const writeTerminal = useEffectEvent((data: string) => {
-    const target = terminalWriteTargetRef.current;
-    if (!target) return Promise.resolve(undefined);
-    return target.queue.write(data, (chunk) =>
+    const binding = terminalInputRef.current;
+    if (binding === null) return Promise.resolve(undefined);
+    // Before the attach stream reports a status, the session provably exists
+    // (the drawer opened it), so keep typing responsive. Once evidence says the
+    // session is not running, drop input instead of writing into a dead pty.
+    if (hasSessionEvidence && terminalStatus !== "running") {
+      return Promise.resolve(undefined);
+    }
+    const lease = ensureLiveInputLease();
+    if (lease === null) return Promise.resolve(undefined);
+    return lease.queue.write(data, (chunk) =>
       runTerminalWrite({
-        environmentId: target.environmentId,
-        input: { threadId: target.threadId, terminalId: target.terminalId, data: chunk },
+        environmentId: binding.target.environmentId,
+        input: {
+          threadId: binding.target.threadId,
+          terminalId: binding.target.terminalId,
+          data: chunk,
+        },
       }),
     );
   });
@@ -398,6 +410,15 @@ export function TerminalViewport({
   const terminalError = terminalSession.error;
   const terminalStatus = terminalSession.status;
   const terminalVersion = terminalSession.version;
+  const hasSessionEvidence = terminalVersion > 0;
+  const ensureLiveInputLease = (): TerminalInputLease | null => {
+    const binding = terminalInputRef.current;
+    if (binding === null) return null;
+    if (!binding.lease.isDisposed()) return binding.lease;
+    binding.lease.release();
+    binding.lease = acquireTerminalInputQueue(binding.target);
+    return binding.lease;
+  };
   const previousSessionRef = useRef({
     buffer: terminalBuffer,
     error: terminalError,
@@ -410,6 +431,22 @@ export function TerminalViewport({
   }, [keybindings]);
 
   useEffect(() => {
+    if (!hasSessionEvidence) return;
+    const binding = terminalInputRef.current;
+    if (binding === null) return;
+    if (terminalStatus === "running") {
+      ensureLiveInputLease();
+      return;
+    }
+    // A closed, exited, starting or errored session must not inherit queued
+    // chunks from the previous process. Hold a fresh, empty queue so a restart
+    // in this same viewport can write again without remounting.
+    disposeTerminalInputQueue(binding.target);
+    binding.lease.release();
+    binding.lease = acquireTerminalInputQueue(binding.target);
+  }, [environmentId, hasSessionEvidence, terminalId, terminalStatus, threadId]);
+
+  useEffect(() => {
     const mount = containerRef.current;
     if (!mount) return;
 
@@ -418,18 +455,12 @@ export function TerminalViewport({
     // Acquire this mounted terminal's whole-write queue from the target-keyed
     // registry. Switching tabs unmounts the viewport but leaves the server
     // session running, so pending chunks continue and a remount reuses the
-    // queue. Only a real close disposes it.
-    const inputLease = acquireTerminalInputQueue({
-      environmentId,
-      threadId,
-      terminalId,
-    });
-    terminalWriteTargetRef.current = {
-      queue: inputLease.queue,
-      environmentId,
-      threadId,
-      terminalId,
+    // queue. Close and restart commands dispose it instead.
+    const binding: TerminalInputBinding = {
+      target: { environmentId, threadId, terminalId },
+      lease: acquireTerminalInputQueue({ environmentId, threadId, terminalId }),
     };
+    terminalInputRef.current = binding;
 
     const fitAddon = new FitAddon();
     const terminal = new Terminal({
@@ -737,9 +768,9 @@ export function TerminalViewport({
 
     return () => {
       window.clearTimeout(fitTimer);
-      inputLease.release();
-      if (terminalWriteTargetRef.current?.queue === inputLease.queue) {
-        terminalWriteTargetRef.current = null;
+      binding.lease.release();
+      if (terminalInputRef.current === binding) {
+        terminalInputRef.current = null;
       }
       inputDisposable.dispose();
       selectionDisposable.dispose();
@@ -798,7 +829,6 @@ export function TerminalViewport({
       !hasHandledExitRef.current
     ) {
       hasHandledExitRef.current = true;
-      disposeTerminalInputQueue({ environmentId, threadId, terminalId });
       writeSystemMessage(
         terminal,
         current.status === "closed" ? "Terminal closed" : "Process exited",
@@ -1149,17 +1179,6 @@ export default function ThreadTerminalDrawer({
   const onNewTerminalAction = useCallback(() => {
     onNewTerminal();
   }, [onNewTerminal]);
-  const closeTerminal = useCallback(
-    (terminalId: string) => {
-      disposeTerminalInputQueue({
-        environmentId: threadRef.environmentId,
-        threadId,
-        terminalId,
-      });
-      onCloseTerminal(terminalId);
-    },
-    [onCloseTerminal, threadId, threadRef.environmentId],
-  );
 
   useEffect(() => {
     onHeightChangeRef.current = onHeightChange;
@@ -1375,7 +1394,7 @@ export default function ThreadTerminalDrawer({
                   ? "right-panel-icon-button"
                   : "p-1 text-foreground/90 transition-colors hover:bg-accent",
               )}
-              onClick={() => closeTerminal(resolvedActiveTerminalId)}
+              onClick={() => onCloseTerminal(resolvedActiveTerminalId)}
               label={closeTerminalActionLabel}
             >
               <Trash2 className="size-3.25" />
@@ -1433,7 +1452,7 @@ export default function ThreadTerminalDrawer({
                           {...(terminalLaunchLocation.runtimeEnv
                             ? { runtimeEnv: terminalLaunchLocation.runtimeEnv }
                             : {})}
-                          onSessionExited={() => closeTerminal(terminalId)}
+                          onSessionExited={() => onCloseTerminal(terminalId)}
                           onAddTerminalContext={onAddTerminalContext}
                           focusRequestId={focusRequestId}
                           autoFocus={terminalId === resolvedActiveTerminalId}
@@ -1461,7 +1480,7 @@ export default function ThreadTerminalDrawer({
                   {...(activeTerminalLaunchLocation.runtimeEnv
                     ? { runtimeEnv: activeTerminalLaunchLocation.runtimeEnv }
                     : {})}
-                  onSessionExited={() => closeTerminal(resolvedActiveTerminalId)}
+                  onSessionExited={() => onCloseTerminal(resolvedActiveTerminalId)}
                   onAddTerminalContext={onAddTerminalContext}
                   focusRequestId={focusRequestId}
                   autoFocus
@@ -1508,7 +1527,7 @@ export default function ThreadTerminalDrawer({
                   </TerminalActionButton>
                   <TerminalActionButton
                     className="inline-flex h-full items-center border-l border-border/70 px-1 text-foreground/90 transition-colors hover:bg-accent/70"
-                    onClick={() => closeTerminal(resolvedActiveTerminalId)}
+                    onClick={() => onCloseTerminal(resolvedActiveTerminalId)}
                     label={closeTerminalActionLabel}
                   >
                     <Trash2 className="size-3.25" />
@@ -1578,7 +1597,7 @@ export default function ThreadTerminalDrawer({
                                       <button
                                         type="button"
                                         className="inline-flex size-3.5 items-center justify-center rounded text-xs font-medium leading-none text-muted-foreground opacity-0 transition hover:bg-accent hover:text-foreground group-hover:opacity-100"
-                                        onClick={() => closeTerminal(terminalId)}
+                                        onClick={() => onCloseTerminal(terminalId)}
                                         aria-label={closeTerminalLabel}
                                       />
                                     }

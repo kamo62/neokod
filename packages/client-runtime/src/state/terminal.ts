@@ -14,6 +14,7 @@ import {
   applyTerminalAttachStreamEvent,
   applyTerminalMetadataStreamEvent,
   EMPTY_TERMINAL_BUFFER_STATE,
+  withTerminalInputInvalidation,
 } from "./terminalSession.ts";
 
 export function createTerminalEnvironmentAtoms<R, E>(
@@ -36,6 +37,18 @@ export function createTerminalEnvironmentAtoms<R, E>(
     readonly input: { readonly threadId: string; readonly terminalId?: string | undefined };
   }) => JSON.stringify([environmentId, input.threadId, input.terminalId ?? null]);
   const lifecycleConcurrency = { mode: "serial" as const, key: terminalThreadKey };
+  const restartCommand = createEnvironmentRpcCommand(runtime, {
+    label: "environment-data:terminal:restart",
+    tag: WS_METHODS.terminalRestart,
+    scheduler: lifecycleScheduler,
+    concurrency: lifecycleConcurrency,
+  });
+  const closeCommand = createEnvironmentRpcCommand(runtime, {
+    label: "environment-data:terminal:close",
+    tag: WS_METHODS.terminalClose,
+    scheduler: lifecycleScheduler,
+    concurrency: lifecycleConcurrency,
+  });
   return {
     attach: createEnvironmentSubscriptionAtomFamily(runtime, {
       label: "environment-data:terminal:attach",
@@ -77,18 +90,8 @@ export function createTerminalEnvironmentAtoms<R, E>(
       scheduler: lifecycleScheduler,
       concurrency: lifecycleConcurrency,
     }),
-    restart: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:terminal:restart",
-      tag: WS_METHODS.terminalRestart,
-      scheduler: lifecycleScheduler,
-      concurrency: lifecycleConcurrency,
-    }),
-    close: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:terminal:close",
-      tag: WS_METHODS.terminalClose,
-      scheduler: lifecycleScheduler,
-      concurrency: lifecycleConcurrency,
-    }),
+    restart: withTerminalInputInvalidation(restartCommand),
+    close: withTerminalInputInvalidation(closeCommand),
   };
 }
 

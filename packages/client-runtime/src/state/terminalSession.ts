@@ -1,12 +1,13 @@
 import {
   TERMINAL_WRITE_MAX_LENGTH,
+  ThreadId,
   type EnvironmentId,
   type TerminalAttachStreamEvent,
   type TerminalMetadataStreamEvent,
   type TerminalSessionSnapshot,
   type TerminalSummary,
-  type ThreadId,
 } from "@neokod/contracts";
+import type { AtomCommand } from "./runtime.ts";
 
 export interface TerminalSessionState {
   readonly summary: TerminalSummary | null;
@@ -238,6 +239,8 @@ export interface TerminalInputQueue {
    * writes on this queue are abandoned too; callers create a queue per target.
    */
   readonly dispose: () => void;
+  /** True once the queue has been disposed; the owning viewport reacquires. */
+  readonly isDisposed: () => boolean;
 }
 
 /**
@@ -255,6 +258,7 @@ export function createTerminalInputQueue(): TerminalInputQueue {
     dispose: () => {
       disposed = true;
     },
+    isDisposed: () => disposed,
     write: <R extends { readonly _tag: string }>(
       data: string,
       send: (chunk: string) => Promise<R>,
@@ -284,6 +288,8 @@ export interface TerminalInputTarget {
 
 export interface TerminalInputLease {
   readonly queue: TerminalInputQueue;
+  /** True once the target's queue was invalidated by a close or restart. */
+  readonly isDisposed: () => boolean;
   /**
    * Stop this viewport holding the target's queue. Pending chunks keep going,
    * so unmounting a viewport does not truncate an accepted paste.
@@ -292,6 +298,7 @@ export interface TerminalInputLease {
 }
 
 interface TerminalInputQueueEntry {
+  readonly target: TerminalInputTarget;
   queue: TerminalInputQueue;
   mounts: number;
   pendingWrites: number;
@@ -300,7 +307,8 @@ interface TerminalInputQueueEntry {
 /**
  * Queues survive viewport remounts (switching terminal tabs) because they belong
  * to the live terminal target, not to a React component. An entry is dropped
- * once no viewport holds it and its last write settles.
+ * once no viewport holds it and its last write settles. Close and restart
+ * commands dispose it explicitly so a replacement session never inherits it.
  */
 const terminalInputQueues = new Map<string, TerminalInputQueueEntry>();
 
@@ -314,9 +322,13 @@ function removeIdleTerminalInputQueue(key: string, entry: TerminalInputQueueEntr
   }
 }
 
-function createTerminalInputQueueEntry(key: string): TerminalInputQueueEntry {
+function createTerminalInputQueueEntry(
+  key: string,
+  target: TerminalInputTarget,
+): TerminalInputQueueEntry {
   const rawQueue = createTerminalInputQueue();
   const entry: TerminalInputQueueEntry = {
+    target,
     queue: rawQueue,
     mounts: 0,
     pendingWrites: 0,
@@ -333,6 +345,7 @@ function createTerminalInputQueueEntry(key: string): TerminalInputQueueEntry {
       rawQueue.dispose();
       if (terminalInputQueues.get(key) === entry) terminalInputQueues.delete(key);
     },
+    isDisposed: () => rawQueue.isDisposed(),
   };
   return entry;
 }
@@ -341,18 +354,20 @@ export function acquireTerminalInputQueue(target: TerminalInputTarget): Terminal
   const key = terminalInputTargetKey(target);
   let entry = terminalInputQueues.get(key);
   if (entry === undefined) {
-    entry = createTerminalInputQueueEntry(key);
+    entry = createTerminalInputQueueEntry(key, target);
     terminalInputQueues.set(key, entry);
   }
   entry.mounts += 1;
+  const acquiredEntry = entry;
   let released = false;
   return {
-    queue: entry.queue,
+    queue: acquiredEntry.queue,
+    isDisposed: () => acquiredEntry.queue.isDisposed(),
     release: () => {
       if (released) return;
       released = true;
-      entry.mounts -= 1;
-      removeIdleTerminalInputQueue(key, entry);
+      acquiredEntry.mounts -= 1;
+      removeIdleTerminalInputQueue(key, acquiredEntry);
     },
   };
 }
@@ -360,4 +375,54 @@ export function acquireTerminalInputQueue(target: TerminalInputTarget): Terminal
 /** Close the target's queue: queued chunks are abandoned and a restart starts clean. */
 export function disposeTerminalInputQueue(target: TerminalInputTarget): void {
   terminalInputQueues.get(terminalInputTargetKey(target))?.queue.dispose();
+}
+
+/** Close every queue on a thread, for a close command without a terminal id. */
+export function disposeTerminalInputQueuesForThread(
+  environmentId: EnvironmentId,
+  threadId: string,
+): void {
+  for (const entry of terminalInputQueues.values()) {
+    if (entry.target.environmentId === environmentId && entry.target.threadId === threadId) {
+      entry.queue.dispose();
+    }
+  }
+}
+
+export interface TerminalInputCommandTarget {
+  readonly environmentId: EnvironmentId;
+  readonly input: {
+    readonly threadId: string;
+    readonly terminalId?: string | undefined;
+  };
+}
+
+function invalidateTerminalInputForCommand(target: TerminalInputCommandTarget): void {
+  const terminalId = target.input.terminalId;
+  if (terminalId === undefined) {
+    disposeTerminalInputQueuesForThread(target.environmentId, target.input.threadId);
+    return;
+  }
+  disposeTerminalInputQueue({
+    environmentId: target.environmentId,
+    threadId: ThreadId.make(target.input.threadId),
+    terminalId,
+  });
+}
+
+/**
+ * Wrap a terminal close or restart command so every caller invalidates the
+ * target's input queue before the session is replaced. Pending chunks from the
+ * previous process are abandoned instead of reaching the replacement.
+ */
+export function withTerminalInputInvalidation<W extends TerminalInputCommandTarget, A, E>(
+  command: AtomCommand<W, A, E>,
+): AtomCommand<W, A, E> {
+  return {
+    ...command,
+    run: (registry, input) => {
+      invalidateTerminalInputForCommand(input);
+      return command.run(registry, input);
+    },
+  };
 }

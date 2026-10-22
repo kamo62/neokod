@@ -18,6 +18,8 @@ import {
   selectRunningSubprocessTerminalIds,
   splitTerminalInput,
   TERMINAL_WRITE_CHUNK_LENGTH,
+  withTerminalInputInvalidation,
+  type TerminalInputCommandTarget,
 } from "./terminalSession.ts";
 
 const TARGET = {
@@ -25,6 +27,13 @@ const TARGET = {
   threadId: ThreadId.make("thread-1"),
   terminalId: "term-1",
 } as const;
+
+const TARGET_A = {
+  environmentId: TARGET.environmentId,
+  threadId: TARGET.threadId,
+  terminalId: TARGET.terminalId,
+};
+const TARGET_B = { ...TARGET_A, terminalId: "term-2" };
 
 const BASE_SNAPSHOT: TerminalSessionSnapshot = {
   threadId: TARGET.threadId,
@@ -378,29 +387,22 @@ describe("terminal input queue", () => {
   });
 });
 
-describe("terminal input queue registry", () => {
-  const TARGET_A = {
-    environmentId: TARGET.environmentId,
-    threadId: TARGET.threadId,
-    terminalId: TARGET.terminalId,
+function recordingSend() {
+  const sent: Array<string> = [];
+  const acknowledgements: Array<ReturnType<typeof deferred<WriteResult>>> = [];
+  return {
+    sent,
+    acknowledgements,
+    send: (chunk: string) => {
+      sent.push(chunk);
+      const acknowledgement = deferred<WriteResult>();
+      acknowledgements.push(acknowledgement);
+      return acknowledgement.promise;
+    },
   };
-  const TARGET_B = { ...TARGET_A, terminalId: "term-2" };
+}
 
-  function recordingSend() {
-    const sent: Array<string> = [];
-    const acknowledgements: Array<ReturnType<typeof deferred<WriteResult>>> = [];
-    return {
-      sent,
-      acknowledgements,
-      send: (chunk: string) => {
-        sent.push(chunk);
-        const acknowledgement = deferred<WriteResult>();
-        acknowledgements.push(acknowledgement);
-        return acknowledgement.promise;
-      },
-    };
-  }
-
+describe("terminal input queue registry", () => {
   it("keeps a pending paste across a viewport remount and orders later input after it", async () => {
     const recorder = recordingSend();
     const paste = "x".repeat(70_000);
@@ -475,5 +477,100 @@ describe("terminal input queue registry", () => {
     const later = await restarted.queue.write("ok", async () => SUCCESS);
     expect(later?._tag).toBe("Success");
     restarted.release();
+  });
+
+  it("reacquires a fresh live queue after the previous session was invalidated", async () => {
+    const first = acquireTerminalInputQueue(TARGET_A);
+    disposeTerminalInputQueue(TARGET_A);
+
+    expect(first.isDisposed()).toBe(true);
+    first.release();
+
+    const second = acquireTerminalInputQueue(TARGET_A);
+    expect(second.queue).not.toBe(first.queue);
+    expect(second.isDisposed()).toBe(false);
+    const result = await second.queue.write("ok", async () => SUCCESS);
+    expect(result?._tag).toBe("Success");
+    second.release();
+  });
+});
+
+describe("terminal input invalidation at command boundaries", () => {
+  function fakeCommand(label: string, calls: Array<TerminalInputCommandTarget>) {
+    return withTerminalInputInvalidation<TerminalInputCommandTarget, void, never>({
+      label,
+      run: async (_registry, input) => {
+        calls.push(input);
+        return { _tag: "Success", value: undefined } as never;
+      },
+    });
+  }
+
+  it("abandons a pending paste before a wrapped close reaches the replacement", async () => {
+    const recorder = recordingSend();
+    const lease = acquireTerminalInputQueue(TARGET_A);
+    const pendingWrite = lease.queue.write("x".repeat(70_000), recorder.send);
+    await waitForSent(recorder.sent, 1);
+
+    const calls: Array<TerminalInputCommandTarget> = [];
+    await fakeCommand("environment-data:terminal:close", calls).run(undefined as never, {
+      environmentId: TARGET_A.environmentId,
+      input: { threadId: TARGET_A.threadId, terminalId: TARGET_A.terminalId },
+    });
+
+    recorder.acknowledgements[0]?.resolve(SUCCESS);
+    expect(await pendingWrite).toBeUndefined();
+    expect(recorder.sent).toHaveLength(1);
+    expect(calls).toHaveLength(1);
+    lease.release();
+
+    const replacement = acquireTerminalInputQueue(TARGET_A);
+    expect(replacement.queue).not.toBe(lease.queue);
+    replacement.release();
+  });
+
+  it("abandons a pending paste before a wrapped restart reaches the replacement", async () => {
+    const recorder = recordingSend();
+    const lease = acquireTerminalInputQueue(TARGET_B);
+    const pendingWrite = lease.queue.write("x".repeat(70_000), recorder.send);
+    await waitForSent(recorder.sent, 1);
+
+    const calls: Array<TerminalInputCommandTarget> = [];
+    await fakeCommand("environment-data:terminal:restart", calls).run(undefined as never, {
+      environmentId: TARGET_B.environmentId,
+      input: { threadId: TARGET_B.threadId, terminalId: TARGET_B.terminalId },
+    });
+
+    recorder.acknowledgements[0]?.resolve(SUCCESS);
+    expect(await pendingWrite).toBeUndefined();
+    expect(recorder.sent).toHaveLength(1);
+    expect(calls).toHaveLength(1);
+    lease.release();
+  });
+
+  it("abandons every queue on a thread when close has no terminal id", async () => {
+    const firstRecord = recordingSend();
+    const secondRecord = recordingSend();
+    const firstLease = acquireTerminalInputQueue(TARGET_A);
+    const secondLease = acquireTerminalInputQueue(TARGET_B);
+    const firstWrite = firstLease.queue.write("x".repeat(70_000), firstRecord.send);
+    const secondWrite = secondLease.queue.write("y".repeat(70_000), secondRecord.send);
+    await waitForSent(firstRecord.sent, 1);
+    await waitForSent(secondRecord.sent, 1);
+
+    const calls: Array<TerminalInputCommandTarget> = [];
+    await fakeCommand("environment-data:terminal:close", calls).run(undefined as never, {
+      environmentId: TARGET_A.environmentId,
+      input: { threadId: TARGET_A.threadId },
+    });
+
+    firstRecord.acknowledgements[0]?.resolve(SUCCESS);
+    secondRecord.acknowledgements[0]?.resolve(SUCCESS);
+    expect(await firstWrite).toBeUndefined();
+    expect(await secondWrite).toBeUndefined();
+    expect(firstRecord.sent).toHaveLength(1);
+    expect(secondRecord.sent).toHaveLength(1);
+    firstLease.release();
+    secondLease.release();
   });
 });
