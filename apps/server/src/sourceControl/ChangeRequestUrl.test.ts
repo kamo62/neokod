@@ -10,8 +10,8 @@ describe("changeRequestRepositoryKey", () => {
     const second = changeRequestRepositoryKey(
       "https://gitlab.example:9443/group/repo/-/merge_requests/42",
     );
-    expect(first).toBe("gitlab.example:8443/group/repo");
-    expect(second).toBe("gitlab.example:9443/group/repo");
+    expect(first).toBe("https://gitlab.example:8443/group/repo");
+    expect(second).toBe("https://gitlab.example:9443/group/repo");
     expect(first).not.toBe(second);
     // A default port is the same repository as no port.
     expect(changeRequestRepositoryKey("https://github.com/owner/repo/pull/42")).toBe(
@@ -23,26 +23,26 @@ describe("changeRequestRepositoryKey", () => {
     // An owner legitimately named `pull` must not collapse the repository path.
     const first = changeRequestRepositoryKey("https://github.com/pull/a/pull/42");
     const second = changeRequestRepositoryKey("https://github.com/pull/b/pull/42");
-    expect(first).toBe("github.com/pull/a");
-    expect(second).toBe("github.com/pull/b");
+    expect(first).toBe("https://github.com:443/pull/a");
+    expect(second).toBe("https://github.com:443/pull/b");
     expect(first).not.toBe(second);
   });
 
   it("normalises each provider's change-request URL shape", () => {
     expect(changeRequestRepositoryKey("https://github.com/owner/repo/pull/42")).toBe(
-      "github.com/owner/repo",
+      "https://github.com:443/owner/repo",
     );
     expect(changeRequestRepositoryKey("https://gitlab.com/group/project/-/merge_requests/42")).toBe(
-      "gitlab.com/group/project",
+      "https://gitlab.com:443/group/project",
     );
     expect(changeRequestRepositoryKey("https://bitbucket.org/owner/repo/pull-requests/42")).toBe(
-      "bitbucket.org/owner/repo",
+      "https://bitbucket.org:443/owner/repo",
     );
     expect(
       changeRequestRepositoryKey("https://dev.azure.com/org/project/_git/repo/pullrequest/42"),
-    ).toBe("dev.azure.com/org/project/_git/repo");
+    ).toBe("https://dev.azure.com:443/org/project/_git/repo");
     expect(changeRequestRepositoryKey("https://gitea.example/owner/repo/pulls/42")).toBe(
-      "gitea.example/owner/repo",
+      "https://gitea.example:443/owner/repo",
     );
   });
 
@@ -51,7 +51,7 @@ describe("changeRequestRepositoryKey", () => {
       changeRequestRepositoryKey("https://github.com/owner/repo/pull/42"),
     );
     expect(changeRequestRepositoryKey("https://gitlab.com/Group/Repo/-/merge_requests/42")).toBe(
-      "gitlab.com/Group/Repo",
+      "https://gitlab.com:443/Group/Repo",
     );
     expect(
       changeRequestRepositoryKey("https://gitlab.com/Group/Repo/-/merge_requests/42"),
@@ -60,7 +60,26 @@ describe("changeRequestRepositoryKey", () => {
 
   it("ignores trailing slashes and query strings", () => {
     expect(changeRequestRepositoryKey("https://github.com/owner/repo/pull/42/?diff=split")).toBe(
-      "github.com/owner/repo",
+      "https://github.com:443/owner/repo",
+    );
+  });
+
+  it("keeps distinct authorities distinct", () => {
+    // Two independent installations may serve the same path and number. Only
+    // the established github.com alias is normalised.
+    expect(changeRequestRepositoryKey("https://www.git.example/owner/repo/pull/42")).not.toBe(
+      changeRequestRepositoryKey("https://git.example/owner/repo/pull/42"),
+    );
+    // The scheme is part of the effective authority: http://host and
+    // https://host can be independent installations on ports 80 and 443.
+    expect(changeRequestRepositoryKey("http://git.example/owner/repo/pull/42")).not.toBe(
+      changeRequestRepositoryKey("https://git.example/owner/repo/pull/42"),
+    );
+    expect(changeRequestRepositoryKey("http://git.example/owner/repo/pull/42")).toBe(
+      changeRequestRepositoryKey("http://git.example:80/owner/repo/pull/42"),
+    );
+    expect(changeRequestRepositoryKey("https://git.example/owner/repo/pull/42")).toBe(
+      changeRequestRepositoryKey("https://git.example:443/owner/repo/pull/42"),
     );
   });
 

@@ -3172,6 +3172,41 @@ layer("SymphonyOrchestrator Observe", (it) => {
     }),
   );
 
+  it.effect("a merged PR on a distinct authority never completes the item", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      const workItems = yield* WorkItemRepository;
+      const evidenceRepository = yield* EvidenceRepository;
+      const branch = "symphony/issue-merge-authority-1";
+      const storedUrl = "https://git.example/owner/repo/pull/42";
+      const { workItemId } = yield* seedMergeDetectionItem({
+        workItemId: "merge-authority-1",
+        workflowId: "wf-merge-authority-1",
+        repositoryPath: "/repo/merge-authority-1",
+        workspaceKey: "issue-merge-authority-1",
+        baseBranch: "main",
+        storedPullRequest: { ...openPullRequest(42, branch), url: storedUrl },
+      });
+
+      // The checkout now resolves to a different installation (`www.` is not an
+      // alias for self-hosted hosts) whose PR #42 is merged.
+      yield* setPullRequestRefresh({
+        number: 42,
+        title: "t",
+        branch,
+        baseBranch: "main",
+        status: "merged",
+        url: "https://www.git.example/owner/repo/pull/42",
+      });
+
+      expect(yield* orchestrator.refreshPullRequest("merge-authority-1")).toBe(false);
+      expect((yield* workItems.getById(workItemId))?.lifecycle).toBe("ready_to_merge");
+      expect((yield* evidenceRepository.getByWorkItem(workItemId))?.pullRequest?.url).toBe(
+        storedUrl,
+      );
+    }),
+  );
+
   it.effect("a ready_to_merge item without a tracked repository identity is never completed", () =>
     Effect.gen(function* () {
       const orchestrator = yield* SymphonyOrchestrator;
@@ -3607,10 +3642,15 @@ layer("SymphonyOrchestrator Observe", (it) => {
       expect(yield* closedEvents()).toBe(1);
 
       // Once the backoff elapses the sweep re-checks it (still closed here, so
-      // the observation is not duplicated).
-      yield* TestClock.adjust("61 seconds");
-      yield* settle;
-      expect(yield* refreshCount()).toBeGreaterThan(baseline);
+      // the observation is not duplicated). The shared suite's maintenance pass
+      // walks every active workflow, so allow several passes.
+      let rechecked = yield* refreshCount();
+      for (let pass = 0; pass < 10 && rechecked <= baseline; pass += 1) {
+        yield* TestClock.adjust("61 seconds");
+        yield* settle;
+        rechecked = yield* refreshCount();
+      }
+      expect(rechecked).toBeGreaterThan(baseline);
       expect(yield* closedEvents()).toBe(1);
       expect((yield* workItems.getById(workItemId))?.lifecycle).toBe("ready_to_merge");
     }),
@@ -3654,9 +3694,13 @@ layer("SymphonyOrchestrator Observe", (it) => {
         baseBranch: "main",
         status: "open",
       });
-      yield* TestClock.adjust("61 seconds");
-      yield* settle;
-      expect(yield* refreshCount()).toBeGreaterThan(baseline);
+      let reopened = yield* refreshCount();
+      for (let pass = 0; pass < 10 && reopened <= baseline; pass += 1) {
+        yield* TestClock.adjust("61 seconds");
+        yield* settle;
+        reopened = yield* refreshCount();
+      }
+      expect(reopened).toBeGreaterThan(baseline);
       expect((yield* workItems.getById(workItemId))?.lifecycle).toBe("ready_to_merge");
 
       // The next scans (normal 5 s cadence, no closed backoff left) detect the

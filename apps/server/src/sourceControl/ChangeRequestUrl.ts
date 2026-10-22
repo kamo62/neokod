@@ -2,10 +2,13 @@
  * Repository identity for a change-request URL.
  *
  * A change-request number is only unique inside its repository, so merge
- * evidence must be bound to both. The key is `host[:port]/repository/path`:
+ * evidence must be bound to both. The key is `scheme//host[:port]/repository/path`:
  *
- * - the effective host is kept, including a non-default port, because the same
- *   host name on two ports can serve two different repositories;
+ * - the full hostname and effective authority are kept, including the scheme
+ *   and its default port, because `http://host`, `https://host`, `host:8443`
+ *   and `www.host` can each serve independent installations;
+ * - `www.github.com` is the one established alias, so it maps to `github.com`;
+ *   the alias is not generalised to self-hosted hosts;
  * - the change-request suffix is recognised at the end of the path (for
  *   example `/pull/42`, `/-/merge_requests/42`, `/pull-requests/42`,
  *   `/pullrequest/42`), so an owner legitimately named `pull` is not mistaken
@@ -38,11 +41,18 @@ export const changeRequestRepositoryKey = (url: string | undefined): string | nu
     return null;
   }
 
-  // `hostname` drops the port; `host` keeps it and already omits a default port
-  // for the scheme. Only the host is case-insensitive, and `www.` is a
-  // demonstrated alias of the bare host.
-  const hostname = parsed.hostname.toLowerCase().replace(/^www\./u, "");
-  const host = parsed.port === "" ? hostname : `${hostname}:${parsed.port}`;
+  // Hostnames are case-insensitive; everything else in the authority is not.
+  const hostname = parsed.hostname.toLowerCase();
+  // The one established alias. `www.` on any other host is a distinct authority.
+  const effectiveHostname = hostname === "www.github.com" ? "github.com" : hostname;
+  const defaultPort =
+    parsed.protocol === "https:" ? "443" : parsed.protocol === "http:" ? "80" : "";
+  const port = parsed.port === "" ? defaultPort : parsed.port;
+  // The scheme is part of the effective authority: http://host and https://host
+  // can be separate installations on ports 80 and 443.
+  const authority = `${parsed.protocol.toLowerCase()}//${effectiveHostname}${
+    port === "" ? "" : `:${port}`
+  }`;
 
   const segments = parsed.pathname.split("/").filter((segment) => segment.length > 0);
   let suffixIndex = -1;
@@ -77,5 +87,5 @@ export const changeRequestRepositoryKey = (url: string | undefined): string | nu
   }
   repositorySegments[last] = repositoryTail;
 
-  return `${host}/${repositorySegments.join("/")}`;
+  return `${authority}/${repositorySegments.join("/")}`;
 };

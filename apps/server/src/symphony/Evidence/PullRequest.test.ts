@@ -467,6 +467,54 @@ it.effect("refresh refuses a tracked PR whose repository identity is unparseable
   }),
 );
 
+it.effect("refresh refuses equal PR numbers on a distinct authority", () =>
+  Effect.gen(function* () {
+    const serviceFor = (foundUrl: string) =>
+      makePullRequestService(
+        makeDeps({
+          providers: {
+            resolveHandle: () =>
+              Effect.succeed({
+                provider: {
+                  createChangeRequest: () => Effect.void,
+                  getChangeRequestStatus: () => Effect.succeed(null),
+                  getChangeRequest: () =>
+                    Effect.succeed(makeChangeRequest({ number: 42, url: foundUrl })),
+                  listChangeRequests: () => Effect.succeed([]),
+                },
+                context: null,
+              }),
+          } as unknown as PullRequestServiceDeps["providers"],
+        }),
+      );
+
+    // A `www.` prefix is only an alias for github.com; self-hosted installations
+    // can serve distinct repositories under both names.
+    expect(
+      yield* serviceFor("https://www.git.example/owner/repo/pull/42").refresh({
+        config: makeConfig(),
+        branch: "symphony/issue-42",
+        baseBranch: "main",
+        title: "Implement issue 42",
+        pullRequestNumber: 42,
+        pullRequestUrl: "https://git.example/owner/repo/pull/42",
+      }),
+    ).toBeNull();
+
+    // http and https on the same host can be independent installations.
+    expect(
+      yield* serviceFor("https://git.example/owner/repo/pull/42").refresh({
+        config: makeConfig(),
+        branch: "symphony/issue-42",
+        baseBranch: "main",
+        title: "Implement issue 42",
+        pullRequestNumber: 42,
+        pullRequestUrl: "http://git.example/owner/repo/pull/42",
+      }),
+    ).toBeNull();
+  }),
+);
+
 it.effect("refresh refuses equal PR numbers on different ports of the same host", () =>
   Effect.gen(function* () {
     const service = makePullRequestService(
