@@ -14,6 +14,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 
 import type { ProcessBirthReader, ProcessGroupSignaller } from "@neokod/shared/processGroup";
 import * as Ref from "effect/Ref";
+import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import { nowIso } from "../Domain/Time.ts";
 import { SqlitePersistenceMemory } from "../../persistence/Layers/Sqlite.ts";
@@ -183,12 +184,75 @@ const runRecovery = () =>
     yield* runStartupRecovery({ workItems, runAttempts, runEvents, workflows, dispatcher });
   });
 
+const makeRecordingSignaller = (config: {
+  readonly aliveAfterTerm: boolean;
+  readonly aliveAfterKill: boolean;
+}) =>
+  Effect.gen(function* () {
+    const signals = yield* Ref.make<
+      Array<{ readonly pgid: number; readonly signal: NodeJS.Signals }>
+    >([]);
+    const alive = yield* Ref.make(true);
+    const signaller: ProcessGroupSignaller = {
+      signalGroup: (pgid, signal) =>
+        Effect.gen(function* () {
+          yield* Ref.update(signals, (previous) => [...previous, { pgid, signal }]);
+          if (signal === "SIGTERM") {
+            yield* Ref.set(alive, config.aliveAfterTerm);
+          } else {
+            yield* Ref.set(alive, config.aliveAfterKill);
+          }
+          return "sent" as const;
+        }),
+      isGroupAlive: () => Ref.get(alive),
+    };
+    return { signaller, signals };
+  });
+
+const tokenReader = (tokens: Readonly<Record<number, string>>): ProcessBirthReader => ({
+  readBirthToken: (pid) => {
+    const token = tokens[pid];
+    return Effect.succeed(
+      token === undefined
+        ? ({ kind: "no_such_process" } as const)
+        : ({ kind: "token", token } as const),
+    );
+  },
+});
+
+const runRecoveryWith = (input: {
+  readonly workItems?: WorkItemRepositoryShape;
+  readonly processClosure?: Parameters<typeof runStartupRecovery>[0]["processClosure"];
+  readonly ownPid?: number;
+}) =>
+  Effect.gen(function* () {
+    const baseWorkItems = yield* WorkItemRepository;
+    const runAttempts = yield* RunAttemptRepository;
+    const runEvents = yield* RunEventRepository;
+    const workflows = yield* WorkflowRepository;
+    const dispatcher = yield* RunDispatcher;
+    yield* runStartupRecovery({
+      workItems: input.workItems ?? baseWorkItems,
+      runAttempts,
+      runEvents,
+      workflows,
+      dispatcher,
+      ...(input.processClosure === undefined ? {} : { processClosure: input.processClosure }),
+      ...(input.ownPid === undefined ? {} : { ownPid: input.ownPid }),
+    });
+  });
+
+const latestAttempt = (workItemId: WorkItemId) =>
+  RunAttemptRepository.pipe(
+    Effect.flatMap((runAttempts) => runAttempts.latestForWorkItem(workItemId)),
+  );
+
 layer("Recovery startup", (it) => {
   it.effect("lands a succeeded-but-untransited run in ready_for_review, not a re-dispatch", () =>
     Effect.gen(function* () {
       yield* seedWorkflow("/repo");
       const workItem = makeWorkItem("3001", "running");
-      yield* seedClaimedItem(workItem);
+      yield* seedClaimedItem(workItem, { pid: 3001, pgid: 3001, birthToken: "born-3001" });
       yield* seedAttempt(
         workItem.id,
         "succeeded",
@@ -197,7 +261,17 @@ layer("Recovery startup", (it) => {
         "2026-08-05T00:05:00.000Z",
       );
 
-      yield* runRecovery();
+      yield* runRecoveryWith({
+        processClosure: {
+          signaller: (yield* makeRecordingSignaller({
+            aliveAfterTerm: false,
+            aliveAfterKill: false,
+          })).signaller,
+          reader: tokenReader({ 3001: "born-3001" }),
+          platform: "linux",
+          graceMs: 1,
+        },
+      });
 
       const after = yield* WorkItemRepository.pipe(
         Effect.flatMap((repo) => repo.getById(workItem.id)),
@@ -212,10 +286,20 @@ layer("Recovery startup", (it) => {
     Effect.gen(function* () {
       yield* seedWorkflow("/repo");
       const workItem = makeWorkItem("3002", "running");
-      yield* seedClaimedItem(workItem);
+      yield* seedClaimedItem(workItem, { pid: 3002, pgid: 3002, birthToken: "born-3002" });
       yield* seedAttempt(workItem.id, "streaming_turn");
 
-      yield* runRecovery();
+      yield* runRecoveryWith({
+        processClosure: {
+          signaller: (yield* makeRecordingSignaller({
+            aliveAfterTerm: false,
+            aliveAfterKill: false,
+          })).signaller,
+          reader: tokenReader({ 3002: "born-3002" }),
+          platform: "linux",
+          graceMs: 1,
+        },
+      });
 
       const workItems = yield* WorkItemRepository;
       const after = yield* workItems.getById(workItem.id);
@@ -236,10 +320,20 @@ layer("Recovery startup", (it) => {
     Effect.gen(function* () {
       yield* seedWorkflow("/repo");
       const workItem = makeWorkItem("3003", "running");
-      yield* seedClaimedItem(workItem);
+      yield* seedClaimedItem(workItem, { pid: 3003, pgid: 3003, birthToken: "born-3003" });
       yield* seedAttempt(workItem.id, "streaming_turn", 5);
 
-      yield* runRecovery();
+      yield* runRecoveryWith({
+        processClosure: {
+          signaller: (yield* makeRecordingSignaller({
+            aliveAfterTerm: false,
+            aliveAfterKill: false,
+          })).signaller,
+          reader: tokenReader({ 3003: "born-3003" }),
+          platform: "linux",
+          graceMs: 1,
+        },
+      });
 
       const workItems = yield* WorkItemRepository;
       const after = yield* workItems.getById(workItem.id);
@@ -251,11 +345,22 @@ layer("Recovery startup", (it) => {
     Effect.gen(function* () {
       yield* seedWorkflow("/repo");
       const workItem = makeWorkItem("3004", "running");
-      yield* seedClaimedItem(workItem);
+      yield* seedClaimedItem(workItem, { pid: 3004, pgid: 3004, birthToken: "born-3004" });
       yield* seedAttempt(workItem.id, "streaming_turn");
 
-      yield* runRecovery();
-      yield* runRecovery();
+      const deps = {
+        processClosure: {
+          signaller: (yield* makeRecordingSignaller({
+            aliveAfterTerm: false,
+            aliveAfterKill: false,
+          })).signaller,
+          reader: tokenReader({ 3004: "born-3004" }),
+          platform: "linux" as const,
+          graceMs: 1,
+        },
+      };
+      yield* runRecoveryWith(deps);
+      yield* runRecoveryWith(deps);
 
       const workItems = yield* WorkItemRepository;
       const after = yield* workItems.getById(workItem.id);
@@ -263,68 +368,78 @@ layer("Recovery startup", (it) => {
     }),
   );
 
-  const makeRecordingSignaller = (config: {
-    readonly aliveAfterTerm: boolean;
-    readonly aliveAfterKill: boolean;
-  }) =>
+  it.effect("holds a bound attempt with null identity instead of releasing it", () =>
     Effect.gen(function* () {
-      const signals = yield* Ref.make<
-        Array<{ readonly pgid: number; readonly signal: NodeJS.Signals }>
-      >([]);
-      const alive = yield* Ref.make(true);
-      const signaller: ProcessGroupSignaller = {
-        signalGroup: (pgid, signal) =>
-          Effect.gen(function* () {
-            yield* Ref.update(signals, (previous) => [...previous, { pgid, signal }]);
-            if (signal === "SIGTERM") {
-              yield* Ref.set(alive, config.aliveAfterTerm);
-            } else {
-              yield* Ref.set(alive, config.aliveAfterKill);
-            }
-            return "sent" as const;
-          }),
-        isGroupAlive: () => Ref.get(alive),
-      };
-      return { signaller, signals };
-    });
-
-  const tokenReader = (tokens: Readonly<Record<number, string>>): ProcessBirthReader => ({
-    readBirthToken: (pid) => {
-      const token = tokens[pid];
-      return Effect.succeed(
-        token === undefined
-          ? ({ kind: "no_such_process" } as const)
-          : ({ kind: "token", token } as const),
-      );
-    },
-  });
-
-  const runRecoveryWith = (input: {
-    readonly workItems?: WorkItemRepositoryShape;
-    readonly processClosure?: Parameters<typeof runStartupRecovery>[0]["processClosure"];
-    readonly ownPid?: number;
-  }) =>
-    Effect.gen(function* () {
-      const baseWorkItems = yield* WorkItemRepository;
-      const runAttempts = yield* RunAttemptRepository;
-      const runEvents = yield* RunEventRepository;
-      const workflows = yield* WorkflowRepository;
-      const dispatcher = yield* RunDispatcher;
-      yield* runStartupRecovery({
-        workItems: input.workItems ?? baseWorkItems,
-        runAttempts,
-        runEvents,
-        workflows,
-        dispatcher,
-        ...(input.processClosure === undefined ? {} : { processClosure: input.processClosure }),
-        ...(input.ownPid === undefined ? {} : { ownPid: input.ownPid }),
+      yield* seedWorkflow("/repo");
+      const workItem = makeWorkItem("3207", "running");
+      const base = yield* WorkItemRepository;
+      // A bound admitted attempt with no persisted identity can mean the
+      // ownership write (and its failure marker) were both lost on restart.
+      yield* seedClaimedItem(workItem);
+      yield* seedAttempt(workItem.id, "streaming_turn");
+      const { signaller, signals } = yield* makeRecordingSignaller({
+        aliveAfterTerm: false,
+        aliveAfterKill: false,
       });
-    });
+      yield* runRecoveryWith({
+        processClosure: {
+          signaller,
+          reader: tokenReader({}),
+          platform: "linux",
+          graceMs: 0,
+        },
+      });
+      expect(yield* Ref.get(signals)).toEqual([]);
+      const after = yield* base.getById(workItem.id);
+      expect(after?.lifecycle).toBe("running");
+      expect(after?.ownerPid ?? null).toBeNull();
+      const attempt = yield* latestAttempt(workItem.id);
+      expect(attempt?.status).toBe("streaming_turn");
+      const events = yield* RunEventRepository.pipe(
+        Effect.flatMap((runEvents) =>
+          runEvents.listForAttempt(attempt?.id ?? RunAttemptId.make("none")),
+        ),
+      );
+      expect(events.find((event) => event.eventType === "recovery_hold")?.payload).toMatchObject({
+        reason: "identity_missing_for_bound_attempt",
+      });
+    }),
+  );
 
-  const latestAttempt = (workItemId: WorkItemId) =>
-    RunAttemptRepository.pipe(
-      Effect.flatMap((runAttempts) => runAttempts.latestForWorkItem(workItemId)),
-    );
+  it.effect("holds when the latest attempt row cannot be decoded", () =>
+    Effect.gen(function* () {
+      yield* seedWorkflow("/repo");
+      const workItem = makeWorkItem("3208", "running");
+      const base = yield* WorkItemRepository;
+      yield* seedClaimedItem(workItem, {
+        pid: 8484,
+        pgid: 8484,
+        birthToken: "born-8484",
+      });
+      yield* seedAttempt(workItem.id, "streaming_turn");
+      const sql = yield* SqlClient.SqlClient;
+      // An unreadable attempt is evidence failure, not proof that no attempt
+      // or child exists.
+      yield* sql`UPDATE symphony_run_attempts SET accepted_guidance_json = '{"invalid":true}'`;
+
+      const { signaller, signals } = yield* makeRecordingSignaller({
+        aliveAfterTerm: false,
+        aliveAfterKill: false,
+      });
+      yield* runRecoveryWith({
+        processClosure: {
+          signaller,
+          reader: tokenReader({ 8484: "born-8484" }),
+          platform: "linux",
+          graceMs: 0,
+        },
+      });
+      expect(yield* Ref.get(signals)).toEqual([]);
+      const after = yield* base.getById(workItem.id);
+      expect(after?.lifecycle).toBe("running");
+      expect(after?.ownerPid).toBe(8484);
+    }),
+  );
 
   it.effect("holds a legacy pid-only claim without signalling", () =>
     Effect.gen(function* () {
@@ -379,25 +494,6 @@ layer("Recovery startup", (it) => {
       expect(yield* Ref.get(signals)).toEqual([]);
       const workItems = yield* WorkItemRepository;
       expect((yield* workItems.getById(workItem.id))?.lifecycle).toBe("running");
-    }),
-  );
-
-  it.effect("releases when no owner process was ever recorded", () =>
-    Effect.gen(function* () {
-      yield* seedWorkflow("/repo");
-      const workItem = makeWorkItem("3103", "running");
-      yield* seedClaimedItem(workItem);
-      yield* seedAttempt(workItem.id, "streaming_turn");
-      const { signaller, signals } = yield* makeRecordingSignaller({
-        aliveAfterTerm: false,
-        aliveAfterKill: false,
-      });
-      yield* runRecoveryWith({
-        processClosure: { signaller, reader: tokenReader({}), platform: "linux" },
-      });
-      expect(yield* Ref.get(signals)).toEqual([]);
-      const workItems = yield* WorkItemRepository;
-      expect((yield* workItems.getById(workItem.id))?.lifecycle).toBe("retry_scheduled");
     }),
   );
 
