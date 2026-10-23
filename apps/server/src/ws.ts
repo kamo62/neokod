@@ -74,6 +74,8 @@ import {
   SymphonyRespondToUserInputInput,
   SymphonyResumeAutonomousInput,
   SymphonySetLocalPriorityInput,
+  SymphonyStopOutcomeSchema,
+  type SymphonyStopOutcome,
   SymphonyTakeOverInput,
   SymphonyActivateWorkflowInput,
   SymphonyValidateWorkflowInput,
@@ -437,6 +439,46 @@ const approvalUnavailable = (): SymphonyError =>
     code: "symphony_unavailable",
     message: "symphony approval layer is not mounted",
   });
+
+const decodeStopOutcome = Schema.decodeUnknownOption(SymphonyStopOutcomeSchema);
+
+/**
+ * Preserve an actual typed Stop acknowledgement. A missing value is unknown,
+ * not confirmed; `{ok:true}` alone is never stop proof.
+ */
+const stopResultFrom = (
+  value: unknown,
+): { readonly ok: boolean; outcome?: SymphonyStopOutcome } => {
+  const outcome = decodeStopOutcome(value);
+  if (Option.isSome(outcome)) {
+    return { ok: outcome.value.status === "confirmed", outcome: outcome.value };
+  }
+  return { ok: true };
+};
+
+/**
+ * Stop-all preserves the legacy boolean for a numeric count and adds
+ * confirmed/held only when the server observed them. Held runs never count as
+ * stopped.
+ */
+const stopAllResultFrom = (
+  value: unknown,
+): { readonly ok: boolean; readonly confirmed?: number; readonly held?: number } => {
+  if (typeof value === "number") {
+    return { ok: value > 0 };
+  }
+  if (typeof value === "object" && value !== null) {
+    const record = value as { readonly confirmed?: unknown; readonly held?: unknown };
+    if (typeof record.confirmed === "number" && typeof record.held === "number") {
+      return {
+        ok: record.confirmed > 0 && record.held === 0,
+        confirmed: record.confirmed,
+        held: record.held,
+      };
+    }
+  }
+  return { ok: true };
+};
 
 /** Actions must not report success when the Symphony layer is absent. */
 const orchestratorUnavailable = (): SymphonyError =>
@@ -1129,7 +1171,10 @@ export const makeSymphonyRpcHandlers = () => ({
     observeRpcEffect(
       SYMPHONY_WS_METHODS.cancelRun,
       withOrchestrator(
-        (orchestrator) => orchestrator.cancelRun(input.runAttemptId).pipe(Effect.as({ ok: true })),
+        (orchestrator) =>
+          orchestrator
+            .cancelRun(input.runAttemptId)
+            .pipe(Effect.map((value) => stopResultFrom(value))),
         Effect.fail(orchestratorUnavailable()),
       ),
       { "rpc.aggregate": "symphony" },
@@ -1207,7 +1252,7 @@ export const makeSymphonyRpcHandlers = () => ({
       input.confirm === "stop-all-runs"
         ? withOrchestrator(
             (orchestrator) =>
-              orchestrator.stopAllRuns().pipe(Effect.map((stopped) => ({ ok: stopped > 0 }))),
+              orchestrator.stopAllRuns().pipe(Effect.map((stopped) => stopAllResultFrom(stopped))),
             Effect.fail(orchestratorUnavailable()),
           )
         : Effect.fail(
