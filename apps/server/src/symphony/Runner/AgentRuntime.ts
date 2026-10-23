@@ -17,6 +17,7 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Ref from "effect/Ref";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
@@ -104,12 +105,32 @@ export type AgentRuntimeRunError =
   | AgentRuntimeSpawnError
   | AgentRuntimeTargetMismatchError
   | AgentRuntimePermissionConflictError
-  | AgentRuntimeChildOwnershipError;
+  | AgentRuntimeChildOwnershipError
+  | AgentRuntimeUnsupportedProviderError;
 
 /**
  * The callback had positive knowledge of a spawned child but could not record
  * its ownership. The runtime treats this as fail-closed before provider use.
  */
+/**
+ * The runtime factory is a Codex app-server factory. It cannot substantiate any
+ * other driver or instance; silently spawning Codex for a configured Claude or
+ * other provider would misrepresent execution.
+ */
+export class AgentRuntimeUnsupportedProviderError extends Error {
+  readonly driver: string;
+  readonly instanceId: string;
+
+  constructor(driver: string, instanceId: string) {
+    super(
+      `The Symphony agent runtime supports the default Codex provider (codex_default/codex), but the workflow selected ${instanceId}/${driver}`,
+    );
+    this.name = "AgentRuntimeUnsupportedProviderError";
+    this.driver = driver;
+    this.instanceId = instanceId;
+  }
+}
+
 export class AgentRuntimeChildOwnershipError extends Error {
   readonly detail: string;
   /** Positively observed spawned child, when raised by the runtime. */
@@ -446,6 +467,20 @@ export const makeCodexAgentRuntime = (
 
     const runTurn: AgentRuntimeService["runTurn"] = (input) =>
       Effect.gen(function* () {
+        const provider = input.config.agentProvider;
+        // This is the Codex app-server factory with the workflow's Codex
+        // command/home. It cannot substantiate another driver or instance.
+        if (
+          String(provider.driver) !== "codex" ||
+          String(provider.instanceId) !== "codex_default"
+        ) {
+          return yield* Effect.fail(
+            new AgentRuntimeUnsupportedProviderError(
+              String(provider.driver),
+              String(provider.instanceId),
+            ),
+          );
+        }
         const accepted = input.acceptedGuidance;
         if (accepted !== undefined) {
           // Refuse a retarget before spawning, opening a thread or touching an
@@ -779,6 +814,55 @@ const handleRequest = (
           yield* markSettled(requestId);
         }).pipe(Effect.catch(() => Effect.void)),
       );
+
+    /**
+     * Acquire the live registration and install its cleanup atomically, then
+     * restore interruptibility for publication and the provider wait. The
+     * cleanup covers the whole publish + wait + response window.
+     */
+    const runWithRegistration = (
+      requestId: string,
+      register: Effect.Effect<Deferred.Deferred<unknown>, LiveRequestAlreadyPendingError>,
+      use: (
+        deferred: Deferred.Deferred<unknown>,
+        setSettleOnRelease: (value: boolean) => Effect.Effect<void>,
+      ) => Effect.Effect<void>,
+    ): Effect.Effect<void> =>
+      Effect.uninterruptibleMask((restore) =>
+        Effect.gen(function* () {
+          const settleOnRelease = yield* Ref.make(true);
+          const result = yield* Effect.result(
+            Effect.acquireUseRelease(
+              register,
+              (deferred) => restore(use(deferred, (value) => Ref.set(settleOnRelease, value))),
+              (deferred) =>
+                Effect.gen(function* () {
+                  if (yield* Ref.get(settleOnRelease)) {
+                    yield* finalizeRequest(requestId, deferred);
+                  } else {
+                    yield* liveRequests.withdrawPending(runAttemptId, requestId, deferred);
+                  }
+                }),
+            ),
+          );
+          if (result._tag === "Failure") {
+            if (result.failure instanceof LiveRequestAlreadyPendingError) {
+              yield* client.raw
+                .respondError(
+                  request.id,
+                  CodexErrors.CodexAppServerRequestError.invalidParams(
+                    `Request id ${requestId} is already pending; preserving the original request`,
+                  ),
+                )
+                .pipe(Effect.catch(() => Effect.void));
+              return;
+            }
+            return yield* Effect.never;
+          }
+          // A normal return runs the release finaliser too; it is a no-op for
+          // already-decided rows.
+        }),
+      );
     /**
      * Resolve what happened when this runtime's own wait elapsed.
      *
@@ -810,208 +894,169 @@ const handleRequest = (
       const requestId = String(params.requestId ?? params.approvalId ?? request.id);
       const action = String(params.kind ?? request.method.split("/").at(-2) ?? "action");
       const command = typeof params.command === "string" ? params.command : undefined;
-      const registration = yield* Effect.result(
-        liveRequests.registerApproval({
-          requestId,
-          workItemId,
-          runAttemptId,
-          action,
-          prompt: command ?? `The agent requests approval for ${request.method}.`,
-        }),
-      );
-      if (registration._tag === "Failure") {
-        if (registration.failure instanceof LiveRequestAlreadyPendingError) {
-          yield* client.raw
-            .respondError(
-              request.id,
-              CodexErrors.CodexAppServerRequestError.invalidParams(
-                `Request id ${requestId} is already pending; preserving the original request`,
-              ),
-            )
-            .pipe(Effect.catch(() => Effect.void));
-          return;
-        }
-        return yield* Effect.never;
-      }
-      const deferred = registration.success;
-      const record = yield* (
-        recordRequest?.({
-          requestId,
-          workItemId,
-          runAttemptId,
-          action,
-          ...(command !== undefined ? { command } : {}),
-        }) ?? Effect.succeed({ status: "recorded" as const })
-      ).pipe(
-        Effect.onInterrupt(() =>
-          liveRequests.withdrawPending(
-            runAttemptId,
+      yield* runWithRegistration(
+        requestId,
+        liveRequests
+          .registerApproval({
             requestId,
-            deferred as Deferred.Deferred<unknown>,
-          ),
-        ),
-        Effect.map((result) => result ?? { status: "recorded" as const }),
-        Effect.catch(() => Effect.succeed({ status: "record_failed" as const })),
+            workItemId,
+            runAttemptId,
+            action,
+            prompt: command ?? `The agent requests approval for ${request.method}.`,
+          })
+          .pipe(Effect.map((value) => value as Deferred.Deferred<unknown>)),
+        (deferred, setSettleOnRelease) =>
+          Effect.gen(function* () {
+            const record = yield* (
+              recordRequest?.({
+                requestId,
+                workItemId,
+                runAttemptId,
+                action,
+                ...(command !== undefined ? { command } : {}),
+              }) ?? Effect.succeed({ status: "recorded" as const })
+            ).pipe(
+              Effect.map((result) => result ?? { status: "recorded" as const }),
+              Effect.catch(() => Effect.succeed({ status: "record_failed" as const })),
+            );
+            if (record.status !== "recorded" && record.status !== "duplicate_pending") {
+              // Publication failed or the durable history is decided/mismatched.
+              // Withdraw only this caller's just-registered Deferred, then report
+              // the provider error; no invisible waiter survives.
+              yield* setSettleOnRelease(false);
+              yield* liveRequests.withdrawPending(runAttemptId, requestId, deferred);
+              yield* client.raw
+                .respondError(
+                  request.id,
+                  CodexErrors.CodexAppServerRequestError.invalidParams(
+                    record.status === "record_failed"
+                      ? `Request id ${requestId} could not be recorded`
+                      : `Request id ${requestId} was already used for a ${record.status === "duplicate_decided" ? "decided" : "different"} request`,
+                  ),
+                )
+                .pipe(Effect.catch(() => Effect.void));
+              return;
+            }
+            const typed = deferred as Deferred.Deferred<ApprovalDecision>;
+            const decision = yield* waitForAnswer<ApprovalDecision>(
+              typed,
+              Duration.millis(waitTimeoutMs),
+            );
+            // Denying an expired approval is the policy-safe terminal outcome,
+            // not a fabricated human decision. The row records `expired`.
+            const effectiveDecision = Option.isSome(decision)
+              ? decision.value
+              : yield* Effect.gen(function* () {
+                  const outcome = yield* resolveAfterWait(typed, requestId);
+                  if (outcome._tag === "answered") return outcome.value;
+                  if (outcome._tag === "settled") yield* markSettled(requestId);
+                  return "rejected" as ApprovalDecision;
+                });
+            yield* client.raw
+              .respond(request.id, { decision: toCodexApprovalDecision(effectiveDecision) })
+              .pipe(Effect.catch(() => Effect.void));
+          }),
       );
-      if (record.status !== "recorded" && record.status !== "duplicate_pending") {
-        // Publication failed or the durable history is decided/mismatched.
-        // Withdraw only this caller's just-registered Deferred, then report the
-        // provider error; no invisible waiter survives.
-        yield* liveRequests.withdrawPending(
-          runAttemptId,
-          requestId,
-          deferred as Deferred.Deferred<unknown>,
-        );
-        yield* client.raw
-          .respondError(
-            request.id,
-            CodexErrors.CodexAppServerRequestError.invalidParams(
-              record.status === "record_failed"
-                ? `Request id ${requestId} could not be recorded`
-                : `Request id ${requestId} was already used for a ${record.status === "duplicate_decided" ? "decided" : "different"} request`,
-            ),
-          )
-          .pipe(Effect.catch(() => Effect.void));
-        return;
-      }
-      yield* Effect.gen(function* () {
-        const decision = yield* waitForAnswer<ApprovalDecision>(
-          deferred,
-          Duration.millis(waitTimeoutMs),
-        );
-        // Denying an expired approval is the policy-safe terminal outcome, not
-        // a fabricated human decision. The durable row records `expired`.
-        const effectiveDecision = Option.isSome(decision)
-          ? decision.value
-          : yield* Effect.gen(function* () {
-              const outcome = yield* resolveAfterWait(deferred, requestId);
-              if (outcome._tag === "answered") return outcome.value;
-              if (outcome._tag === "settled") yield* markSettled(requestId);
-              return "rejected" as ApprovalDecision;
-            });
-        yield* client.raw
-          .respond(request.id, { decision: toCodexApprovalDecision(effectiveDecision) })
-          .pipe(Effect.catch(() => Effect.void));
-      }).pipe(Effect.ensuring(finalizeRequest(requestId, deferred as Deferred.Deferred<unknown>)));
     } else if (isUserInputRequest(request.method)) {
       const requestId = String(params.requestId ?? request.id);
       const promptText = userInputRequestText(params, request.method);
       const questionPayload = parseQuestionPayload(params);
       const questionIds = questionPayloadIds(questionPayload);
-      const registration = yield* Effect.result(
-        liveRequests.registerUserInput({
-          requestId,
-          workItemId,
-          runAttemptId,
-          prompt: promptText,
-          questionIds,
-        }),
-      );
-      if (registration._tag === "Failure") {
-        if (registration.failure instanceof LiveRequestAlreadyPendingError) {
-          yield* client.raw
-            .respondError(
-              request.id,
-              CodexErrors.CodexAppServerRequestError.invalidParams(
-                `Request id ${requestId} is already pending; preserving the original request`,
-              ),
-            )
-            .pipe(Effect.catch(() => Effect.void));
-          return;
-        }
-        return yield* Effect.never;
-      }
-      const deferred = registration.success;
-      const record = yield* (
-        recordRequest?.({
-          requestId,
-          workItemId,
-          runAttemptId,
-          action: "user_input",
-          // Persist the question itself and its preserved structure: the live
-          // registry only holds it in memory, so without this the Attention tab
-          // can only say that something was asked.
-          reason: promptText,
-          questionPayload,
-        }) ?? Effect.succeed({ status: "recorded" as const })
-      ).pipe(
-        Effect.onInterrupt(() =>
-          liveRequests.withdrawPending(
-            runAttemptId,
+      yield* runWithRegistration(
+        requestId,
+        liveRequests
+          .registerUserInput({
             requestId,
-            deferred as Deferred.Deferred<unknown>,
-          ),
-        ),
-        Effect.map((result) => result ?? { status: "recorded" as const }),
-        Effect.catch(() => Effect.succeed({ status: "record_failed" as const })),
-      );
-      if (record.status !== "recorded" && record.status !== "duplicate_pending") {
-        yield* liveRequests.withdrawPending(
-          runAttemptId,
-          requestId,
-          deferred as Deferred.Deferred<unknown>,
-        );
-        yield* client.raw
-          .respondError(
-            request.id,
-            CodexErrors.CodexAppServerRequestError.invalidParams(
-              record.status === "record_failed"
-                ? `Request id ${requestId} could not be recorded`
-                : `Request id ${requestId} was already used for a ${record.status === "duplicate_decided" ? "decided" : "different"} request`,
-            ),
-          )
-          .pipe(Effect.catch(() => Effect.void));
-        return;
-      }
-      yield* Effect.gen(function* () {
-        const answer = yield* waitForAnswer<UserInputAnswers>(
-          deferred,
-          Duration.millis(waitTimeoutMs),
-        );
-        const sendAnswers = (answers: UserInputAnswers) => {
-          // Never send a partial map: a missing or extra id would silence a
-          // blocking question or answer the wrong one.
-          const problems = answerMapProblems(questionIds, answers);
-          return problems.length > 0
-            ? client.raw
+            workItemId,
+            runAttemptId,
+            prompt: promptText,
+            questionIds,
+          })
+          .pipe(Effect.map((value) => value as Deferred.Deferred<unknown>)),
+        (deferred, setSettleOnRelease) =>
+          Effect.gen(function* () {
+            const record = yield* (
+              recordRequest?.({
+                requestId,
+                workItemId,
+                runAttemptId,
+                action: "user_input",
+                // Persist the question itself and its preserved structure: the
+                // live registry only holds it in memory, so without this the
+                // Attention tab can only say that something was asked.
+                reason: promptText,
+                questionPayload,
+              }) ?? Effect.succeed({ status: "recorded" as const })
+            ).pipe(
+              Effect.map((result) => result ?? { status: "recorded" as const }),
+              Effect.catch(() => Effect.succeed({ status: "record_failed" as const })),
+            );
+            if (record.status !== "recorded" && record.status !== "duplicate_pending") {
+              yield* setSettleOnRelease(false);
+              yield* liveRequests.withdrawPending(runAttemptId, requestId, deferred);
+              yield* client.raw
                 .respondError(
                   request.id,
                   CodexErrors.CodexAppServerRequestError.invalidParams(
-                    `The operator answers did not match the provider questions: ${problems.join("; ")}`,
+                    record.status === "record_failed"
+                      ? `Request id ${requestId} could not be recorded`
+                      : `Request id ${requestId} was already used for a ${record.status === "duplicate_decided" ? "decided" : "different"} request`,
                   ),
                 )
-                .pipe(Effect.catch(() => Effect.void))
-            : client.raw
-                .respond(request.id, toCodexUserInputResponse(questionIds, answers))
                 .pipe(Effect.catch(() => Effect.void));
-        };
-        if (Option.isSome(answer)) {
-          yield* sendAnswers(answer.value);
-        } else {
-          const outcome = yield* resolveAfterWait(deferred, requestId);
-          if (outcome._tag === "answered") {
-            yield* sendAnswers(outcome.value);
-          } else {
-            if (outcome._tag === "settled") yield* markSettled(requestId);
-            // A question has no safe default answer. Terminate its provider
-            // request explicitly and leave the durable row `expired`/`interrupted`
-            // instead of sending an empty synthetic answer that looks human.
-            const message =
-              outcome._tag === "expired"
-                ? "The operator did not answer before the request wait expired. The request is expired; answer a current request."
-                : "The request was settled before an answer arrived (the run was cancelled or interrupted).";
-            yield* client.raw
-              .respondError(
-                request.id,
-                new CodexErrors.CodexAppServerRequestError({
-                  code: -32001,
-                  errorMessage: message,
-                }),
-              )
-              .pipe(Effect.catch(() => Effect.void));
-          }
-        }
-      }).pipe(Effect.ensuring(finalizeRequest(requestId, deferred as Deferred.Deferred<unknown>)));
+              return;
+            }
+            const typed = deferred as Deferred.Deferred<UserInputAnswers>;
+            const answer = yield* waitForAnswer<UserInputAnswers>(
+              typed,
+              Duration.millis(waitTimeoutMs),
+            );
+            const sendAnswers = (answers: UserInputAnswers) => {
+              // Never send a partial map: a missing or extra id would silence a
+              // blocking question or answer the wrong one.
+              const problems = answerMapProblems(questionIds, answers);
+              return problems.length > 0
+                ? client.raw
+                    .respondError(
+                      request.id,
+                      CodexErrors.CodexAppServerRequestError.invalidParams(
+                        `The operator answers did not match the provider questions: ${problems.join("; ")}`,
+                      ),
+                    )
+                    .pipe(Effect.catch(() => Effect.void))
+                : client.raw
+                    .respond(request.id, toCodexUserInputResponse(questionIds, answers))
+                    .pipe(Effect.catch(() => Effect.void));
+            };
+            if (Option.isSome(answer)) {
+              yield* sendAnswers(answer.value);
+            } else {
+              const outcome = yield* resolveAfterWait(typed, requestId);
+              if (outcome._tag === "answered") {
+                yield* sendAnswers(outcome.value);
+              } else {
+                if (outcome._tag === "settled") yield* markSettled(requestId);
+                // A question has no safe default answer. Terminate its provider
+                // request explicitly and leave the durable row
+                // `expired`/`interrupted` instead of sending an empty synthetic
+                // answer that looks human.
+                const message =
+                  outcome._tag === "expired"
+                    ? "The operator did not answer before the request wait expired. The request is expired; answer a current request."
+                    : "The request was settled before an answer arrived (the run was cancelled or interrupted).";
+                yield* client.raw
+                  .respondError(
+                    request.id,
+                    new CodexErrors.CodexAppServerRequestError({
+                      code: -32001,
+                      errorMessage: message,
+                    }),
+                  )
+                  .pipe(Effect.catch(() => Effect.void));
+              }
+            }
+          }),
+      );
     } else {
       yield* client.raw
         .respondError(

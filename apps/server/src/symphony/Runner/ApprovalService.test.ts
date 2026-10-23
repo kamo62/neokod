@@ -882,6 +882,14 @@ layer("ApprovalService durable ids", (it) => {
         expect(retry._tag).toBe("Failure");
         expect((yield* repository.getById(record.id))?.state).toBe("delivering");
 
+        // An unsuccessful settlement (no live claim) must not erase the
+        // delivery-unknown content or staged decision.
+        yield* restarted.interrupt(record.id);
+        const preserved = yield* repository.getById(record.id);
+        expect(preserved?.state).toBe("delivering");
+        expect(preserved?.decision).toBe("answered");
+        expect(preserved?.answer?.answers).toEqual([{ questionId: "q1", answer: "main" }]);
+
         const reconciledResult = yield* (
           restarted.reconcileUncertainDeliveries?.() ??
             Effect.succeed({ reconciled: 0, failedIds: [] })

@@ -407,7 +407,11 @@ export const RunAttemptSchema = Schema.Struct({
   tokenUsage: Schema.optional(TokenUsageSchema),
   sessionId: Schema.optional(TrimmedNonEmptyString),
   threadId: Schema.optional(TrimmedNonEmptyString),
-  /** Frozen at admission; undefined for attempts recorded before this field existed. */
+  /**
+   * Frozen at admission. Undefined means either a legacy attempt recorded
+   * before the field existed, or an attempt refused before acceptance; absence
+   * is not an accepted brief and must never be rendered as one.
+   */
   acceptedGuidance: Schema.optional(AcceptedGuidanceSnapshotSchema),
   /**
    * Server-owned confirmed Stop closure. Absent means unknown or legacy; never
