@@ -479,7 +479,8 @@ const stopAllResultFrom = (
       };
     }
   }
-  return { ok: true };
+  // Unrecognised result is unknown, not success.
+  return { ok: false };
 };
 
 /** Actions must not report success when the Symphony layer is absent. */

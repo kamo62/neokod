@@ -722,10 +722,14 @@ export const makeApprovalService = Effect.gen(function* () {
                 "approval wait timed out",
               );
         if (record.state === "delivering") {
-          if (yield* wasConsumed(record.id)) return;
-          yield* repository
-            .abortDelivery(record.id, "expired")
-            .pipe(Effect.catch(() => logHistoryFailure("expired staged delivery", id)));
+          // Only a positively won live claim proves the staged content was not
+          // delivered. A restarted/uncertain row keeps its content and staged
+          // decision for reconciliation.
+          if (claimed && !(yield* wasConsumed(record.id))) {
+            yield* repository
+              .abortDelivery(record.id, "expired")
+              .pipe(Effect.catch(() => logHistoryFailure("expired staged delivery", id)));
+          }
           return;
         }
         if (!claimed && record.state !== "pending") {
@@ -751,10 +755,11 @@ export const makeApprovalService = Effect.gen(function* () {
                 "run interrupted; approval unanswered",
               );
         if (record.state === "delivering") {
-          if (yield* wasConsumed(record.id)) return;
-          yield* repository
-            .abortDelivery(record.id, "interrupted")
-            .pipe(Effect.catch(() => logHistoryFailure("interrupted staged delivery", id)));
+          if (claimed && !(yield* wasConsumed(record.id))) {
+            yield* repository
+              .abortDelivery(record.id, "interrupted")
+              .pipe(Effect.catch(() => logHistoryFailure("interrupted staged delivery", id)));
+          }
           return;
         }
         if (!claimed && record.state !== "pending") {
