@@ -45,7 +45,9 @@ import { AgentRuntimeSpawnError, type AgentRuntimeService } from "./AgentRuntime
 
 const makeConfig = (
   repositoryPath: string,
-  overrides: Partial<Pick<EffectiveWorkflowConfig, "autonomy" | "maxTurns" | "maxAttempts">> = {},
+  overrides: Partial<
+    Pick<EffectiveWorkflowConfig, "autonomy" | "maxTurns" | "maxAttempts" | "agentProvider">
+  > = {},
 ): EffectiveWorkflowConfig => ({
   repositoryPath,
   workflowPath: `${repositoryPath}/WORKFLOW.md`,
@@ -307,7 +309,133 @@ const layer = (
 const scriptedFactory = (agent: AgentRuntimeService) =>
   Layer.succeed(AgentRuntimeFactory, { make: () => Effect.succeed(agent) });
 
+const policyCapturingAgent = (completeOn: number) => {
+  const configs: EffectiveWorkflowConfig[] = [];
+  return {
+    agent: {
+      runTurn: (input: Parameters<AgentRuntimeService["runTurn"]>[0]) =>
+        Effect.sync(() => {
+          configs.push(input.config);
+          return {
+            turnId: `t${configs.length}`,
+            threadId: "th1",
+            completed: configs.length >= completeOn,
+          };
+        }),
+      interrupt: () => Effect.void,
+      pid: () => Effect.succeed(null),
+    } satisfies AgentRuntimeService,
+    configs,
+  };
+};
+
+const currentPolicyCapture = policyCapturingAgent(2);
+const policyPublicationConfigs: EffectiveWorkflowConfig[] = [];
+const policyRecordingFinalizer = Layer.succeed(ExecutionFinalizer, {
+  finalize: (input) =>
+    Effect.sync(() => {
+      policyPublicationConfigs.push(input.config);
+      return "review_ready" as const;
+    }),
+});
+
+layer(
+  scriptedFactory(currentPolicyCapture.agent),
+  fakeWorkspaceManager,
+  policyRecordingFinalizer,
+)("Dispatcher current policy", (it) => {
+  it.effect(
+    "reloads current policy before continuation and publication without rewriting the accepted brief",
+    () =>
+      Effect.gen(function* () {
+        const workItem = yield* seedWorkItem("policy-current-1");
+        const dispatcher = yield* RunDispatcher;
+        const acceptedConfig = makeConfig("/repo", { autonomy: "execute", maxTurns: 2 });
+        const tightenedConfig = makeConfig("/repo", { autonomy: "prepare" });
+        let loads = 0;
+        const runAttemptId = yield* dispatcher.dispatchWorkItem({
+          ...dispatchAuthority,
+          workItem,
+          issue: makeIssue("policy-current-1"),
+          config: acceptedConfig,
+          loadCurrentWorkflowPolicy: () =>
+            Effect.sync(() => {
+              loads += 1;
+              return tightenedConfig;
+            }),
+        });
+
+        expect(currentPolicyCapture.configs.map((config) => config.autonomy)).toEqual([
+          "execute",
+          "prepare",
+        ]);
+        // Continuation + publication both reread the workflow.
+        expect(loads).toBeGreaterThanOrEqual(2);
+        expect(policyPublicationConfigs.at(-1)?.autonomy).toBe("prepare");
+        const attempts = yield* RunAttemptRepository;
+        const attempt = yield* attempts.getById(runAttemptId).pipe(Effect.flatMap(required));
+        expect(attempt.acceptedGuidance?.permission.autonomy).toBe("execute");
+        expect(attempt.acceptedGuidance?.workflow.instructions).toBe("");
+      }),
+  );
+
+  it.effect("refuses before a continuation when the current workflow policy is unavailable", () =>
+    Effect.gen(function* () {
+      const workItem = yield* seedWorkItem("policy-missing-1");
+      const dispatcher = yield* RunDispatcher;
+      const config = makeConfig("/repo", { autonomy: "execute", maxTurns: 2 });
+      currentPolicyCapture.configs.length = 0;
+      const runAttemptId = yield* dispatcher.dispatchWorkItem({
+        ...dispatchAuthority,
+        workItem,
+        issue: makeIssue("policy-missing-1"),
+        config,
+        loadCurrentWorkflowPolicy: () => Effect.succeed(null),
+      });
+
+      const attempts = yield* RunAttemptRepository;
+      const attempt = yield* attempts.getById(runAttemptId).pipe(Effect.flatMap(required));
+      expect(attempt.status).toBe("failed");
+      expect(attempt.error?.category).toBe("workflow_error");
+      const events = yield* RunEventRepository.pipe(
+        Effect.flatMap((runEvents) => runEvents.listForAttempt(runAttemptId)),
+      );
+      expect(events.map((event) => event.eventType)).toContain("policy_refresh_failed");
+      expect(currentPolicyCapture.configs).toHaveLength(1);
+    }),
+  );
+});
+
 layer(scriptedFactory(scriptedAgent(true)))("Dispatcher prepare mode", (it) => {
+  it.effect("refuses an unsupported executor provider before claiming", () =>
+    Effect.gen(function* () {
+      const workItem = yield* seedWorkItem("provider-unsupported-1");
+      const dispatcher = yield* RunDispatcher;
+      const result = yield* Effect.result(
+        dispatcher.dispatchWorkItem({
+          ...dispatchAuthority,
+          workItem,
+          issue: makeIssue("provider-unsupported-1"),
+          config: makeConfig("/repo", {
+            agentProvider: {
+              instanceId: ProviderInstanceId.make("claude_default"),
+              driver: ProviderDriverKind.make("claude"),
+            },
+          }),
+        }),
+      );
+      expect(result._tag).toBe("Failure");
+      if (result._tag === "Failure") {
+        expect(result.failure.message).toContain("Unsupported Symphony executor provider");
+      }
+      const workItems = yield* WorkItemRepository;
+      const after = yield* workItems.getById(workItem.id).pipe(Effect.flatMap(required));
+      expect(after.lifecycle).toBe("queued");
+      const attempts = yield* RunAttemptRepository;
+      expect(yield* attempts.listByWorkItem(workItem.id)).toEqual([]);
+    }),
+  );
+
   it.effect("claims, prepares a workspace, runs a turn and lands ready_for_review", () =>
     Effect.gen(function* () {
       const workItem = yield* seedWorkItem("1001");
@@ -460,11 +588,13 @@ layer(scriptedFactory(countingIncompleteAgent().agent))("Dispatcher continuation
     Effect.gen(function* () {
       const workItem = yield* seedWorkItem("1005");
       const dispatcher = yield* RunDispatcher;
+      const config = makeConfig("/repo", { autonomy: "execute", maxTurns: 3 });
       const runAttemptId = yield* dispatcher.dispatchWorkItem({
         ...dispatchAuthority,
         workItem,
         issue: makeIssue("1005"),
-        config: makeConfig("/repo", { autonomy: "execute", maxTurns: 3 }),
+        config,
+        loadCurrentWorkflowPolicy: () => Effect.succeed(config),
       });
 
       const runEvents = yield* RunEventRepository;
@@ -538,11 +668,13 @@ layer(
       });
 
       const dispatcher = yield* RunDispatcher;
+      const config = makeConfig("/repo", { autonomy: "execute" });
       const runAttemptId = yield* dispatcher.dispatchWorkItem({
         ...dispatchAuthority,
         workItem,
         issue: makeIssue("1007"),
-        config: makeConfig("/repo", { autonomy: "execute" }),
+        config,
+        loadCurrentWorkflowPolicy: () => Effect.succeed(config),
       });
 
       expect(resumedAgent.count()).toBe(0);
@@ -565,11 +697,13 @@ layer(scriptedFactory(reviewFeedbackCapture.agent))("Dispatcher review feedback"
       Effect.gen(function* () {
         const workItem = yield* seedWorkItem("1006");
         const dispatcher = yield* RunDispatcher;
+        const config = makeConfig("/repo", { autonomy: "execute", maxTurns: 3 });
         yield* dispatcher.dispatchWorkItem({
           ...dispatchAuthority,
           workItem,
           issue: makeIssue("1006"),
-          config: makeConfig("/repo", { autonomy: "execute", maxTurns: 3 }),
+          config,
+          loadCurrentWorkflowPolicy: () => Effect.succeed(config),
           reviewFeedback: {
             unresolvedCommentCount: 2,
             reviewState: "changes_requested",
@@ -826,12 +960,35 @@ const stopFailingFactory = (pid: number) =>
       }),
   });
 
-const stopLayer = (recordIdentity: boolean, pid: number) =>
+const failingStopEventRepository = Layer.effect(
+  RunEventRepository,
+  Effect.gen(function* () {
+    const base = yield* RunEventRepository;
+    return {
+      ...base,
+      append: (runAttemptId, eventType, payload) =>
+        eventType === "stop_requested"
+          ? Effect.fail(
+              new SymphonyPersistenceSqlError({
+                operation: "test.stop_requested",
+                detail: "injected stop intent persistence failure",
+              }),
+            )
+          : base.append(runAttemptId, eventType, payload),
+    };
+  }),
+);
+
+const stopLayer = (recordIdentity: boolean, pid: number, failStopIntent = false) =>
   it.layer(
     RunDispatcherLive.pipe(
       Layer.provideMerge(WorkItemRepositoryLive),
       Layer.provideMerge(RunAttemptRepositoryLive),
-      Layer.provideMerge(RunEventRepositoryLive),
+      Layer.provideMerge(
+        failStopIntent
+          ? failingStopEventRepository.pipe(Layer.provideMerge(RunEventRepositoryLive))
+          : RunEventRepositoryLive,
+      ),
       Layer.provideMerge(ApprovalRepositoryLive),
       Layer.provideMerge(LiveRequestsLive),
       Layer.provideMerge(fakeWorkspaceManager),
@@ -1323,6 +1480,56 @@ layer(
       const workItems = yield* WorkItemRepository;
       const after = yield* workItems.getById(workItem.id).pipe(Effect.flatMap(required));
       expect(after.lifecycle).toBe("failed");
+    }),
+  );
+});
+
+stopLayer(
+  true,
+  22009,
+  true,
+)("Dispatcher stop intent persistence", (it) => {
+  it.effect("retains the claim and never interrupts when stop intent cannot be persisted", () =>
+    Effect.gen(function* () {
+      stopSignalLog.length = 0;
+      const workItem = yield* seedWorkItem("stop-intent-failure-1");
+      const dispatcher = yield* RunDispatcher;
+      const fiber = yield* Effect.forkScoped(
+        dispatcher.dispatchWorkItem({
+          ...dispatchAuthority,
+          workItem,
+          issue: makeIssue("stop-intent-failure-1"),
+          config: makeConfig("/repo"),
+        }),
+      );
+      const runAttemptId = yield* waitForCancelableAttempt(workItem.id);
+      const outcome = yield* dispatcher.cancelRun(runAttemptId);
+
+      expect(outcome.status).toBe("held");
+      if (outcome.status === "held") {
+        expect(outcome.reason).toBe("stop_intent_unpersisted");
+      }
+      expect(stopSignalLog).toEqual([]);
+      expect(yield* dispatcher.isAgentActive(runAttemptId)).toBe(true);
+
+      const workItems = yield* WorkItemRepository;
+      const after = yield* workItems.getById(workItem.id).pipe(Effect.flatMap(required));
+      expect(["preparing", "running"]).toContain(after.lifecycle);
+      expect(after.ownerPid).toBe(22009);
+
+      const attempts = yield* RunAttemptRepository;
+      const attempt = yield* attempts.getById(runAttemptId).pipe(Effect.flatMap(required));
+      expect([
+        "preparing_workspace",
+        "building_prompt",
+        "launching_agent",
+        "streaming_turn",
+      ]).toContain(attempt.status);
+      const runEvents = yield* RunEventRepository;
+      const events = yield* runEvents.listForAttempt(runAttemptId);
+      expect(events.some((event) => event.eventType === "stop_requested")).toBe(false);
+
+      yield* Fiber.interrupt(fiber);
     }),
   );
 });

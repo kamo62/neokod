@@ -40,7 +40,11 @@ import {
   type SymphonyWorkspace,
 } from "../Workspaces/Manager.ts";
 import { AgentRuntimeChildOwnershipError, type AgentRuntimeService } from "./AgentRuntime.ts";
-import { freezeAcceptedGuidance } from "./AcceptedGuidance.ts";
+import {
+  freezeAcceptedGuidance,
+  narrowAcceptedPermissions,
+  resolveAcceptedPermissions,
+} from "./AcceptedGuidance.ts";
 import { ExecutionFinalizer } from "./ExecutionFinalizer.ts";
 import { LiveRequests } from "./LiveRequests.ts";
 import type { ReviewFeedbackContext } from "./Prompt.ts";
@@ -73,6 +77,20 @@ export class RunDispatchError extends Error {
     this.detail = detail;
   }
 }
+
+/**
+ * The production Symphony runner is the local Codex app-server. A configured
+ * provider pin that names a different driver or a different Codex instance is
+ * not executed by this factory; admission refuses it before any claim.
+ */
+export const isSupportedSymphonyProvider = (
+  provider: EffectiveWorkflowConfig["agentProvider"],
+): boolean =>
+  String(provider.instanceId) === "codex_default" && String(provider.driver) === "codex";
+
+export const describeSymphonyProvider = (
+  provider: EffectiveWorkflowConfig["agentProvider"],
+): string => `${String(provider.driver)}/${String(provider.instanceId)}`;
 
 /**
  * Honest Stop acknowledgement. `held` means ownership was deliberately kept:
@@ -110,6 +128,14 @@ export interface RunDispatcherService {
     /** Workflow record id and persisted revision read by the orchestrator for this dispatch. */
     readonly workflowId: WorkflowId;
     readonly workflowRevision: IsoDateTime;
+    /**
+     * Read the accepted workflow's current effective policy before a
+     * continuation turn or publication. Missing/invalid policy must return
+     * null; the dispatcher refuses instead of reusing admission-time config.
+     */
+    readonly loadCurrentWorkflowPolicy?: (
+      workflowId: WorkflowId,
+    ) => Effect.Effect<EffectiveWorkflowConfig | null>;
     /** Agent-facing Markdown body from WORKFLOW.md. Raw front matter remains
      * host-only and is never included in the model prompt. */
     readonly workflowInstructions?: string;
@@ -680,6 +706,13 @@ export const makeRunDispatcher = Effect.gen(function* () {
       if (platformRefusal !== null) {
         return yield* Effect.fail(new RunDispatchError(platformRefusal));
       }
+      if (!isSupportedSymphonyProvider(config.agentProvider)) {
+        return yield* Effect.fail(
+          new RunDispatchError(
+            `Unsupported Symphony executor provider ${describeSymphonyProvider(config.agentProvider)}: this server only runs the supported codex_default/codex contract. Work was not admitted.`,
+          ),
+        );
+      }
       const maxAttempts = config.maxAttempts ?? 5;
       const ownerToken = yield* crypto.randomUUIDv4.pipe(
         Effect.mapError(() => new RunDispatchError("failed to generate owner token")),
@@ -875,6 +908,50 @@ export const makeRunDispatcher = Effect.gen(function* () {
         ? `${maybeConfig.value.symphonyLogsDir}/pr-bodies`
         : require("node:os").tmpdir();
 
+      // The accepted brief stays immutable. Before a continuation turn or
+      // publication, reread the accepted workflow's current policy. A missing,
+      // invalid or conflicting policy refuses before the provider/publication;
+      // the admission-time config is never silently reused.
+      const currentPolicyFor = (stage: string): Effect.Effect<EffectiveWorkflowConfig | null> =>
+        Effect.gen(function* () {
+          const load = input.loadCurrentWorkflowPolicy;
+          const current =
+            load === undefined
+              ? null
+              : yield* load(acceptedGuidance.workflow.id).pipe(
+                  Effect.catch(() => Effect.succeed(null)),
+                );
+          const refuse = (message: string) =>
+            Effect.gen(function* () {
+              yield* appendEvent(runAttemptId, "policy_refresh_failed", { stage, message });
+              yield* markFailed(
+                runAttemptId,
+                workItemId,
+                ownerToken,
+                claimed.generation,
+                { category: "workflow_error", message },
+                maxAttempts,
+              );
+              return null;
+            });
+          if (current === null) {
+            return yield* refuse(
+              `Current workflow policy is unavailable before ${stage}; refusing rather than reusing admission-time configuration.`,
+            );
+          }
+          const narrowing = narrowAcceptedPermissions(
+            acceptedGuidance.permission,
+            resolveAcceptedPermissions(current),
+          );
+          if (narrowing._tag === "unrepresentable") {
+            return yield* refuse(
+              `Current workflow policy conflicts with the accepted permission before ${stage}: ` +
+                `${narrowing.reason} (accepted ${narrowing.acceptedApprovalPolicy}, live ${narrowing.liveApprovalPolicy}).`,
+            );
+          }
+          return current;
+        });
+
       const runDispatch = Effect.gen(function* () {
         if (yield* isStopping(runAttemptId)) {
           return runAttemptId;
@@ -973,12 +1050,16 @@ export const makeRunDispatcher = Effect.gen(function* () {
             branch: workspace.branch,
             previousAttemptId: String(latestAttempt.id),
           });
+          const publicationPolicy = yield* currentPolicyFor("publication");
+          if (publicationPolicy === null) {
+            return runAttemptId;
+          }
           yield* finalizer
             .finalize({
               workItem,
               issue,
               runAttemptId,
-              config,
+              config: publicationPolicy,
               workspacePath: workspace.path,
               branch: workspace.branch,
               baseBranch: workspace.baseBranch,
@@ -1022,10 +1103,14 @@ export const makeRunDispatcher = Effect.gen(function* () {
             .updateStatus(runAttemptId, "streaming_turn")
             .pipe(Effect.catch(() => Effect.void));
           yield* appendEvent(runAttemptId, "continuation_turn", { turn });
+          const continuationPolicy = yield* currentPolicyFor(`continuation turn ${turn}`);
+          if (continuationPolicy === null) {
+            return runAttemptId;
+          }
           result = yield* agent
             .runTurn({
               issue,
-              config,
+              config: continuationPolicy,
               workspacePath: workspace.path,
               branch: workspace.branch,
               baseBranch: workspace.baseBranch,
@@ -1050,12 +1135,16 @@ export const makeRunDispatcher = Effect.gen(function* () {
           }
           // Execute/deliver exit (plan 10, WS-L): validate, assemble
           // evidence, create the PR, and land the item in a stopping state.
+          const publicationPolicy = yield* currentPolicyFor("publication");
+          if (publicationPolicy === null) {
+            return runAttemptId;
+          }
           yield* finalizer
             .finalize({
               workItem,
               issue,
               runAttemptId,
-              config,
+              config: publicationPolicy,
               workspacePath: workspace.path,
               branch: workspace.branch,
               baseBranch: workspace.baseBranch,
