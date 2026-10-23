@@ -369,11 +369,24 @@ layer(
           "execute",
           "prepare",
         ]);
-        // Continuation + publication both reread the workflow.
+        // Continuation + publication both reread the workflow. The narrowed
+        // prepare policy forbids publication entirely.
         expect(loads).toBeGreaterThanOrEqual(2);
-        expect(policyPublicationConfigs.at(-1)?.autonomy).toBe("prepare");
+        expect(policyPublicationConfigs).toEqual([]);
         const attempts = yield* RunAttemptRepository;
         const attempt = yield* attempts.getById(runAttemptId).pipe(Effect.flatMap(required));
+        expect(attempt.status).toBe("failed");
+        expect(attempt.error?.category).toBe("workflow_error");
+        const events = yield* RunEventRepository.pipe(
+          Effect.flatMap((runEvents) => runEvents.listForAttempt(runAttemptId)),
+        );
+        expect(
+          events.some(
+            (event) =>
+              event.eventType === "policy_refresh_failed" &&
+              String(event.payload?.message).includes("Narrowed autonomy prepare"),
+          ),
+        ).toBe(true);
         expect(attempt.acceptedGuidance?.permission.autonomy).toBe("execute");
         expect(attempt.acceptedGuidance?.workflow.instructions).toBe("");
       }),
@@ -1589,6 +1602,45 @@ layer(scriptedFactory(scriptedAgent(true)))("Dispatcher recovered null identity"
         const events = yield* runEvents.listForAttempt(attemptId);
         expect(events.some((event) => event.eventType === "stop_confirmed")).toBe(false);
       }
+    }),
+  );
+});
+
+const targetChangeAgent = policyCapturingAgent(1);
+layer(
+  scriptedFactory(targetChangeAgent.agent),
+  fakeWorkspaceManager,
+  policyRecordingFinalizer,
+)("Dispatcher publication target", (it) => {
+  it.effect("refuses a repository retarget before publication without calling the finalizer", () =>
+    Effect.gen(function* () {
+      const workItem = yield* seedWorkItem("policy-retarget-1");
+      const dispatcher = yield* RunDispatcher;
+      const acceptedConfig = makeConfig("/repo", { autonomy: "execute" });
+      const changedConfig = makeConfig("/other-repo", { autonomy: "execute" });
+      policyPublicationConfigs.length = 0;
+
+      const runAttemptId = yield* dispatcher.dispatchWorkItem({
+        ...dispatchAuthority,
+        workItem,
+        issue: makeIssue("policy-retarget-1"),
+        config: acceptedConfig,
+        loadCurrentWorkflowPolicy: () => Effect.succeed(changedConfig),
+      });
+
+      expect(policyPublicationConfigs).toEqual([]);
+      const attempts = yield* RunAttemptRepository;
+      const attempt = yield* attempts.getById(runAttemptId).pipe(Effect.flatMap(required));
+      expect(attempt.status).toBe("failed");
+      expect(attempt.error?.category).toBe("workflow_error");
+      const events = yield* RunEventRepository.pipe(
+        Effect.flatMap((runEvents) => runEvents.listForAttempt(runAttemptId)),
+      );
+      const refusal = events.find((event) => event.eventType === "policy_refresh_failed");
+      expect(String(refusal?.payload?.message)).toContain("target_changed");
+      const workItems = yield* WorkItemRepository;
+      const after = yield* workItems.getById(workItem.id).pipe(Effect.flatMap(required));
+      expect(after.lifecycle).toBe("failed");
     }),
   );
 });
