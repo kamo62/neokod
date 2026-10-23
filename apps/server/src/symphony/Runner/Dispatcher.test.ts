@@ -1533,3 +1533,62 @@ stopLayer(
     }),
   );
 });
+
+layer(scriptedFactory(scriptedAgent(true)))("Dispatcher recovered null identity", (it) => {
+  it.effect("holds a bound recovered attempt with null pid and no local admission evidence", () =>
+    Effect.gen(function* () {
+      const dispatcher = yield* RunDispatcher;
+      const attempts = yield* RunAttemptRepository;
+      const workItems = yield* WorkItemRepository;
+      const runEvents = yield* RunEventRepository;
+
+      for (const withOwnershipFailureEvent of [false, true]) {
+        const suffix = withOwnershipFailureEvent ? "failure-event" : "plain";
+        const workItem = yield* seedWorkItem(`recovered-null-${suffix}`);
+        const ownerToken = `owner-recovered-${suffix}`;
+        const claimed = yield* workItems.claim(workItem.id, ownerToken);
+        const attemptId = RunAttemptId.make(`run-recovered-null-${suffix}`);
+        const startedAt = yield* nowIso;
+        yield* attempts.create({
+          id: attemptId,
+          workItemId: workItem.id,
+          attemptNumber: 1,
+          workspacePath: `/ws/recovered-null-${suffix}`,
+          provider: makeConfig("/repo").agentProvider,
+          status: "streaming_turn",
+          startedAt,
+          finishedAt: null,
+          error: null,
+        });
+        yield* runEvents.append(attemptId, "issue_claimed", {
+          workItemId: String(workItem.id),
+          ownerToken,
+          generation: claimed.generation,
+        });
+        if (withOwnershipFailureEvent) {
+          yield* runEvents.append(attemptId, "ownership_record_failed", {
+            workItemId: String(workItem.id),
+          });
+        }
+
+        stopSignalLog.length = 0;
+        const outcome = yield* dispatcher.cancelRun(attemptId);
+
+        expect(outcome.status).toBe("held");
+        if (outcome.status === "held") {
+          expect(outcome.reason).toBe("identity_missing_for_bound_attempt");
+        }
+        expect(stopSignalLog).toEqual([]);
+        const ownership = yield* workItems.getClaimOwnership(workItem.id);
+        expect(ownership?.ownerToken).toBe(ownerToken);
+        expect(ownership?.generation).toBe(claimed.generation);
+        expect(ownership?.ownerPid ?? null).toBeNull();
+        expect(["preparing", "running"]).toContain(ownership?.lifecycle);
+        const attempt = yield* attempts.getById(attemptId).pipe(Effect.flatMap(required));
+        expect(attempt.status).toBe("streaming_turn");
+        const events = yield* runEvents.listForAttempt(attemptId);
+        expect(events.some((event) => event.eventType === "stop_confirmed")).toBe(false);
+      }
+    }),
+  );
+});

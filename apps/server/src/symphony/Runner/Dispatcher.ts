@@ -344,8 +344,20 @@ export const makeRunDispatcher = Effect.gen(function* () {
   const startingRuns = yield* Ref.make<ReadonlySet<string>>(new Set());
   const ownershipFailures = yield* Ref.make<ReadonlySet<string>>(new Set());
   const spawnedAttempts = yield* Ref.make<ReadonlySet<string>>(new Set());
+  // Positive process-local proof that this dispatcher admitted the attempt.
+  // An empty spawn set after a restart is not proof that no child spawned.
+  const locallyAdmittedAttempts = yield* Ref.make<ReadonlySet<string>>(new Set());
   const isStopping = (runAttemptId: RunAttemptId) =>
     Ref.get(stoppingAttempts).pipe(Effect.map((ids) => ids.has(String(runAttemptId))));
+  const knownNoSpawnFor = (runAttemptId: RunAttemptId): Effect.Effect<boolean> =>
+    Effect.gen(function* () {
+      const key = String(runAttemptId);
+      const admitted = (yield* Ref.get(locallyAdmittedAttempts)).has(key);
+      const spawned = (yield* Ref.get(spawnedAttempts)).has(key);
+      const localFailure = (yield* Ref.get(ownershipFailures)).has(key);
+      const durableFailure = yield* hasOwnershipFailureEvent(runEvents, runAttemptId);
+      return admitted && !spawned && !localFailure && !durableFailure;
+    });
 
   // Source lifecycles the repository's confirmed-Stop CAS accepts. Kept
   // aligned with the historical `cancelled` transition sources.
@@ -558,9 +570,9 @@ export const makeRunDispatcher = Effect.gen(function* () {
           .pipe(Effect.catch(() => Effect.succeed(false)));
         return;
       }
-      const spawnObserved = (yield* Ref.get(spawnedAttempts)).has(String(runAttemptId));
+      const knownNoSpawn = yield* knownNoSpawnFor(runAttemptId);
       const ownership = yield* resolveStopClosure(currentOwnership, {
-        knownNoSpawn: !spawnObserved,
+        knownNoSpawn,
       });
       if (ownership.status === "held") {
         yield* runEvents
@@ -665,6 +677,9 @@ export const makeRunDispatcher = Effect.gen(function* () {
           stage: input.stage,
           message: input.error.message,
         });
+        // This process created the attempt and wrote the exact binding before
+        // any workspace/provider work, so it has positive no-spawn evidence.
+        yield* Ref.update(locallyAdmittedAttempts, (ids) => new Set(ids).add(String(runAttemptId)));
         yield* markFailed(
           runAttemptId,
           input.workItemId,
@@ -833,6 +848,7 @@ export const makeRunDispatcher = Effect.gen(function* () {
             }),
           ),
         );
+      yield* Ref.update(locallyAdmittedAttempts, (ids) => new Set(ids).add(String(runAttemptId)));
       yield* Ref.update(startingRuns, (ids) => {
         const next = new Set(ids);
         next.delete(String(workItemId));
@@ -1029,7 +1045,7 @@ export const makeRunDispatcher = Effect.gen(function* () {
             return runAttemptId;
           }
           const resumeClosure = yield* resolveStopClosure(resumeOwnership, {
-            knownNoSpawn: !(yield* Ref.get(spawnedAttempts)).has(String(runAttemptId)),
+            knownNoSpawn: yield* knownNoSpawnFor(runAttemptId),
           });
           if (resumeClosure.status === "held") {
             yield* runEvents
@@ -1268,9 +1284,9 @@ export const makeRunDispatcher = Effect.gen(function* () {
               // The runtime child is scoped to the outer dispatch scope, so
               // this fiber ending is not proof that the process or its group
               // exited. Preserve unknown ownership instead of queueing it.
-              const spawnObserved = (yield* Ref.get(spawnedAttempts)).has(String(runAttemptId));
+              const knownNoSpawn = yield* knownNoSpawnFor(runAttemptId);
               const ownership = yield* resolveStopClosure(currentOwnership, {
-                knownNoSpawn: !spawnObserved,
+                knownNoSpawn,
               });
               if (ownership.status === "held") {
                 yield* runEvents
@@ -1483,7 +1499,7 @@ export const makeRunDispatcher = Effect.gen(function* () {
             : !claimStoppable
               ? { status: "held", reason: "claim_not_stoppable" }
               : yield* resolveStopClosure(ownershipAfter, {
-                  knownNoSpawn: !(yield* Ref.get(spawnedAttempts)).has(key),
+                  knownNoSpawn: yield* knownNoSpawnFor(runAttemptId),
                 });
 
       if (closure.status === "held") {
