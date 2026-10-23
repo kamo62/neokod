@@ -1,4 +1,5 @@
 import type {
+  AcceptedGuidanceSnapshot,
   EffectiveWorkflowConfig,
   EvidenceBundle,
   NormalizedIssue,
@@ -21,6 +22,7 @@ import { EvidenceService } from "../Evidence/Service.ts";
 import { PullRequestService } from "../Evidence/PullRequest.ts";
 import { SymphonyModelReviewer } from "../Review/ModelReviewer.ts";
 import { ValidationRunner } from "../Validation/Runner.ts";
+import { narrowAcceptedPermissions, resolveAcceptedPermissions } from "./AcceptedGuidance.ts";
 
 /**
  * Execution finalizer (plan 10, WS-L exit).
@@ -42,7 +44,7 @@ import { ValidationRunner } from "../Validation/Runner.ts";
  * `insufficient`, per plan 10 (no generated fallback).
  */
 
-export type FinalizeOutcome = "review_ready" | "validation_failed";
+export type FinalizeOutcome = "review_ready" | "validation_failed" | "delivery_refused";
 
 export class ExecutionFinalizer extends Context.Service<
   ExecutionFinalizer,
@@ -63,6 +65,65 @@ export class ExecutionFinalizer extends Context.Service<
 >()("neokod/symphony/Runner/ExecutionFinalizer") {}
 
 const EVIDENCE_FILE_NAME = "SYMPHONY_EVIDENCE.md";
+
+interface DeliveryGateDecision {
+  readonly required: boolean;
+  readonly reason: string;
+  readonly approvalBeforePush: boolean | null;
+  readonly approvalBeforePullRequest: boolean | null;
+}
+
+/**
+ * Publication is bounded by the persisted accepted permission when one exists,
+ * intersected with the current workflow. Until a durable push/pull-request
+ * approval authority exists, any required gate refuses publication outright:
+ * the finalizer must not push a branch or open a PR on the strength of the
+ * workflow text alone.
+ */
+const resolveDeliveryGate = (
+  config: EffectiveWorkflowConfig,
+  acceptedGuidance: AcceptedGuidanceSnapshot | undefined,
+): DeliveryGateDecision => {
+  const livePermission = resolveAcceptedPermissions(config);
+  const permission =
+    acceptedGuidance === undefined
+      ? { _tag: "narrowed" as const, permission: livePermission }
+      : narrowAcceptedPermissions(acceptedGuidance.permission, livePermission);
+  if (permission._tag === "unrepresentable") {
+    return {
+      required: true,
+      reason:
+        `Publication refused: the accepted and current workflow approval policies cannot be combined ` +
+        `without changing approval requirements (${permission.reason}: accepted ` +
+        `${permission.acceptedApprovalPolicy}, live ${permission.liveApprovalPolicy}).`,
+      approvalBeforePush: null,
+      approvalBeforePullRequest: null,
+    };
+  }
+  const gates = permission.permission.delivery;
+  const pushRequired = gates.approvalBeforePush === true;
+  const pullRequestRequired = gates.approvalBeforePullRequest === true;
+  if (!pushRequired && !pullRequestRequired) {
+    return {
+      required: false,
+      reason: "",
+      approvalBeforePush: gates.approvalBeforePush,
+      approvalBeforePullRequest: gates.approvalBeforePullRequest,
+    };
+  }
+  const requirements = [
+    ...(pushRequired ? ["push"] : []),
+    ...(pullRequestRequired ? ["pull request"] : []),
+  ].join(" and ");
+  return {
+    required: true,
+    reason:
+      `Publication refused: approval before ${requirements} is required, but no durable ` +
+      `push/pull-request approval authority exists. No branch was pushed and no pull request was opened.`,
+    approvalBeforePush: gates.approvalBeforePush,
+    approvalBeforePullRequest: gates.approvalBeforePullRequest,
+  };
+};
 
 export const makeExecutionFinalizer = Effect.gen(function* () {
   const validationRunner = yield* ValidationRunner;
@@ -89,7 +150,7 @@ export const makeExecutionFinalizer = Effect.gen(function* () {
       readonly ownerToken: string;
       readonly generation: number;
     },
-    lifecycle: "retry_scheduled" | "validation_failed" | "ready_for_review",
+    lifecycle: "retry_scheduled" | "validation_failed" | "ready_for_review" | "failed",
   ) =>
     workItems
       .transition(input.workItem.id, lifecycle, {
@@ -248,7 +309,50 @@ export const makeExecutionFinalizer = Effect.gen(function* () {
         });
       }
 
-      // 6. Review-ready: create the PR and persist the bundle. The evidence
+      // 6. Publication gate. The accepted snapshot (when recorded) and the
+      //    live workflow are intersected; a required push/PR approval cannot
+      //    be satisfied by prose, prompt text or a missing durable authority.
+      const deliveryGate = resolveDeliveryGate(input.config, attempt?.acceptedGuidance);
+      if (deliveryGate.required) {
+        yield* evidenceRepository
+          .upsert(input.workItem.id, evidence)
+          .pipe(Effect.catch(() => Effect.void));
+        yield* runAttempts
+          .updateStatus(input.runAttemptId, "workflow_error", {
+            finishedAt: now,
+            error: {
+              category: "workflow_error",
+              message: deliveryGate.reason,
+            },
+          })
+          .pipe(Effect.catch(() => Effect.void));
+        yield* settleLifecycle(input, "failed");
+        yield* appendEvent(input.runAttemptId, "delivery_refused", {
+          reason: deliveryGate.reason,
+          approvalBeforePush: deliveryGate.approvalBeforePush,
+          approvalBeforePullRequest: deliveryGate.approvalBeforePullRequest,
+        });
+        yield* attention
+          .create({
+            id: AttentionItemId.make(
+              `delivery-gated-${String(input.runAttemptId).replace(/[^a-zA-Z0-9._-]/g, "_")}`,
+            ),
+            workItemId: input.workItem.id,
+            runAttemptId: String(input.runAttemptId),
+            kind: "workflow_invalid",
+            severity: "high",
+            whatHappened: deliveryGate.reason,
+            whyHuman:
+              "The workflow requires approval before publication, but Neokod has no durable push or pull-request approval authority. Publishing without it would fabricate consent.",
+            recommendedResponse:
+              "Lower the workflow push/pull-request gate or take over the workspace and publish manually. This attempt did not push or open a pull request.",
+            availableActions: ["take-over", "abandon"],
+          })
+          .pipe(Effect.catch(() => Effect.void));
+        return "delivery_refused" as const;
+      }
+
+      // 7. Review-ready: create the PR and persist the bundle. The evidence
       //    survives a provider failure, but the failure itself must be
       //    durably recorded — a run without a PR and without a recorded
       //    reason is indistinguishable from success in review.
