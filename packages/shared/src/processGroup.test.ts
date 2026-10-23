@@ -8,6 +8,7 @@ import * as NodeChildProcess from "node:child_process";
 
 import {
   captureTerminalOwnership,
+  confirmOwnedProcessClosure,
   confirmOwnedTtyProcessGroup,
   DEFAULT_GROUP_TERM_GRACE_MS,
   discoverOwnedTtyProcessGroups,
@@ -638,6 +639,182 @@ describe("terminateProcessGroup ownership guard", () => {
         confirmOwnership: () => Effect.succeed({ status: "confirmed" } as const),
       });
       expect(outcome).toEqual({ status: "escalated_kill" });
+      expect(yield* Ref.get(calls)).toEqual(["SIGTERM", "SIGKILL"]);
+    }),
+  );
+});
+
+describe("confirmOwnedProcessClosure", () => {
+  const identity = {
+    ownerPid: 9001,
+    ownerPgid: 9001,
+    ownerBirthToken: "born-9001",
+    ownPid: 50,
+    spawnedAtMs: 0,
+  } as const;
+
+  it.effect("reports closed when the claim never recorded an owner process", () =>
+    Effect.gen(function* () {
+      expect(
+        yield* confirmOwnedProcessClosure({ ownerPid: null, ownPid: 50 }, { platform: "linux" }),
+      ).toEqual({ status: "closed", evidence: "no_owner_recorded" });
+    }),
+  );
+
+  it.effect("never signals a bare persisted pid", () =>
+    Effect.gen(function* () {
+      const { signaller, calls } = yield* fakeSignaller({
+        aliveAfterTerm: false,
+        aliveAfterKill: false,
+      });
+      const result = yield* confirmOwnedProcessClosure(
+        { ...identity, ownerPgid: null, ownerBirthToken: null },
+        { signaller, reader: tokenReader({ 9001: "born-9001" }), platform: "linux", graceMs: 1 },
+      );
+      expect(result).toEqual({ status: "held", reason: "unproven_group_identity" });
+      expect(yield* Ref.get(calls)).toEqual([]);
+    }),
+  );
+
+  it.effect("never signals a recycled pid whose birth token differs", () =>
+    Effect.gen(function* () {
+      const { signaller, calls } = yield* fakeSignaller({
+        aliveAfterTerm: false,
+        aliveAfterKill: false,
+      });
+      const result = yield* confirmOwnedProcessClosure(identity, {
+        signaller,
+        reader: tokenReader({ 9001: "replacement-born" }),
+        platform: "linux",
+        graceMs: 1,
+      });
+      expect(result).toEqual({ status: "held", reason: "pid_recycled" });
+      expect(yield* Ref.get(calls)).toEqual([]);
+    }),
+  );
+
+  it.effect("never signals the server's own pid or an unverifiable platform", () =>
+    Effect.gen(function* () {
+      const { signaller, calls } = yield* fakeSignaller({
+        aliveAfterTerm: false,
+        aliveAfterKill: false,
+      });
+      expect(
+        yield* confirmOwnedProcessClosure(
+          { ...identity, ownerPid: 50, ownerPgid: 50 },
+          { signaller, reader: tokenReader({ 50: "born-9001" }), platform: "linux", graceMs: 1 },
+        ),
+      ).toEqual({ status: "held", reason: "owner_is_server" });
+      expect(
+        yield* confirmOwnedProcessClosure(identity, {
+          signaller,
+          reader: tokenReader({ 9001: "born-9001" }),
+          platform: "win32",
+        }),
+      ).toEqual({ status: "held", reason: "unsupported_platform" });
+      expect(yield* Ref.get(calls)).toEqual([]);
+    }),
+  );
+
+  it.live("confirms closure only after the owned group exits", () =>
+    Effect.gen(function* () {
+      const { signaller, calls } = yield* fakeSignaller({
+        aliveAfterTerm: false,
+        aliveAfterKill: false,
+      });
+      const result = yield* confirmOwnedProcessClosure(identity, {
+        signaller,
+        reader: tokenReader({ 9001: "born-9001" }),
+        platform: "linux",
+        graceMs: 1,
+      });
+      expect(result).toEqual({ status: "closed", evidence: "group_terminated" });
+      expect(yield* Ref.get(calls)).toEqual(["SIGTERM"]);
+    }),
+  );
+
+  it.live("preserves uncertainty when the leader exits but the group survives", () =>
+    Effect.gen(function* () {
+      // SIGTERM kills the leader (so the pre-KILL birth check can no longer
+      // confirm identity) while a descendant keeps the group alive. That is
+      // not closure: the escalation must be refused and the claim held.
+      const { signaller, calls } = yield* fakeSignaller({
+        aliveAfterTerm: true,
+        aliveAfterKill: false,
+      });
+      // Alive for the pre-signal checks; gone once the grace window closes.
+      const reads = yield* Ref.make(0);
+      const leaderDiesAfterTerm: ProcessBirthReader = {
+        readBirthToken: () =>
+          Ref.modify(reads, (count) => [
+            count < 2
+              ? ({ kind: "token", token: "born-9001" } as const)
+              : ({ kind: "no_such_process" } as const),
+            count + 1,
+          ]),
+      };
+      const result = yield* confirmOwnedProcessClosure(identity, {
+        signaller,
+        reader: leaderDiesAfterTerm,
+        platform: "linux",
+        graceMs: 1,
+      });
+      expect(result).toEqual({
+        status: "held",
+        reason: "ownership_revoked",
+        detail: "group_missing",
+      });
+      expect(yield* Ref.get(calls)).toEqual(["SIGTERM"]);
+    }),
+  );
+
+  it.effect("holds a live descendant group whose leader is already gone", () =>
+    Effect.gen(function* () {
+      const signalGroup = () => Effect.succeed("no_such_group" as const);
+      const aliveSignaller: ProcessGroupSignaller = {
+        signalGroup,
+        isGroupAlive: () => Effect.succeed(true),
+      };
+      expect(
+        yield* confirmOwnedProcessClosure(identity, {
+          signaller: aliveSignaller,
+          reader: tokenReader({}), // leader gone, group still has members
+          platform: "linux",
+        }),
+      ).toEqual({ status: "held", reason: "leader_gone_descendants_unconfirmed" });
+    }),
+  );
+
+  it.effect("confirms closure when both leader and group are gone", () =>
+    Effect.gen(function* () {
+      const goneSignaller: ProcessGroupSignaller = {
+        signalGroup: () => Effect.succeed("no_such_group"),
+        isGroupAlive: () => Effect.succeed(false),
+      };
+      expect(
+        yield* confirmOwnedProcessClosure(identity, {
+          signaller: goneSignaller,
+          reader: tokenReader({}),
+          platform: "linux",
+        }),
+      ).toEqual({ status: "closed", evidence: "leader_and_group_gone" });
+    }),
+  );
+
+  it.live("holds when the group survives TERM and KILL", () =>
+    Effect.gen(function* () {
+      const { signaller, calls } = yield* fakeSignaller({
+        aliveAfterTerm: true,
+        aliveAfterKill: true,
+      });
+      const result = yield* confirmOwnedProcessClosure(identity, {
+        signaller,
+        reader: tokenReader({ 9001: "born-9001" }),
+        platform: "linux",
+        graceMs: 1,
+      });
+      expect(result.status).toBe("held");
+      if (result.status === "held") expect(result.reason).toBe("termination_failed");
       expect(yield* Ref.get(calls)).toEqual(["SIGTERM", "SIGKILL"]);
     }),
   );

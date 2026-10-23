@@ -125,6 +125,22 @@ export interface WorkItemRepositoryShape {
     to: "queued" | "retry_scheduled",
   ) => Effect.Effect<boolean, SymphonyPersistenceError>;
 
+  /**
+   * Settle a confirmed Stop (plan 16.16 / X-7). Moves a non-terminal item to
+   * `cancelled` and clears the claim in one conditional statement: owner
+   * token, owner pid, owner start time and lease are released, and the
+   * generation is bumped so any lingering worker's fences stop matching.
+   *
+   * Callers must only use this after positive process closure. An unconfirmed
+   * Stop keeps the existing claim/lease held and records durable evidence
+   * instead of calling this. Because the update only matches non-terminal
+   * rows, a retry cannot be scheduled by a racing failure, and a second call
+   * returns false: closure releases once.
+   */
+  readonly releaseConfirmedStop: (
+    id: WorkItemId,
+  ) => Effect.Effect<boolean, SymphonyPersistenceError>;
+
   /** Write queue overrides (exclude / local priority) that survive restart. */
   readonly writeOverrides: (
     id: WorkItemId,

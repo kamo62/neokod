@@ -687,6 +687,29 @@ const makeRepository = Effect.gen(function* () {
       return row.length > 0;
     });
 
+  const releaseConfirmedStop: WorkItemRepositoryShape["releaseConfirmedStop"] = (id) =>
+    Effect.gen(function* () {
+      const now = yield* nowIso;
+      // Only non-terminal rows are claimable by a Stop. `cancelled` is
+      // terminal, so this statement is the release-once guard: the first
+      // confirmed Stop clears the claim and bumps generation, and any later
+      // call (including a racing failure's transition) matches no row.
+      const row = yield* sql<Schema.Schema.Type<typeof WorkItemRowSchema>>`
+        UPDATE symphony_work_items SET
+          lifecycle = 'cancelled',
+          owner_token = NULL,
+          owner_pid = NULL,
+          owner_started_at = NULL,
+          lease_expires_at = NULL,
+          generation = generation + 1,
+          updated_at = ${now}
+        WHERE id = ${id}
+          AND lifecycle NOT IN ('completed', 'cancelled', 'failed')
+        RETURNING ${cols}
+      `.pipe(Effect.mapError(toBusyOrSqlError("WorkItemRepository.releaseConfirmedStop")));
+      return row.length > 0;
+    });
+
   const writeOverrides: WorkItemRepositoryShape["writeOverrides"] = (id, overrides) =>
     Effect.gen(function* () {
       const now = yield* nowIso;
@@ -727,6 +750,7 @@ const makeRepository = Effect.gen(function* () {
     setBaseBranch,
     transition,
     releaseClaim,
+    releaseConfirmedStop,
     writeOverrides,
     refreshTrackerSnapshot,
   } satisfies WorkItemRepositoryShape;
