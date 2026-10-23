@@ -126,6 +126,7 @@ const fakeDispatcher = Layer.effect(
               runAttemptId,
               evidence: "no_owner_recorded" as const,
               released,
+              ...(released ? { releasedGeneration: ownership.generation + 1 } : {}),
             };
           }
           // Legacy fixtures without a claim still exercise the real
@@ -143,6 +144,7 @@ const fakeDispatcher = Layer.effect(
             runAttemptId,
             evidence: "no_owner_recorded" as const,
             released: true,
+            ...(ownership !== null ? { releasedGeneration: ownership.generation } : {}),
           };
         }),
       isAgentActive: () => Effect.succeed(false),

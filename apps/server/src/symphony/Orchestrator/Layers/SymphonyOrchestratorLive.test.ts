@@ -356,12 +356,16 @@ const mockApprovalsLayer = Layer.effect(
         Effect.gen(function* () {
           reconciledDeliveryCalls += 1;
           const rows = yield* repository.listDelivering().pipe(Effect.orElseSucceed(() => []));
+          let reconciled = 0;
+          const failedIds: string[] = [];
           for (const row of rows) {
-            yield* repository
-              .reconcileDelivery(row.id, "interrupted")
-              .pipe(Effect.catch(() => Effect.void));
+            const result = yield* Effect.result(
+              repository.reconcileDelivery(row.id, "interrupted"),
+            );
+            if (result._tag === "Success") reconciled += 1;
+            else failedIds.push(row.id);
           }
-          return rows.length;
+          return { reconciled, failedIds };
         }),
       expireRequest: (runAttemptId, requestId) =>
         repository.listForRun(runAttemptId).pipe(

@@ -51,8 +51,11 @@ import { WorkItemRepository } from "../../Persistence/Services/WorkItemRepositor
 import { OrchestratorStateRepository } from "../../Persistence/Services/OrchestratorStateRepository.ts";
 import { RunAttemptRepository } from "../../Persistence/Services/RunAttemptRepository.ts";
 import { RunEventRepository } from "../../Persistence/Services/RunEventRepository.ts";
-import { ApprovalService } from "../../Runner/ApprovalService.ts";
-import { RunDispatcher } from "../../Runner/Dispatcher.ts";
+import {
+  ApprovalService,
+  type ApprovalReconciliationResult,
+} from "../../Runner/ApprovalService.ts";
+import { RunDispatcher, symphonyAdmissionPlatformRefusal } from "../../Runner/Dispatcher.ts";
 import { EvidenceRepository } from "../../Persistence/Services/EvidenceRepository.ts";
 import { PullRequestService } from "../../Evidence/PullRequest.ts";
 import { changeRequestRepositoryKey } from "../../../sourceControl/ChangeRequestUrl.ts";
@@ -1109,12 +1112,35 @@ const makeOrchestrator = Effect.gen(function* () {
     // interrupted without replay, and preserve their delivery-unknown content.
     // This runs inside authoritative startup recovery before any worker can
     // answer a current request.
-    const reconciledDeliveries = yield* (
-      approvals.reconcileUncertainDeliveries?.() ?? Effect.succeed(0)
-    ).pipe(Effect.catch(() => Effect.succeed(0)));
-    if (reconciledDeliveries > 0) {
-      yield* Effect.logWarning("symphony.approval.delivering_reconciled", {
-        reconciled: reconciledDeliveries,
+    const reconciliation = yield* (
+      approvals.reconcileUncertainDeliveries?.() ??
+      Effect.succeed<ApprovalReconciliationResult>({
+        reconciled: 0,
+        failedIds: [],
+        unavailable: "approval reconciliation is not available in this stack",
+      })
+    ).pipe(
+      Effect.catch(() =>
+        Effect.succeed<ApprovalReconciliationResult>({
+          reconciled: 0,
+          failedIds: [],
+          unavailable: "approval reconciliation failed",
+        }),
+      ),
+    );
+    if (reconciliation.unavailable !== undefined) {
+      yield* Effect.logWarning("symphony.approval.reconcile_unavailable", {
+        detail: reconciliation.unavailable,
+      });
+    }
+    if (reconciliation.failedIds.length > 0) {
+      yield* Effect.logWarning("symphony.approval.reconcile_partial", {
+        reconciled: reconciliation.reconciled,
+        failedIds: reconciliation.failedIds,
+      });
+    } else if (reconciliation.reconciled > 0) {
+      yield* Effect.logWarning("symphony.approval.reconciled", {
+        reconciled: reconciliation.reconciled,
       });
     }
   });
@@ -1685,6 +1711,11 @@ const makeOrchestrator = Effect.gen(function* () {
     // between ticks.
     if (!(yield* Ref.get(holdsLockRef))) {
       return refused("not_leader");
+    }
+    const platformRefusal = symphonyAdmissionPlatformRefusal();
+    if (platformRefusal !== null) {
+      // Shared platform capability gate, applied before acknowledging a start.
+      return refused("not_dispatchable", platformRefusal);
     }
     const item = yield* workItems.getById(WorkItemId.make(workItemId));
     if (item === null) {
