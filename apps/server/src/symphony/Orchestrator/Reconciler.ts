@@ -103,10 +103,17 @@ const resolveOwnerClosure = (
   ownership: ClaimOwnership,
 ): Effect.Effect<
   | ProcessClosureResult
-  | { readonly status: "held"; readonly reason: "claim_unreadable"; readonly detail?: string }
+  | {
+      readonly status: "held";
+      readonly reason: "claim_unreadable" | "identity_missing_for_bound_attempt";
+      readonly detail?: string;
+    }
 > =>
   ownership.ownerPid === null
-    ? Effect.succeed({ status: "closed", evidence: "no_owner_recorded" } as const)
+    ? Effect.succeed({
+        status: "held",
+        reason: "identity_missing_for_bound_attempt",
+      } as const)
     : confirmOwnedProcessClosure(
         {
           ownerPid: ownership.ownerPid,

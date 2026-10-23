@@ -90,7 +90,8 @@ const STALL_WINDOW_MS = 5 * 60_000;
 type RecoveryHoldReason =
   | Extract<ProcessClosureResult, { readonly status: "held" }>["reason"]
   | "claim_changed"
-  | "claim_unreadable";
+  | "claim_unreadable"
+  | "identity_missing_for_bound_attempt";
 
 /**
  * Resolve closure for the owner process recorded on a held claim.
@@ -198,9 +199,13 @@ const resolveOwnerClosure = (
 > =>
   Effect.gen(function* () {
     if (ownership.ownerPid === null) {
-      // No child ownership was recorded on this exact claim. The release
-      // remains fenced by the same snapshot (including a null pid).
-      return { status: "closed", evidence: "no_owner_recorded" } as const;
+      // A bound admitted attempt with no persisted identity is not proof that
+      // no child spawned: the ownership write and its failure marker can both
+      // be lost on restart. Hold rather than release/queue.
+      return {
+        status: "held",
+        reason: "identity_missing_for_bound_attempt",
+      } as const;
     }
     return yield* confirmOwnedProcessClosure(
       {

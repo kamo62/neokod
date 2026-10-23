@@ -317,6 +317,7 @@ export const makeRunDispatcher = Effect.gen(function* () {
   const stoppingAttempts = yield* Ref.make<ReadonlySet<string>>(new Set());
   const startingRuns = yield* Ref.make<ReadonlySet<string>>(new Set());
   const ownershipFailures = yield* Ref.make<ReadonlySet<string>>(new Set());
+  const spawnedAttempts = yield* Ref.make<ReadonlySet<string>>(new Set());
   const isStopping = (runAttemptId: RunAttemptId) =>
     Ref.get(stoppingAttempts).pipe(Effect.map((ids) => ids.has(String(runAttemptId))));
 
@@ -364,22 +365,36 @@ export const makeRunDispatcher = Effect.gen(function* () {
    */
   const resolveStopClosure = (
     ownership: ClaimOwnership | null,
+    options?: { readonly knownNoSpawn?: boolean },
   ): Effect.Effect<
     | ProcessClosureResult
-    | { readonly status: "held"; readonly reason: "claim_unreadable"; readonly detail?: string }
+    | {
+        readonly status: "held";
+        readonly reason: "claim_unreadable" | "identity_missing_for_bound_attempt";
+        readonly detail?: string;
+      }
   > =>
     ownership === null
       ? Effect.succeed({ status: "held", reason: "claim_unreadable" } as const)
-      : confirmOwnedProcessClosure(
-          {
-            ...(ownership.ownerPid === null ? {} : { ownerPid: ownership.ownerPid }),
-            ...(ownership.ownerPgid === null ? {} : { ownerPgid: ownership.ownerPgid }),
-            ...(ownership.ownerBirthToken === null
-              ? {}
-              : { ownerBirthToken: ownership.ownerBirthToken }),
-          },
-          processClosure,
-        );
+      : ownership.ownerPid === null
+        ? options?.knownNoSpawn === true
+          ? Effect.succeed({ status: "closed", evidence: "no_owner_recorded" } as const)
+          : Effect.succeed({
+              status: "held",
+              reason: "identity_missing_for_bound_attempt",
+              detail:
+                "the attempt is bound to this claim but no child identity was persisted; a lost ownership write is not proof that no child spawned",
+            } as const)
+        : confirmOwnedProcessClosure(
+            {
+              ownerPid: ownership.ownerPid,
+              ...(ownership.ownerPgid === null ? {} : { ownerPgid: ownership.ownerPgid }),
+              ...(ownership.ownerBirthToken === null
+                ? {}
+                : { ownerBirthToken: ownership.ownerBirthToken }),
+            },
+            processClosure,
+          );
 
   const makeRunAttemptId = () =>
     crypto.randomUUIDv4.pipe(
@@ -517,7 +532,10 @@ export const makeRunDispatcher = Effect.gen(function* () {
           .pipe(Effect.catch(() => Effect.succeed(false)));
         return;
       }
-      const ownership = yield* resolveStopClosure(currentOwnership);
+      const spawnObserved = (yield* Ref.get(spawnedAttempts)).has(String(runAttemptId));
+      const ownership = yield* resolveStopClosure(currentOwnership, {
+        knownNoSpawn: !spawnObserved,
+      });
       if (ownership.status === "held") {
         yield* runEvents
           .appendOnce(runAttemptId, "failure_hold", {
@@ -810,6 +828,7 @@ export const makeRunDispatcher = Effect.gen(function* () {
       const agent = yield* factory.make(config, {
         onChildSpawned: (pid, identity) =>
           Effect.gen(function* () {
+            yield* Ref.update(spawnedAttempts, (ids) => new Set(ids).add(String(runAttemptId)));
             const recorded = yield* workItems
               .setClaimOwnerProcessIdentity(workItemId, ownerToken, claimed.generation, {
                 pid,
@@ -932,7 +951,9 @@ export const makeRunDispatcher = Effect.gen(function* () {
             });
             return runAttemptId;
           }
-          const resumeClosure = yield* resolveStopClosure(resumeOwnership);
+          const resumeClosure = yield* resolveStopClosure(resumeOwnership, {
+            knownNoSpawn: !(yield* Ref.get(spawnedAttempts)).has(String(runAttemptId)),
+          });
           if (resumeClosure.status === "held") {
             yield* runEvents
               .appendOnce(runAttemptId, "execution_hold", {
@@ -1158,7 +1179,10 @@ export const makeRunDispatcher = Effect.gen(function* () {
               // The runtime child is scoped to the outer dispatch scope, so
               // this fiber ending is not proof that the process or its group
               // exited. Preserve unknown ownership instead of queueing it.
-              const ownership = yield* resolveStopClosure(currentOwnership);
+              const spawnObserved = (yield* Ref.get(spawnedAttempts)).has(String(runAttemptId));
+              const ownership = yield* resolveStopClosure(currentOwnership, {
+                knownNoSpawn: !spawnObserved,
+              });
               if (ownership.status === "held") {
                 yield* runEvents
                   .appendOnce(runAttemptId, "execution_hold", {
@@ -1369,7 +1393,9 @@ export const makeRunDispatcher = Effect.gen(function* () {
             ? { status: "held", reason: "claim_changed" }
             : !claimStoppable
               ? { status: "held", reason: "claim_not_stoppable" }
-              : yield* resolveStopClosure(ownershipAfter);
+              : yield* resolveStopClosure(ownershipAfter, {
+                  knownNoSpawn: !(yield* Ref.get(spawnedAttempts)).has(key),
+                });
 
       if (closure.status === "held") {
         // Unconfirmed closure: retain the claim, lease and lifecycle. The
@@ -1427,9 +1453,6 @@ export const makeRunDispatcher = Effect.gen(function* () {
       const key = String(runAttemptId);
       const active = (yield* Ref.get(activeAgents)).has(key);
       if (active) return true;
-      // A dispatch that has an attempt row but is not registered yet is still
-      // starting; reconciliation must not treat it as an orphan.
-      if ((yield* Ref.get(startingRuns)).has(key)) return true;
       // A Stop whose closure is still unconfirmed keeps the run alive for
       // scheduling purposes: reconciliation must not treat the interrupted
       // fiber's removal from activeAgents as process closure.
