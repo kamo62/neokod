@@ -51,6 +51,7 @@ import {
   type SymphonyWorkRunAction,
 } from "./SymphonyWorkDetail";
 import { dispatchRefusalMessage } from "./dispatchRefusal.logic";
+import { shouldClearWorkRefusal } from "./symphonyWorkRefusal.logic";
 import { ACTIVE_RUN_STATUSES } from "./symphonyRuns.logic";
 import type { WorkFilter } from "./symphonyProjectTabs";
 
@@ -77,54 +78,6 @@ interface RefusalSnapshot {
   readonly projectRevision: number;
   readonly projectStatus: SymphonyProject["status"];
 }
-
-const TERMINAL_REFUSAL_LIFECYCLES: ReadonlySet<WorkLifecycle> = new Set([
-  "completed",
-  "cancelled",
-  "failed",
-]);
-const EXPECTED_REFUSAL_REQUEUE_LIFECYCLES: ReadonlySet<WorkLifecycle> = new Set([
-  "queued",
-  "retry_scheduled",
-  "changes_requested",
-  "validation_failed",
-]);
-
-/**
- * A refusal stays visible through the server's terminal -> queued requeue. A
- * refresh does not clear it; only a policy/attempt change or an authoritative
- * lifecycle outside that expected transition does.
- */
-export const shouldClearWorkRefusal = (input: {
-  readonly priorLifecycle: WorkLifecycle | null;
-  readonly currentLifecycle: WorkLifecycle | null;
-  readonly priorAttemptId: string | null;
-  readonly currentAttemptId: string | null;
-  readonly currentAttemptStartedAt: string | null;
-  readonly recordedAt: string;
-  readonly projectRevisionChanged: boolean;
-  readonly projectStatusChanged: boolean;
-}): boolean => {
-  if (input.projectRevisionChanged || input.projectStatusChanged) return true;
-  if (input.currentAttemptId !== null) {
-    if (input.priorAttemptId !== null) {
-      return input.currentAttemptId !== input.priorAttemptId;
-    }
-    return (
-      input.currentAttemptStartedAt !== null &&
-      new Date(input.currentAttemptStartedAt).getTime() > new Date(input.recordedAt).getTime()
-    );
-  }
-  if (input.currentLifecycle === null) return false;
-  if (
-    input.priorLifecycle !== null &&
-    TERMINAL_REFUSAL_LIFECYCLES.has(input.priorLifecycle) &&
-    EXPECTED_REFUSAL_REQUEUE_LIFECYCLES.has(input.currentLifecycle)
-  ) {
-    return false;
-  }
-  return input.currentLifecycle !== input.priorLifecycle;
-};
 
 const lifecycleOf = (item: SymphonyWorkItemProjection): WorkLifecycle | null =>
   item.lifecycle.phase === "unknown" ? null : item.lifecycle.lifecycle;

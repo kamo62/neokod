@@ -330,8 +330,8 @@ export function SymphonyProjectView({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <header className="border-b px-6 pt-5 sm:px-8">
-        <div className="flex items-start justify-between gap-4 pb-4">
+      <header className="border-b px-6 pt-8 sm:px-8 sm:pt-5">
+        <div className="flex flex-col gap-3 pb-4 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
           <div className="min-w-0">
             <Button
               size="sm"
@@ -373,7 +373,7 @@ export function SymphonyProjectView({
               </span>
             </div>
           </div>
-          <div className="flex gap-2">
+          <div className="flex shrink-0 flex-wrap justify-start gap-2 sm:justify-end">
             <Button size="sm" variant="ghost" onClick={boardQuery.refresh}>
               <RefreshCwIcon className="size-3.5" />
               Refresh
