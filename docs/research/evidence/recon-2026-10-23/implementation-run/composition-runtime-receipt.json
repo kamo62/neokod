@@ -1,0 +1,20 @@
+{
+  "source": "4f1b5f5bca75b081e664ed8f8fea13f95f22a806",
+  "time": "2026-10-23T22:12:23.962093+00:00",
+  "sourceBackendAndViteStarted": true,
+  "syntheticPausedFixtureOnly": true,
+  "browserOutcome": "macOS locked; final composition Chrome reload unavailable; earlier accepted UI Chrome captures have narrower source scope",
+  "taskOwnedProcessesStopped": [
+    {
+      "pid": 10816,
+      "args": "node apps/server/src/bin.ts serve --mode web --host 127.0.0.1 --port 24773 --base-dir /tmp/neokod-implementation-2026-10-23/runtime --dev-url http://127.0.0.1:16733 --no-browser",
+      "cwd": "p10816\nfcwd\nn/Users/kamogelo/.codex/worktrees/neokod-core-execution/t3code\n"
+    },
+    {
+      "pid": 10842,
+      "args": "/tmp/neokod-core-symphony-2026-10-21/node-v24.22.1-darwin-arm64/bin/node /Users/kamogelo/.codex/worktrees/neokod-core-execution/t3code/node_modules/.pnpm/@voidzero-dev+vite-plus-core@0.2.2_@types+node@24.12.4_esbuild@0.28.1_jiti@2.7.0_terser_9ee31ae90aa32dad556c960eb1521494/node_modules/@voidzero-dev/vite-plus-core/dist/vite/node/cli.js dev --config /tmp/neokod-implementation-2026-10-23/runtime-composition-vite.config.mts --configLoader native",
+      "cwd": "p10842\nfcwd\nn/Users/kamogelo/.codex/worktrees/neokod-core-execution/t3code/apps/web\n"
+    }
+  ],
+  "noBuildInstallDeploy": true
+}

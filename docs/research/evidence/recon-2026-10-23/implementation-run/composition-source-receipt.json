@@ -1,0 +1,25 @@
+{
+  "source": "4f1b5f5bca75b081e664ed8f8fea13f95f22a806",
+  "guidanceAcceptedHead": "6e439d91b2423eff97eb4a41ec070515ca7a0c5a",
+  "uiAcceptedHead": "daf6cfb55748f9d4f006a38421b258ed80054e86",
+  "backendDifferencePaths": [
+    "apps/server/src/provider/Layers/CodexAdapter.test.ts",
+    "apps/server/src/provider/Layers/CodexAdapter.ts",
+    "apps/server/src/symphony/Runner/ApprovalService.test.ts"
+  ],
+  "backendDifferenceReason": "Already-landed S6 plus separately dual-accepted feedback41 publication-interruption regression; other backend/shared/contract files byte-equal to accepted guidance composition",
+  "uiDifferencePaths": [
+    "apps/web/src/components/symphony/attention.logic.test.ts",
+    "apps/web/src/components/symphony/attention.logic.ts"
+  ],
+  "uiDifferenceReason": "Separately dual-accepted feedback contract/presentation correction; remaining UI scope byte-equal to accepted UI source",
+  "cherryPickConflicts": false,
+  "initialFocusedTests": {
+    "server": 359,
+    "web": 104,
+    "sharedAndContracts": 72,
+    "total": 535
+  },
+  "platformLintCorrection": "6e439d91b dual native ACCEPT; integrated14df4db59",
+  "finalSource": "14df4db59"
+}

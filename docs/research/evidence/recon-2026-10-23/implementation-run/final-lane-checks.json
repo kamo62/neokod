@@ -22,16 +22,21 @@
         "focused7files": 161,
         "serverNoEmit": 0
       },
-      "review": "both requested recovered Stop correction; superseded by guidance03939b278"
+      "review": "Stop correction03939b278 source accepted by both native final guidance reviews; integrated"
     },
     "guidance": {
-      "head": "6fb57d562",
+      "head": "6e439d91b2423eff97eb4a41ec070515ca7a0c5a",
       "reportedChecks": {
-        "focused9files": 200,
-        "postCommit4files": 146,
+        "focused9files": 203,
+        "postCommit4files": 149,
         "serverNoEmit": 0
       },
-      "review": "final native Sol/Opus running"
+      "review": "native Sol and onboard first-party Opus ACCEPT69a712335 and bounded platform correction6e439d91b",
+      "postCorrectionChecks": {
+        "focused4files": 163,
+        "serverNoEmit": 0,
+        "sharedNoEmit": 0
+      }
     },
     "ui": {
       "head": "daf6cfb55748f9d4f006a38421b258ed80054e86",

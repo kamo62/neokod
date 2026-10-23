@@ -1,0 +1,12 @@
+{
+  "head": "69a712335fa96d9f746a325a27dc186f6a5e3b3d",
+  "status": "",
+  "exit": {
+    "exitCode": 0,
+    "head": "69a712335fa96d9f746a325a27dc186f6a5e3b3d"
+  },
+  "model": "gpt-6.1-sol",
+  "effort": "high",
+  "route": "native codex exec",
+  "verdict": "ACCEPT"
+}

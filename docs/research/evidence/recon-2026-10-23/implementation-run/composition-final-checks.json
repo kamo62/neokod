@@ -1,0 +1,43 @@
+{
+  "head": "14df4db593a0cde408fc3294f481bca9cd3f183c",
+  "time": "2026-10-23T22:16:29.201339+00:00",
+  "results": [
+    {
+      "name": "affected",
+      "command": [
+        "vp",
+        "test",
+        "run",
+        "packages/shared/src/processGroup.test.ts",
+        "apps/server/src/symphony/Runner/Dispatcher.test.ts",
+        "apps/server/src/symphony/Orchestrator/Layers/SymphonyOrchestratorLive.test.ts",
+        "apps/server/src/symphony/Runner/ExecutionFinalizer.test.ts"
+      ],
+      "exitCode": 0
+    },
+    {
+      "name": "vp-check",
+      "command": ["vp", "check"],
+      "exitCode": 0
+    },
+    {
+      "name": "typecheck",
+      "command": ["vp", "run", "typecheck"],
+      "exitCode": 0
+    }
+  ],
+  "reusedUnchangedEvidence": "Initial535 combined tests; only final platform correction affected4files rerun here",
+  "noBuildInstallPackageDeploy": true,
+  "testCounts": {
+    "initialCombined": 535,
+    "server": 359,
+    "web": 104,
+    "sharedContracts": 72,
+    "affectedAfterCorrection": 163
+  },
+  "vpCheck": {
+    "errors": 0,
+    "warnings": 54
+  },
+  "typecheckPackages": 10
+}
