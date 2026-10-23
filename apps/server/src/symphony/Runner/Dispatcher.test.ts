@@ -14,6 +14,7 @@ import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
 import * as TestClock from "effect/testing/TestClock";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import { deriveWorkspaceKey } from "../Domain/Keys.ts";
 import { nowIso } from "../Domain/Time.ts";
@@ -35,7 +36,9 @@ import {
   RunDispatchError,
   RunDispatcher,
   RunDispatcherLive,
+  RunDispatcherProcessClosure,
 } from "./Dispatcher.ts";
+import type { WorkItemRepositoryShape } from "../Persistence/Services/WorkItemRepository.ts";
 import { ExecutionFinalizer, type FinalizeOutcome } from "./ExecutionFinalizer.ts";
 import { AgentRuntimeSpawnError, type AgentRuntimeService } from "./AgentRuntime.ts";
 
@@ -641,6 +644,234 @@ layer(failingCancelFactory)("Dispatcher cancel race", (it) => {
       const after = yield* workItems.getById(workItem.id).pipe(Effect.flatMap(required));
       expect(after.lifecycle).not.toBe("retry_scheduled");
       expect(after.lifecycle).toBe("cancelled");
+    }),
+  );
+});
+
+/**
+ * Decorate the real repository so a test can expose the persisted owner group
+ * id and birth token that the current database schema does not store yet.
+ * Claim, release and event writes still go through the real SQLite layer.
+ */
+const decoratedWorkItems = (
+  identities: ReadonlyMap<
+    string,
+    Partial<Pick<WorkItem, "ownerPid" | "ownerPgid" | "ownerBirthToken">>
+  >,
+) =>
+  Layer.effect(
+    WorkItemRepository,
+    WorkItemRepository.pipe(
+      Effect.map((base): WorkItemRepositoryShape => {
+        const decorate = (item: WorkItem): WorkItem => ({
+          ...item,
+          ...(identities.get(String(item.id)) ?? {}),
+        });
+        return {
+          ...base,
+          listByLifecycle: (lifecycles, options) =>
+            base
+              .listByLifecycle(lifecycles, options)
+              .pipe(Effect.map((items) => items.map(decorate))),
+          getById: (id) =>
+            base.getById(id).pipe(Effect.map((item) => (item === null ? null : decorate(item)))),
+        };
+      }),
+    ),
+  ).pipe(Layer.provide(WorkItemRepositoryLive));
+
+const stopSignalLog: Array<{ readonly pgid: number; readonly signal: NodeJS.Signals }> = [];
+const stopSignaller = {
+  signalGroup: (pgid: number, signal: NodeJS.Signals) =>
+    Effect.sync(() => {
+      stopSignalLog.push({ pgid, signal });
+      return "sent" as const;
+    }),
+  isGroupAlive: () => Effect.succeed(false),
+};
+
+/** Agent that records the child pid, then blocks until interrupted. */
+const stopBlockableFactory = (pid: number) =>
+  Layer.effect(
+    AgentRuntimeFactory,
+    Effect.gen(function* () {
+      const releaseRef = yield* Ref.make<(() => Effect.Effect<void>) | null>(null);
+      return {
+        make: (_config: EffectiveWorkflowConfig, options) =>
+          Effect.gen(function* () {
+            const d = yield* Deferred.make<void, AgentRuntimeSpawnError>();
+            yield* Ref.set(releaseRef, () =>
+              Deferred.fail(d, new AgentRuntimeSpawnError("interrupted")).pipe(Effect.asVoid),
+            );
+            yield* options?.onChildSpawned?.(pid) ?? Effect.void;
+            return {
+              runTurn: () =>
+                Deferred.await(d).pipe(
+                  Effect.interruptible,
+                  Effect.as({ turnId: "t1", threadId: "th1", completed: false }),
+                ),
+              interrupt: () =>
+                Ref.get(releaseRef).pipe(
+                  Effect.flatMap((release) =>
+                    release === null
+                      ? Effect.void
+                      : release().pipe(Effect.orElseSucceed(() => undefined)),
+                  ),
+                ),
+              pid: () => Effect.succeed(pid),
+            } satisfies AgentRuntimeService;
+          }),
+      };
+    }),
+  );
+
+const stopLayer = (
+  workItems: Layer.Layer<WorkItemRepository, never, SqlClient.SqlClient>,
+  pid: number,
+) =>
+  it.layer(
+    RunDispatcherLive.pipe(
+      Layer.provideMerge(workItems),
+      Layer.provideMerge(RunAttemptRepositoryLive),
+      Layer.provideMerge(RunEventRepositoryLive),
+      Layer.provideMerge(ApprovalRepositoryLive),
+      Layer.provideMerge(LiveRequestsLive),
+      Layer.provideMerge(fakeWorkspaceManager),
+      Layer.provideMerge(fakeFinalizer),
+      Layer.provideMerge(stopBlockableFactory(pid)),
+      Layer.provideMerge(
+        Layer.succeed(RunDispatcherProcessClosure, {
+          reader: {
+            readBirthToken: (candidate) =>
+              Effect.succeed(
+                candidate === pid
+                  ? ({ kind: "token", token: `born-${pid}` } as const)
+                  : ({ kind: "no_such_process" } as const),
+              ),
+          },
+          signaller: stopSignaller,
+          platform: "linux",
+          graceMs: 1,
+        }),
+      ),
+      Layer.provideMerge(
+        Layer.succeed(ServerConfig, {
+          symphonyLogsDir: "/logs/symphony",
+        } as ServerConfig["Service"]),
+      ),
+      Layer.provideMerge(SqlitePersistenceMemory),
+      Layer.provideMerge(NodeServices.layer),
+    ),
+  );
+
+const waitForCancelableAttempt = (workItemId: WorkItemId) =>
+  Effect.gen(function* () {
+    const attempts = yield* RunAttemptRepository;
+    for (let i = 0; i < 100; i++) {
+      const list = yield* attempts.listByWorkItem(workItemId);
+      if (list[0] !== undefined) return list[0].id;
+      yield* TestClock.adjust("10 millis");
+    }
+    const workItems = yield* WorkItemRepository;
+    const item = yield* workItems.getById(workItemId);
+    return yield* Effect.fail(
+      new TestAssertionError(`dispatch never started; lifecycle=${String(item?.lifecycle)}`),
+    );
+  });
+
+stopLayer(decoratedWorkItems(new Map()), 22001)(
+  "Dispatcher stop with an unverifiable legacy owner",
+  (it) => {
+    it.effect("retains the claim and never retries an unconfirmed Stop", () =>
+      Effect.gen(function* () {
+        stopSignalLog.length = 0;
+        const workItem = yield* seedWorkItem("stop-legacy-1");
+        const dispatcher = yield* RunDispatcher;
+        const fiber = yield* Effect.forkScoped(
+          dispatcher.dispatchWorkItem({
+            workItem,
+            issue: makeIssue("stop-legacy-1"),
+            config: makeConfig("/repo"),
+          }),
+        );
+        const runAttemptId = yield* waitForCancelableAttempt(workItem.id);
+        yield* dispatcher.cancelRun(runAttemptId);
+        yield* Fiber.await(fiber).pipe(Effect.catch(() => Effect.void));
+
+        expect(stopSignalLog).toEqual([]);
+        const workItems = yield* WorkItemRepository;
+        const after = yield* workItems.getById(workItem.id).pipe(Effect.flatMap(required));
+        // The held lifecycle is whichever active phase the Stop interrupted:
+        // never a terminal state and never a retry.
+        expect(["preparing", "running"]).toContain(after.lifecycle);
+        expect(after.ownerPid).toBe(22001);
+
+        const attempts = yield* RunAttemptRepository;
+        const attempt = yield* attempts.getById(runAttemptId).pipe(Effect.flatMap(required));
+        // Stop is not closure: the attempt must not claim a terminal stop.
+        expect([
+          "preparing_workspace",
+          "building_prompt",
+          "launching_agent",
+          "streaming_turn",
+        ]).toContain(attempt.status);
+
+        const runEvents = yield* RunEventRepository;
+        const events = yield* runEvents.listForAttempt(runAttemptId);
+        expect(events.some((event) => event.eventType === "stop_unconfirmed")).toBe(true);
+        expect(events.some((event) => event.eventType === "retry_scheduled")).toBe(false);
+        expect(after.lifecycle).not.toBe("retry_scheduled");
+      }),
+    );
+  },
+);
+
+stopLayer(
+  decoratedWorkItems(
+    new Map([
+      [
+        String(WorkItemId.make("stop-confirmed-1")),
+        { ownerPgid: 22002, ownerBirthToken: "born-22002" },
+      ],
+    ]),
+  ),
+  22002,
+)("Dispatcher stop with a confirmed owner group", (it) => {
+  it.effect("terminates once and releases the claim once after closure", () =>
+    Effect.gen(function* () {
+      stopSignalLog.length = 0;
+      const workItem = yield* seedWorkItem("stop-confirmed-1");
+      const dispatcher = yield* RunDispatcher;
+      const fiber = yield* Effect.forkScoped(
+        dispatcher.dispatchWorkItem({
+          workItem,
+          issue: makeIssue("stop-confirmed-1"),
+          config: makeConfig("/repo"),
+        }),
+      );
+      const runAttemptId = yield* waitForCancelableAttempt(workItem.id);
+      yield* dispatcher.cancelRun(runAttemptId);
+      yield* Fiber.await(fiber).pipe(Effect.catch(() => Effect.void));
+
+      expect(stopSignalLog).toEqual([{ pgid: 22002, signal: "SIGTERM" }]);
+      const workItems = yield* WorkItemRepository;
+      const after = yield* workItems.getById(workItem.id).pipe(Effect.flatMap(required));
+      expect(after.lifecycle).toBe("cancelled");
+      expect(after.ownerPid ?? null).toBeNull();
+
+      const attempts = yield* RunAttemptRepository;
+      const attempt = yield* attempts.getById(runAttemptId).pipe(Effect.flatMap(required));
+      expect(attempt.status).toBe("user_cancelled");
+      expect(attempt.finishedAt).not.toBeNull();
+
+      const runEvents = yield* RunEventRepository;
+      const events = yield* runEvents.listForAttempt(runAttemptId);
+      expect(events.some((event) => event.eventType === "stop_confirmed")).toBe(true);
+
+      // A later Stop cannot signal again, and the claim stays released.
+      yield* dispatcher.cancelRun(runAttemptId);
+      expect(stopSignalLog).toEqual([{ pgid: 22002, signal: "SIGTERM" }]);
+      expect((yield* workItems.getById(workItem.id))?.lifecycle).toBe("cancelled");
     }),
   );
 });

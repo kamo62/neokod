@@ -437,6 +437,46 @@ layer("WorkItemRepository claim authority", (it) => {
   );
 });
 
+layer("WorkItemRepository confirmed Stop", (it) => {
+  it.effect("cancels and clears the claim once, preventing a racing retry", () =>
+    Effect.gen(function* () {
+      const repo = yield* WorkItemRepository;
+      const id = yield* seed("stop-1", "stop-1");
+      const { generation } = yield* repo.claim(id, "owner-a");
+      yield* repo.setClaimOwnerPid(id, "owner-a", generation, 4321);
+
+      const released = yield* repo.releaseConfirmedStop(id);
+      expect(released).toBe(true);
+
+      const after = yield* repo.getById(id);
+      expect(after?.lifecycle).toBe("cancelled");
+      // Releasing the claim removes the recorded child identity, not just the token.
+      expect(after?.ownerPid ?? null).toBeNull();
+
+      // A failure that races the stop can no longer schedule a retry: the
+      // owner fence is gone and the terminal lifecycle is not a legal source.
+      const retried = yield* repo.transition(id, "retry_scheduled", {
+        ownerToken: "owner-a",
+        generation,
+      });
+      expect(retried).toBe(false);
+
+      // Confirmed closure releases exactly once.
+      expect(yield* repo.releaseConfirmedStop(id)).toBe(false);
+      expect((yield* repo.getById(id))?.lifecycle).toBe("cancelled");
+    }),
+  );
+
+  it.effect("does not re-release an already terminal item", () =>
+    Effect.gen(function* () {
+      const repo = yield* WorkItemRepository;
+      const id = yield* seed("stop-2", "stop-2", "failed");
+      expect(yield* repo.releaseConfirmedStop(id)).toBe(false);
+      expect((yield* repo.getById(id))?.lifecycle).toBe("failed");
+    }),
+  );
+});
+
 layer("WorkItemRepository lifecycle legality (plan section 19 suite 6)", (it) => {
   it.effect("a from-restricted transition succeeds from a matching lifecycle", () =>
     Effect.gen(function* () {

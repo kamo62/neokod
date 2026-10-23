@@ -5,8 +5,14 @@ import type {
   WorkItemId,
 } from "@neokod/contracts";
 import { RunAttemptId } from "@neokod/contracts";
+import {
+  confirmOwnedProcessClosure,
+  type ProcessClosureDeps,
+  type ProcessClosureResult,
+} from "@neokod/shared/processGroup";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
@@ -105,6 +111,20 @@ export class AgentRuntimeFactory extends Context.Service<
   }
 >()("neokod/symphony/Runner/Dispatcher/AgentRuntimeFactory") {}
 
+/**
+ * Process-identity readers/signallers used to resolve a confirmed Stop. The
+ * production default reads the live POSIX process table and terminates a
+ * validated owned group; tests inject fake readers/signallers so checks never
+ * signal a real process. The seam is optional so existing layers keep working.
+ */
+export class RunDispatcherProcessClosure extends Context.Service<
+  RunDispatcherProcessClosure,
+  ProcessClosureDeps
+>()("neokod/symphony/Runner/Dispatcher/RunDispatcherProcessClosure") {}
+
+/** How long a Stop waits for the interrupted dispatch fiber to exit. */
+const STOP_FIBER_EXIT_TIMEOUT = Duration.seconds(5);
+
 export const makeRunDispatcher = Effect.gen(function* () {
   const crypto = yield* Crypto.Crypto;
   const workItems = yield* WorkItemRepository;
@@ -114,6 +134,10 @@ export const makeRunDispatcher = Effect.gen(function* () {
   const factory = yield* AgentRuntimeFactory;
   const liveRequests = yield* LiveRequests;
   const finalizer = yield* ExecutionFinalizer;
+  const maybeProcessClosure = yield* Effect.serviceOption(RunDispatcherProcessClosure);
+  const processClosure: ProcessClosureDeps = Option.isSome(maybeProcessClosure)
+    ? maybeProcessClosure.value
+    : {};
 
   // Live agents per run attempt plus the dispatch fiber, so cancellation can
   // interrupt the active turn AND the fiber driving it (plan 8.3.1; REVIEW P0
@@ -124,6 +148,13 @@ export const makeRunDispatcher = Effect.gen(function* () {
       { readonly agent: AgentRuntimeService; readonly fiber: Fiber.Fiber<unknown, unknown> }
     >
   >(new Map());
+
+  // Attempts with a Stop in progress. The marker is written before the turn
+  // and fiber are interrupted, so a failure path that is already unwinding
+  // cannot turn the Stop into a retry. It is removed when the Stop settles.
+  const stoppingAttempts = yield* Ref.make<ReadonlySet<string>>(new Set());
+  const isStopping = (runAttemptId: RunAttemptId) =>
+    Ref.get(stoppingAttempts).pipe(Effect.map((ids) => ids.has(String(runAttemptId))));
 
   const makeRunAttemptId = () =>
     crypto.randomUUIDv4.pipe(
@@ -194,6 +225,11 @@ export const makeRunDispatcher = Effect.gen(function* () {
     maxAttempts: number,
   ) =>
     Effect.gen(function* () {
+      // A Stop owns this attempt from the moment its marker is set. A failure
+      // unwinding concurrently must not mark it failed or schedule a retry.
+      if (yield* isStopping(runAttemptId)) {
+        return;
+      }
       const attempt = yield* runAttempts
         .getById(runAttemptId)
         .pipe(Effect.catch(() => Effect.succeed(null)));
@@ -212,6 +248,11 @@ export const makeRunDispatcher = Effect.gen(function* () {
             error,
           })
           .pipe(Effect.catch(() => Effect.void));
+      }
+      // Re-read the marker after the status write: the transition below is the
+      // point of no return for a retry.
+      if (yield* isStopping(runAttemptId)) {
+        return;
       }
       const retryable = retryableFromAttempt(attempt, error.category, maxAttempts);
       if (retryable) {
@@ -619,6 +660,13 @@ export const makeRunDispatcher = Effect.gen(function* () {
               yield* liveRequests
                 .settleRun(runAttemptId, "run finished")
                 .pipe(Effect.catch(() => Effect.void));
+              // A Stop owns the attempt's terminal status and the claim's
+              // release. The fallback `interrupted` write and the unconditional
+              // release below are only for runs that ended on their own; running
+              // them under a Stop was how an unconfirmed stop became a retry.
+              if (yield* isStopping(runAttemptId)) {
+                return;
+              }
               const attempt = yield* runAttempts
                 .getById(runAttemptId)
                 .pipe(Effect.catch(() => Effect.succeed(null)));
@@ -650,31 +698,61 @@ export const makeRunDispatcher = Effect.gen(function* () {
       return yield* Fiber.join(fiber).pipe(Effect.catch(() => Effect.succeed(runAttemptId)));
     });
 
+  /**
+   * Resolve closure for the owner process recorded on the claim. `interrupt()`
+   * is a request acknowledgement, not proof the child process or its group
+   * exited, so a Stop only becomes terminal after this returns `closed`.
+   */
+  const resolveStopClosure = (
+    workItem: WorkItem | null,
+  ): Effect.Effect<
+    | ProcessClosureResult
+    | { readonly status: "held"; readonly reason: "claim_unreadable"; readonly detail?: string }
+  > =>
+    workItem === null
+      ? Effect.succeed({ status: "held", reason: "claim_unreadable" } as const)
+      : confirmOwnedProcessClosure(
+          {
+            ...(workItem.ownerPid === undefined ? {} : { ownerPid: workItem.ownerPid }),
+            ...(workItem.ownerPgid === undefined ? {} : { ownerPgid: workItem.ownerPgid }),
+            ...(workItem.ownerBirthToken === undefined
+              ? {}
+              : { ownerBirthToken: workItem.ownerBirthToken }),
+          },
+          processClosure,
+        );
+
   const cancelAttempt = (runAttemptId: RunAttemptId, eventPayload: Record<string, unknown>) =>
     Effect.gen(function* () {
+      const key = String(runAttemptId);
+      // One Stop per attempt. The marker is set before any interruption so a
+      // concurrently unwinding failure sees it and cannot schedule a retry.
+      const alreadyStopping = yield* Ref.modify(stoppingAttempts, (ids) =>
+        ids.has(key) ? ([true, ids] as const) : ([false, new Set(ids).add(key)] as const),
+      );
+      if (alreadyStopping) {
+        return;
+      }
+
       const attempt = yield* runAttempts
         .getById(runAttemptId)
         .pipe(Effect.catch(() => Effect.succeed(null)));
-      // 1. Persist the cancellation BEFORE interrupting anything. Every failure path then sees a
-      //    terminal attempt (markFailed returns early, the ensuring block skips its `interrupted`
-      //    write) and the item is already `cancelled` when the ensuring block releases the claim.
-      yield* runAttempts
-        .updateStatus(runAttemptId, "user_cancelled", { finishedAt: yield* nowIso })
-        .pipe(Effect.catch(() => Effect.void));
-      yield* appendEvent(runAttemptId, "user_cancelled", eventPayload);
-      if (attempt !== null) {
-        const latest = yield* runAttempts
-          .latestForWorkItem(attempt.workItemId)
-          .pipe(Effect.catch(() => Effect.succeed(null)));
-        if (latest !== null && latest.id === runAttemptId) {
-          // Unfenced (the canceller is not the claim owner) and bounded by the legality table.
-          yield* workItems
-            .transition(attempt.workItemId, "cancelled")
-            .pipe(Effect.catch(() => Effect.void));
-        }
-      }
-      // 2. Then stop the live run.
-      const registered = (yield* Ref.get(activeAgents)).get(String(runAttemptId));
+      const workItem =
+        attempt === null
+          ? null
+          : yield* workItems
+              .getById(attempt.workItemId)
+              .pipe(Effect.catch(() => Effect.succeed(null)));
+      yield* appendEvent(runAttemptId, "stop_requested", {
+        ...eventPayload,
+        workItemId: attempt === null ? null : String(attempt.workItemId),
+        ownerPid: workItem?.ownerPid ?? null,
+      });
+
+      // Stop the live run before deciding closure: interrupting the fiber is
+      // what ends our tracking, and the closure check below must observe the
+      // process after that point.
+      const registered = (yield* Ref.get(activeAgents)).get(key);
       if (registered !== undefined) {
         // Interrupt the dispatch fiber FIRST (fix-lane item 6): awaiting
         // agent.interrupt() before the fiber interrupt gave markFailed a
@@ -683,7 +761,80 @@ export const makeRunDispatcher = Effect.gen(function* () {
         // interruption cause as an error.
         registered.fiber.interruptUnsafe();
         yield* registered.agent.interrupt().pipe(Effect.catch(() => Effect.void));
+        yield* Fiber.await(registered.fiber).pipe(
+          Effect.timeoutOption(STOP_FIBER_EXIT_TIMEOUT),
+          Effect.catch(() => Effect.succeed(Option.none())),
+          Effect.asVoid,
+        );
       }
+
+      const closure = yield* resolveStopClosure(workItem);
+
+      if (closure.status === "closed") {
+        // Positive closure (or no process was ever recorded): the Stop may
+        // settle once. `releaseConfirmedStop` clears the claim and cancels in
+        // one conditional statement, so a racing failure cannot retry after it.
+        yield* runAttempts
+          .updateStatus(runAttemptId, "user_cancelled", { finishedAt: yield* nowIso })
+          .pipe(Effect.catch(() => Effect.void));
+        const settled = yield* runAttempts
+          .getById(runAttemptId)
+          .pipe(Effect.catch(() => Effect.succeed(null)));
+        const released =
+          attempt === null
+            ? false
+            : yield* workItems
+                .releaseConfirmedStop(attempt.workItemId)
+                .pipe(Effect.catch(() => Effect.succeed(false)));
+        yield* appendEvent(runAttemptId, "stop_confirmed", {
+          ...eventPayload,
+          workItemId: attempt === null ? null : String(attempt.workItemId),
+          closure: closure.evidence,
+          released,
+        });
+        if (settled?.status === "user_cancelled") {
+          yield* appendEvent(runAttemptId, "user_cancelled", eventPayload);
+        }
+        yield* Ref.update(stoppingAttempts, (ids) => {
+          const next = new Set(ids);
+          next.delete(key);
+          return next;
+        });
+      } else {
+        // Unconfirmed closure: retain the claim, lease and lifecycle. The
+        // attempt keeps its non-terminal status and the marker stays set, so
+        // no failure path can convert this Stop into a retry.
+        yield* appendEvent(runAttemptId, "stop_unconfirmed", {
+          ...eventPayload,
+          workItemId: attempt === null ? null : String(attempt.workItemId),
+          reason: closure.reason,
+          ...(closure.detail === undefined ? {} : { detail: closure.detail }),
+          ownerPid: workItem?.ownerPid ?? null,
+        });
+        if (attempt !== null) {
+          const current = yield* workItems
+            .getById(attempt.workItemId)
+            .pipe(Effect.catch(() => Effect.succeed(null)));
+          if (
+            current !== null &&
+            (current.lifecycle === "queued" || current.lifecycle === "retry_scheduled")
+          ) {
+            // A failure won the transition before the marker landed and already
+            // released the claim. Block re-dispatch; the lost identity is
+            // recorded rather than guessed, so closure stays unconfirmed.
+            const blocked = yield* workItems
+              .transition(attempt.workItemId, "blocked", { from: [current.lifecycle] })
+              .pipe(Effect.catch(() => Effect.succeed(false)));
+            if (blocked) {
+              yield* appendEvent(runAttemptId, "stop_unconfirmed", {
+                workItemId: String(attempt.workItemId),
+                reason: "claim_released_before_stop",
+              });
+            }
+          }
+        }
+      }
+
       yield* liveRequests
         .settleRun(runAttemptId, "user cancelled")
         .pipe(Effect.catch(() => Effect.void));
