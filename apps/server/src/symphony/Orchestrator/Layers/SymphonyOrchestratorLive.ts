@@ -4,6 +4,7 @@ import type {
   ApprovalRequestKind,
   EffectiveWorkflowConfig,
   EvidenceBundle,
+  IsoDateTime,
   NormalizedIssue,
   PullRequestEvidence,
   QueueItem,
@@ -279,6 +280,8 @@ interface PreparedDispatch {
   readonly item: WorkItem;
   readonly issue: NormalizedIssue;
   readonly config: EffectiveWorkflowConfig;
+  readonly workflowId: WorkflowId;
+  readonly workflowRevision: IsoDateTime;
   readonly reviewFeedback?: ReviewFeedbackContext;
   readonly workflowInstructions?: string;
 }
@@ -1829,6 +1832,8 @@ const makeOrchestrator = Effect.gen(function* () {
       item,
       issue,
       config,
+      workflowId: workflow.id,
+      workflowRevision: workflow.updatedAt,
       ...(workflowInstructions.length > 0 ? { workflowInstructions } : {}),
       ...(reviewFeedback !== undefined ? { reviewFeedback } : {}),
     };
@@ -1865,6 +1870,8 @@ const makeOrchestrator = Effect.gen(function* () {
           workItem: prepared.item,
           issue: prepared.issue,
           config: prepared.config,
+          workflowId: prepared.workflowId,
+          workflowRevision: prepared.workflowRevision,
           ...(prepared.workflowInstructions !== undefined
             ? { workflowInstructions: prepared.workflowInstructions }
             : {}),

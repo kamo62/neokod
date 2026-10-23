@@ -5,7 +5,7 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
-import { RunAttemptId, WorkItemId } from "@neokod/contracts";
+import { RunAttemptId, WorkflowId, WorkItemId } from "@neokod/contracts";
 
 import * as CodexClient from "effect-codex-app-server/client";
 
@@ -110,6 +110,8 @@ flowLayer("prepare dispatch through the real client", (it) => {
       const dispatcher = yield* RunDispatcher;
       const fiber = yield* dispatcher
         .dispatchWorkItem({
+          workflowId: WorkflowId.make("wf-fake-codex-peer"),
+          workflowRevision: "2026-10-22T09:00:00.000Z",
           workItem,
           issue: makeRunnerTestIssue("h0-1"),
           config: makeRunnerTestConfig({ autonomy: "prepare" }),

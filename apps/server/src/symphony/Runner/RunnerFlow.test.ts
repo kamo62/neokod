@@ -1,4 +1,5 @@
 import { assert, expect, it } from "@effect/vitest";
+import { WorkflowId } from "@neokod/contracts";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
@@ -41,6 +42,8 @@ layer("RunnerFlow failed turns", (it) => {
       const dispatcher = yield* RunDispatcher;
       const fiber = yield* dispatcher
         .dispatchWorkItem({
+          workflowId: WorkflowId.make("wf-runner-flow"),
+          workflowRevision: "2026-10-22T09:00:00.000Z",
           workItem,
           issue: makeRunnerTestIssue("flow-1"),
           config: makeRunnerTestConfig({ autonomy: "execute" }),
@@ -81,6 +84,8 @@ layer("RunnerFlow failed turns", (it) => {
       const dispatcher = yield* RunDispatcher;
       const fiber = yield* dispatcher
         .dispatchWorkItem({
+          workflowId: WorkflowId.make("wf-runner-flow"),
+          workflowRevision: "2026-10-22T09:00:00.000Z",
           workItem,
           issue: makeRunnerTestIssue("flow-cancel-1"),
           config: makeRunnerTestConfig({ autonomy: "execute" }),
