@@ -1,0 +1,9 @@
+{
+  "agentInfo": {
+    "name": "OpenCode",
+    "version": "2.0.32"
+  },
+  "sessionId": "ses_e9877121effe2cdIEBXI1KhV0i",
+  "requestedModel": "deepseek/deepseek-flash",
+  "actualModelSelection": "deepseek/deepseek-flash"
+}

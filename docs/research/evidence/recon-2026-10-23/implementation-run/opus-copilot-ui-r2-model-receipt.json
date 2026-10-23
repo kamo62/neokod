@@ -1,0 +1,9 @@
+{
+  "agentInfo": {
+    "name": "OpenCode",
+    "version": "2.0.32"
+  },
+  "sessionId": "ses_e98271f26ffej7tvMaf3wC3ABu",
+  "requestedModel": "github-copilot/claude-opus-5.5",
+  "actualModelSelection": "github-copilot/claude-opus-5.5"
+}
