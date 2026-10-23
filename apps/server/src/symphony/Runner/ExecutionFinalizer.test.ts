@@ -35,6 +35,7 @@ import {
 } from "../Persistence/Services/AttentionRepository.ts";
 import { EvidenceService } from "../Evidence/Service.ts";
 import { PullRequestCreationError, PullRequestService } from "../Evidence/PullRequest.ts";
+import { SymphonyPersistenceSqlError } from "../Persistence/Errors.ts";
 import { SymphonyModelReviewer } from "../Review/ModelReviewer.ts";
 import { ValidationRunner } from "../Validation/Runner.ts";
 import { ExecutionFinalizer, ExecutionFinalizerLive } from "./ExecutionFinalizer.ts";
@@ -252,6 +253,39 @@ const gatedLayer = it.layer(
   ),
 );
 
+const failingAttemptReadRepositoryLayer = Layer.effect(
+  RunAttemptRepository,
+  Effect.gen(function* () {
+    const repository = yield* RunAttemptRepository;
+    return RunAttemptRepository.of({
+      ...repository,
+      getById: () =>
+        Effect.fail(
+          new SymphonyPersistenceSqlError({
+            operation: "ExecutionFinalizer.test.getById",
+            detail: "database unavailable",
+          }),
+        ),
+    });
+  }),
+).pipe(Layer.provide(RunAttemptRepositoryLive));
+
+const unreadableAttemptLayer = it.layer(
+  ExecutionFinalizerLive.pipe(
+    Layer.provideMerge(WorkItemRepositoryLive),
+    Layer.provideMerge(failingAttemptReadRepositoryLayer),
+    Layer.provideMerge(RunEventRepositoryLive),
+    Layer.provideMerge(EvidenceRepositoryLive),
+    Layer.provideMerge(fakeValidationRunner(["passed"])),
+    Layer.provideMerge(fakeEvidenceService),
+    Layer.provideMerge(fakeModelReviewer()),
+    Layer.provideMerge(countingPullRequestService),
+    Layer.provideMerge(AttentionRepositoryLive),
+    Layer.provideMerge(SqlitePersistenceMemory),
+    Layer.provideMerge(NodeServices.layer),
+  ),
+);
+
 layer(["passed"], makePullRequest())("ExecutionFinalizer review-ready path", (it) => {
   it.effect("persists evidence, opens the PR and lands ready_for_review", () =>
     Effect.gen(function* () {
@@ -423,6 +457,72 @@ layer(["passed"], makePullRequest(), {
       const runEvents = yield* RunEventRepository;
       const events = yield* runEvents.listForAttempt(runAttemptId);
       expect(events.map((event) => event.eventType)).toContain("model_review_completed");
+    }),
+  );
+});
+
+gatedLayer("ExecutionFinalizer missing attempt", (it) => {
+  it.effect("refuses publication without pushing or opening a PR", () =>
+    Effect.gen(function* () {
+      gatedPrCreateCalls = 0;
+      const workItem = yield* seedWorkItem("missing-attempt", "owner-missing");
+      const finalizer = yield* ExecutionFinalizer;
+      const workItems = yield* WorkItemRepository;
+      yield* workItems.transition(workItem.id, "running", {
+        ownerToken: "owner-missing",
+        generation: 1,
+        from: ["preparing"],
+      });
+
+      const outcome = yield* finalizer.finalize({
+        workItem,
+        issue: makeIssue("missing-attempt"),
+        runAttemptId: RunAttemptId.make("run-missing-attempt"),
+        config: makeConfig(),
+        workspacePath: "/ws/missing-attempt",
+        branch: "symphony/missing-attempt",
+        baseBranch: "main",
+        ownerToken: "owner-missing",
+        generation: 1,
+        bodyFileDir: "/tmp/neokod",
+      });
+
+      expect(outcome).toBe("delivery_refused");
+      expect(gatedPrCreateCalls).toBe(0);
+      expect((yield* workItems.getById(workItem.id))?.lifecycle).toBe("failed");
+    }),
+  );
+});
+
+unreadableAttemptLayer("ExecutionFinalizer unreadable attempt", (it) => {
+  it.effect("holds publication when the attempt read fails", () =>
+    Effect.gen(function* () {
+      gatedPrCreateCalls = 0;
+      const workItem = yield* seedWorkItem("unreadable-attempt", "owner-unreadable");
+      const finalizer = yield* ExecutionFinalizer;
+      const workItems = yield* WorkItemRepository;
+      yield* workItems.transition(workItem.id, "running", {
+        ownerToken: "owner-unreadable",
+        generation: 1,
+        from: ["preparing"],
+      });
+
+      const outcome = yield* finalizer.finalize({
+        workItem,
+        issue: makeIssue("unreadable-attempt"),
+        runAttemptId: RunAttemptId.make("run-unreadable-attempt"),
+        config: makeConfig(),
+        workspacePath: "/ws/unreadable-attempt",
+        branch: "symphony/unreadable-attempt",
+        baseBranch: "main",
+        ownerToken: "owner-unreadable",
+        generation: 1,
+        bodyFileDir: "/tmp/neokod",
+      });
+
+      expect(outcome).toBe("delivery_refused");
+      expect(gatedPrCreateCalls).toBe(0);
+      expect((yield* workItems.getById(workItem.id))?.lifecycle).toBe("failed");
     }),
   );
 });
