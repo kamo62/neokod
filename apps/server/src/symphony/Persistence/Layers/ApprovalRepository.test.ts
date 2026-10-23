@@ -207,10 +207,13 @@ layer("ApprovalRepository request vocabulary", (it) => {
       expect(ids).toContain(String(expired.id));
       expect(ids).toContain(String(interrupted.id));
       // Questions survive as questions after they are answered or timed out,
-      // with their state and decision timestamp intact.
+      // with their state and decision timestamp intact. A legacy row that used
+      // the permission `approved` vocabulary for a question is projected as
+      // `answered`, because a user-input request cannot be permission-approved.
       const answeredRow = rows.find((row) => row.id === answered.id);
       expect(answeredRow?.kind).toBe("user_input");
-      expect(answeredRow?.state).toBe("approved");
+      expect(answeredRow?.state).toBe("answered");
+      expect(answeredRow?.decision).toBe("answered");
       expect(answeredRow?.decidedAt).not.toBeNull();
       expect(rows.find((row) => row.id === expired.id)?.state).toBe("expired");
       expect(rows.find((row) => row.id === interrupted.id)?.state).toBe("interrupted");
@@ -218,6 +221,126 @@ layer("ApprovalRepository request vocabulary", (it) => {
       // recorded too, so the contract must decode it.
       expect(rows.find((row) => row.id === interrupted.id)?.decision).toBe("interrupted");
       expect(rows.find((row) => row.id === interrupted.id)?.action).toBe("command_execution");
+    }),
+  );
+
+  it.effect("round-trips the versioned question payload and the answer record", () =>
+    Effect.gen(function* () {
+      yield* seedWorkItem("wi-structured-1");
+      const repository = yield* ApprovalRepository;
+      const created = yield* repository.create({
+        id: SymphonyApprovalRequestId.make("sym-structured-1"),
+        requestId: "20",
+        workItemId: WorkItemId.make("wi-structured-1"),
+        runAttemptId,
+        action: "user_input",
+        scope: "once",
+        reason: "Which branch? / Which checks?",
+        questionPayload: {
+          kind: "structured",
+          version: 1,
+          questions: [
+            {
+              id: "q1",
+              header: "Branch",
+              question: "Which branch?",
+              options: [{ label: "main", description: "default" }],
+            },
+            {
+              id: "q2",
+              header: "Checks",
+              question: "Which checks?",
+              options: [
+                { label: "unit", description: "unit tests" },
+                { label: "lint", description: "lint" },
+              ],
+              multiSelect: true,
+            },
+          ],
+        },
+      });
+      expect(created.questionPayload).toMatchObject({ kind: "structured", version: 1 });
+
+      yield* repository.decide(created.id, "answered", {
+        answer: {
+          answers: [
+            { questionId: "q1", answer: "main" },
+            { questionId: "q2", answer: ["unit", "lint"] },
+          ],
+          delivery: "unknown",
+          actor: "local_operator",
+          recordedAt: "2026-08-05T00:00:01.000Z",
+        },
+        decisionNote: {
+          text: "checked locally",
+          delivery: "history_only",
+          actor: "local_operator",
+          recordedAt: "2026-08-05T00:00:02.000Z",
+        },
+      });
+
+      const reloaded = yield* repository.getById(created.id);
+      expect(reloaded?.state).toBe("answered");
+      expect(reloaded?.questionPayload).toMatchObject({ kind: "structured" });
+      if (reloaded?.questionPayload?.kind !== "structured") {
+        throw new Error("expected a structured payload after reload");
+      }
+      expect(reloaded.questionPayload.questions[1]?.multiSelect).toBe(true);
+      expect(reloaded.answer?.answers).toEqual([
+        { questionId: "q1", answer: "main" },
+        { questionId: "q2", answer: ["unit", "lint"] },
+      ]);
+      expect(reloaded.answer?.delivery).toBe("unknown");
+      expect(reloaded.decisionNote?.delivery).toBe("history_only");
+    }),
+  );
+
+  it.effect("decodes a pre-question row as legacy free text without invented choices", () =>
+    Effect.gen(function* () {
+      yield* seedWorkItem("wi-legacy-question-1");
+      const sql = yield* SqlClient.SqlClient;
+      const repository = yield* ApprovalRepository;
+      yield* sql`
+        INSERT INTO symphony_approvals (
+          id, request_id, work_item_id, run_attempt_id, action, scope,
+          state, decision, policy_source, payload_json, created_at, decided_at
+        )
+        VALUES (
+          'sym-legacy-question-1', '21', 'wi-legacy-question-1', ${runAttemptId},
+          'user_input', 'once', 'approved', 'approved', 'once',
+          ${encodeJson({ reason: "Which branch?" })},
+          '2026-08-05T00:00:00.000Z', '2026-08-05T00:00:05.000Z'
+        )
+      `;
+
+      const decoded = yield* repository.getById("sym-legacy-question-1");
+      expect(decoded?.questionPayload).toEqual({ kind: "legacy_text", text: "Which branch?" });
+      expect(decoded?.state).toBe("answered");
+      expect(decoded?.decision).toBe("answered");
+      // No answer content is invented for a row that never stored one.
+      expect(decoded?.answer).toBeUndefined();
+    }),
+  );
+
+  it.effect("keeps a redelivered provider request as one durable row", () =>
+    Effect.gen(function* () {
+      yield* seedWorkItem("wi-duplicate-1");
+      const repository = yield* ApprovalRepository;
+      const input = {
+        id: SymphonyApprovalRequestId.make("sym-duplicate-1"),
+        requestId: "22",
+        workItemId: WorkItemId.make("wi-duplicate-1"),
+        runAttemptId,
+        action: "command_execution",
+        scope: "once",
+        reason: "first delivery",
+      } as const;
+      const first = yield* repository.create(input);
+      const second = yield* repository.create({ ...input, reason: "redelivered" });
+      expect(second.createdAt).toBe(first.createdAt);
+      expect(second.reason).toBe("first delivery");
+      const rows = yield* repository.listForRun(runAttemptId);
+      expect(rows.filter((row) => row.id === first.id)).toHaveLength(1);
     }),
   );
 });

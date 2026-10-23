@@ -121,11 +121,34 @@ const fakeOrchestratorLayer = Layer.succeed(SymphonyOrchestrator, {
   listQueuesForRepository: () => Effect.succeed([]),
 } as unknown as (typeof SymphonyOrchestrator)["Service"]);
 
+const approvalCalls: Array<{
+  readonly kind: string;
+  readonly requestId: string;
+  readonly input: unknown;
+}> = [];
+
 const fakeApprovalsLayer = Layer.succeed(ApprovalService, {
   recordPending: () => Effect.never,
-  approve: (requestId: string) => Effect.logInfo(`approved ${requestId}`).pipe(Effect.asVoid),
-  reject: (requestId: string) => Effect.logInfo(`rejected ${requestId}`).pipe(Effect.asVoid),
-  respondToUserInput: () => Effect.void,
+  approve: (requestId: string, submission?: unknown) =>
+    Effect.sync(() => {
+      approvalCalls.push({ kind: "approve", requestId, input: submission });
+    }).pipe(Effect.asVoid),
+  reject: (requestId: string, submission?: unknown) =>
+    Effect.sync(() => {
+      approvalCalls.push({ kind: "reject", requestId, input: submission });
+    }).pipe(Effect.asVoid),
+  respondToUserInput: (requestId: string, submission: unknown) =>
+    Effect.gen(function* () {
+      if (requestId === "invalid-answer") {
+        return yield* Effect.fail(
+          new ApprovalServiceModule.ApprovalAnswerValidationError(
+            requestId,
+            "structured questions need one answer per question id",
+          ),
+        );
+      }
+      approvalCalls.push({ kind: "answer", requestId, input: submission });
+    }),
   listPending: () => Effect.succeed([]),
   listForRun: () => Effect.succeed([]),
   expire: () => Effect.void,
@@ -338,6 +361,108 @@ it.layer(fakeOrchestratorLayer.pipe(Layer.provideMerge(fakeApprovalsLayer)))(
         expect(handler).toBeDefined();
         const attention = yield* Effect.scoped(handler({}));
         expect(attention.map((item) => item.id)).toEqual(["attn-1", "attn-2"]);
+      }),
+    );
+
+    it.effect("approve forwards its history-only note and exact run identity", () =>
+      Effect.gen(function* () {
+        approvalCalls.length = 0;
+        const handlers = makeSymphonyRpcHandlers();
+        const result = yield* Effect.scoped(
+          handlers[SYMPHONY_WS_METHODS.approve]({
+            requestId: "sym-approve-1",
+            scope: "once",
+            note: "approved for this run",
+            runAttemptId: RunAttemptIdValue.make("run-1"),
+          }),
+        );
+        expect(result).toEqual({ ok: true });
+        expect(approvalCalls).toEqual([
+          {
+            kind: "approve",
+            requestId: "sym-approve-1",
+            input: { note: "approved for this run", runAttemptId: "run-1" },
+          },
+        ]);
+      }),
+    );
+
+    it.effect("reject forwards a note and keeps the legacy reason alias", () =>
+      Effect.gen(function* () {
+        approvalCalls.length = 0;
+        const handlers = makeSymphonyRpcHandlers();
+        yield* Effect.scoped(
+          handlers[SYMPHONY_WS_METHODS.reject]({
+            requestId: "sym-reject-1",
+            reason: "touches a protected path",
+          }),
+        );
+        yield* Effect.scoped(
+          handlers[SYMPHONY_WS_METHODS.reject]({
+            requestId: "sym-reject-2",
+            note: "canonical note",
+          }),
+        );
+        expect(approvalCalls).toEqual([
+          {
+            kind: "reject",
+            requestId: "sym-reject-1",
+            input: { note: "touches a protected path" },
+          },
+          { kind: "reject", requestId: "sym-reject-2", input: { note: "canonical note" } },
+        ]);
+      }),
+    );
+
+    it.effect("respondToUserInput forwards structured answers without flattening them", () =>
+      Effect.gen(function* () {
+        approvalCalls.length = 0;
+        const handlers = makeSymphonyRpcHandlers();
+        const result = yield* Effect.scoped(
+          handlers[SYMPHONY_WS_METHODS.respondToUserInput]({
+            requestId: "sym-question-1",
+            answers: [
+              { questionId: "q1", answer: "main" },
+              { questionId: "q2", answer: ["unit", "lint"] },
+            ],
+            runAttemptId: RunAttemptIdValue.make("run-1"),
+          }),
+        );
+        expect(result).toEqual({ ok: true });
+        expect(approvalCalls).toEqual([
+          {
+            kind: "answer",
+            requestId: "sym-question-1",
+            input: {
+              answers: [
+                { questionId: "q1", answer: "main" },
+                { questionId: "q2", answer: ["unit", "lint"] },
+              ],
+              runAttemptId: "run-1",
+            },
+          },
+        ]);
+      }),
+    );
+
+    it.effect("maps answer validation failures to a distinct invalid_answer error", () =>
+      Effect.gen(function* () {
+        const handlers = makeSymphonyRpcHandlers();
+        const exit = yield* Effect.exit(
+          Effect.scoped(
+            handlers[SYMPHONY_WS_METHODS.respondToUserInput]({
+              requestId: "invalid-answer",
+              answers: [],
+            }),
+          ),
+        );
+        expect(Exit.isFailure(exit)).toBe(true);
+        if (Exit.isFailure(exit)) {
+          expect(Cause.squash(exit.cause)).toMatchObject({
+            _tag: "SymphonyError",
+            code: "invalid_answer",
+          });
+        }
       }),
     );
   },

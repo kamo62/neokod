@@ -1,6 +1,6 @@
 import { assert, expect, it } from "@effect/vitest";
 import { RunAttemptId, SymphonyProjectId, WorkItemId } from "@neokod/contracts";
-import type { ApprovalRequest, WorkItem } from "@neokod/contracts";
+import type { ApprovalRequest, ApprovalQuestionPayload, WorkItem } from "@neokod/contracts";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -110,10 +110,27 @@ const makeRequest = (
     return { deferred, record };
   });
 
+const userInputPayload = {
+  kind: "structured",
+  version: 1,
+  questions: [
+    {
+      id: "q1",
+      header: "Branch",
+      question: "Which branch?",
+      options: [
+        { label: "main", description: "default branch" },
+        { label: "release", description: "release branch" },
+      ],
+    },
+  ],
+} as const;
+
 const makeUserInputRequest = (
   runAttemptId: RunAttemptId,
   workItemId: WorkItemId,
   requestId: string,
+  questionPayload: ApprovalQuestionPayload = userInputPayload,
 ) =>
   Effect.gen(function* () {
     const live = yield* LiveRequests;
@@ -123,6 +140,9 @@ const makeUserInputRequest = (
       workItemId,
       runAttemptId,
       prompt: "p",
+      ...(questionPayload.kind === "structured"
+        ? { questionIds: questionPayload.questions.map((question) => question.id) }
+        : {}),
     });
     const record = yield* service.recordPending({
       id: "ignored",
@@ -131,6 +151,8 @@ const makeUserInputRequest = (
       runAttemptId,
       action: "user_input",
       scope: "once",
+      reason: "Which branch?",
+      questionPayload,
     });
     return { deferred, record };
   });
@@ -176,7 +198,7 @@ layer("ApprovalService durable ids", (it) => {
     }),
   );
 
-  it.effect("a decided request cannot be decided twice", () =>
+  it.effect("a retried identical decision is idempotent and a different one is stale", () =>
     Effect.gen(function* () {
       yield* seedWorkItem("wi-c");
       const service = yield* ApprovalService;
@@ -186,7 +208,9 @@ layer("ApprovalService durable ids", (it) => {
         "0",
       );
       yield* service.approve(record.id);
-      const error = yield* Effect.flip(service.approve(record.id));
+      // A lost response makes the client retry the same decision.
+      yield* service.approve(record.id);
+      const error = yield* Effect.flip(service.reject(record.id));
       expect(error).toBeInstanceOf(ApprovalRequestNotFoundError);
     }),
   );
@@ -195,13 +219,20 @@ layer("ApprovalService durable ids", (it) => {
     Effect.gen(function* () {
       yield* seedWorkItem("wi-d");
       const service = yield* ApprovalService;
+      const repo = yield* ApprovalRepository;
       const { deferred, record } = yield* makeUserInputRequest(
         RunAttemptId.make("run-d"),
         WorkItemId.make("wi-d"),
         "0",
       );
-      yield* service.respondToUserInput(record.id, "main");
-      expect(yield* Deferred.await(deferred)).toBe("main");
+      yield* service.respondToUserInput(record.id, {
+        answers: [{ questionId: "q1", answer: "main" }],
+      });
+      expect(yield* Deferred.await(deferred)).toEqual({ q1: "main" });
+      expect((yield* repo.getById(record.id))?.state).toBe("answered");
+      expect((yield* repo.getById(record.id))?.answer?.answers).toEqual([
+        { questionId: "q1", answer: "main" },
+      ]);
     }),
   );
 
@@ -443,6 +474,266 @@ layer("ApprovalService durable ids", (it) => {
         const late = yield* Effect.result(service.approve(recorded.id));
         expect(late._tag).toBe("Failure");
         expect((yield* repository.getById(recorded.id))?.state).toBe("expired");
+
+        yield* peer.completeTurn("completed");
+        yield* Fiber.join(fiber);
+      }),
+    ),
+  );
+
+  it.effect("answers two questions independently, including multi-select and custom text", () =>
+    Effect.gen(function* () {
+      yield* seedWorkItem("wi-distinct");
+      const service = yield* ApprovalService;
+      const repo = yield* ApprovalRepository;
+      const payload: ApprovalQuestionPayload = {
+        kind: "structured",
+        version: 1,
+        questions: [
+          {
+            id: "branch",
+            header: "Branch",
+            question: "Which branch?",
+            options: [
+              { label: "main", description: "default" },
+              { label: "release", description: "release" },
+            ],
+          },
+          {
+            id: "checks",
+            header: "Checks",
+            question: "Which checks?",
+            options: [
+              { label: "unit", description: "unit tests" },
+              { label: "lint", description: "lint" },
+            ],
+            multiSelect: true,
+          },
+          {
+            id: "note",
+            header: "Note",
+            question: "Anything else?",
+            options: [],
+          },
+        ],
+      };
+      const { deferred, record } = yield* makeUserInputRequest(
+        RunAttemptId.make("run-distinct"),
+        WorkItemId.make("wi-distinct"),
+        "0",
+        payload,
+      );
+      yield* service.respondToUserInput(record.id, {
+        answers: [
+          { questionId: "branch", answer: "release" },
+          { questionId: "checks", answer: ["unit", "lint"] },
+          { questionId: "note", answer: "custom free text" },
+        ],
+      });
+      expect(yield* Deferred.await(deferred)).toEqual({
+        branch: "release",
+        checks: ["unit", "lint"],
+        note: "custom free text",
+      });
+      const stored = yield* repo.getById(record.id);
+      expect(stored?.state).toBe("answered");
+      expect(stored?.decision).toBe("answered");
+      expect(stored?.answer?.answers).toEqual([
+        { questionId: "branch", answer: "release" },
+        { questionId: "checks", answer: ["unit", "lint"] },
+        { questionId: "note", answer: "custom free text" },
+      ]);
+      expect(stored?.questionPayload).toMatchObject(payload);
+    }),
+  );
+
+  it.effect("refuses missing, extra and malformed answers instead of defaulting them", () =>
+    Effect.gen(function* () {
+      yield* seedWorkItem("wi-invalid");
+      const service = yield* ApprovalService;
+      const repo = yield* ApprovalRepository;
+      const { deferred, record } = yield* makeUserInputRequest(
+        RunAttemptId.make("run-invalid"),
+        WorkItemId.make("wi-invalid"),
+        "0",
+      );
+
+      const missing = yield* Effect.result(service.respondToUserInput(record.id, { answers: [] }));
+      expect(missing._tag).toBe("Failure");
+      const extra = yield* Effect.result(
+        service.respondToUserInput(record.id, {
+          answers: [
+            { questionId: "q1", answer: "main" },
+            { questionId: "q2", answer: "other" },
+          ],
+        }),
+      );
+      expect(extra._tag).toBe("Failure");
+      // A single-select answer supplied as an array is not silently unwrapped.
+      const shape = yield* Effect.result(
+        service.respondToUserInput(record.id, {
+          answers: [{ questionId: "q1", answer: ["main"] }],
+        }),
+      );
+      expect(shape._tag).toBe("Failure");
+      expect(yield* Deferred.isDone(deferred)).toBe(false);
+      expect((yield* repo.getById(record.id))?.state).toBe("pending");
+    }),
+  );
+
+  it.effect(
+    "stores a redacted answer for a provider-secret question, delivering the real value",
+    () =>
+      Effect.gen(function* () {
+        yield* seedWorkItem("wi-secret");
+        const service = yield* ApprovalService;
+        const repo = yield* ApprovalRepository;
+        const payload: ApprovalQuestionPayload = {
+          kind: "structured",
+          version: 1,
+          questions: [
+            {
+              id: "token",
+              header: "Token",
+              question: "Paste the token",
+              options: [],
+              sensitive: true,
+            },
+          ],
+        };
+        const { deferred, record } = yield* makeUserInputRequest(
+          RunAttemptId.make("run-secret"),
+          WorkItemId.make("wi-secret"),
+          "0",
+          payload,
+        );
+        yield* service.respondToUserInput(record.id, {
+          answers: [{ questionId: "token", answer: "super-secret" }],
+        });
+        // The agent receives the real answer.
+        expect(yield* Deferred.await(deferred)).toEqual({ token: "super-secret" });
+        // History keeps only an explicit redaction marker.
+        const stored = yield* repo.getById(record.id);
+        expect(stored?.answer?.answers).toEqual([
+          { questionId: "token", answer: "[redacted]", redacted: true },
+        ]);
+      }),
+  );
+
+  it.effect(
+    "treats a repeated identical answer as an idempotent retry and a different one as stale",
+    () =>
+      Effect.gen(function* () {
+        yield* seedWorkItem("wi-retry");
+        const service = yield* ApprovalService;
+        const repo = yield* ApprovalRepository;
+        const { record } = yield* makeUserInputRequest(
+          RunAttemptId.make("run-retry"),
+          WorkItemId.make("wi-retry"),
+          "0",
+        );
+        const submission = { answers: [{ questionId: "q1", answer: "main" }] } as const;
+        yield* service.respondToUserInput(record.id, submission);
+        // The client lost the success response and retries identical content.
+        yield* service.respondToUserInput(record.id, submission);
+        expect((yield* repo.getById(record.id))?.state).toBe("answered");
+
+        const changed = yield* Effect.result(
+          service.respondToUserInput(record.id, {
+            answers: [{ questionId: "q1", answer: "release" }],
+          }),
+        );
+        expect(changed._tag).toBe("Failure");
+        expect((yield* repo.getById(record.id))?.answer?.answers).toEqual([
+          { questionId: "q1", answer: "main" },
+        ]);
+      }),
+  );
+
+  it.effect("persists approve and reject notes as history-only", () =>
+    Effect.gen(function* () {
+      yield* seedWorkItem("wi-approve-note");
+      const service = yield* ApprovalService;
+      const repo = yield* ApprovalRepository;
+      const approved = yield* makeRequest(
+        RunAttemptId.make("run-approve-note"),
+        WorkItemId.make("wi-approve-note"),
+        "0",
+      );
+      yield* service.approve(approved.record.id, { note: "approved for this run" });
+      const approvedRow = yield* repo.getById(approved.record.id);
+      expect(approvedRow?.decisionNote).toMatchObject({
+        text: "approved for this run",
+        delivery: "history_only",
+        actor: "local_operator",
+      });
+
+      const rejected = yield* makeRequest(
+        RunAttemptId.make("run-approve-note"),
+        WorkItemId.make("wi-approve-note"),
+        "1",
+      );
+      yield* service.reject(rejected.record.id, { note: "touches a protected path" });
+      const rejectedRow = yield* repo.getById(rejected.record.id);
+      expect(rejectedRow?.state).toBe("rejected");
+      expect(rejectedRow?.decisionNote).toMatchObject({
+        text: "touches a protected path",
+        delivery: "history_only",
+      });
+    }),
+  );
+
+  it.effect("a runtime wait timeout expires a question and sends no synthetic answer", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        yield* seedWorkItem("wi-question-timeout");
+        const service = yield* ApprovalService;
+        const live = yield* LiveRequests;
+        const repository = yield* ApprovalRepository;
+        const peer = yield* makeFakeCodexPeer();
+        const runAttemptId = RunAttemptId.make("run-question-timeout");
+        const workItemId = WorkItemId.make("wi-question-timeout");
+        const runtime = yield* makeFakeCodexRuntime({
+          peer,
+          liveRequests: live,
+          ...approvalServiceRequestCallbacks(service),
+        });
+        const fiber = yield* runtime
+          .runTurn({
+            issue: makeRunnerTestIssue("question-timeout"),
+            config: makeRunnerTestConfig({ liveRequestsWaitTimeoutMs: 30_000 }),
+            workspacePath: "/tmp/fake-ws",
+            branch: "b",
+            runAttemptId,
+            workItemId,
+          })
+          .pipe(Effect.forkScoped);
+        yield* peer.awaitClientRequest("turn/start");
+        const wireId = yield* peer.sendUserInputRequest([{ id: "q1", question: "Which branch?" }]);
+
+        let recorded: ApprovalRequest | undefined;
+        for (let attempt = 0; attempt < 100 && recorded === undefined; attempt += 1) {
+          yield* Effect.yieldNow;
+          const rows = yield* repository.listForRun(runAttemptId);
+          recorded = rows[0];
+        }
+        if (recorded === undefined) {
+          throw new Error("the runtime did not record the question");
+        }
+        expect(recorded.questionPayload).toMatchObject({ kind: "structured" });
+        yield* Effect.repeat(Effect.yieldNow, { times: 50 });
+
+        yield* TestClock.adjust("31 seconds");
+        yield* Effect.repeat(Effect.yieldNow, { times: 50 });
+        const reply = yield* peer.awaitClientResponse(wireId);
+        // No `{answers: {q1: {answers: [""]}}}` placeholder. The provider
+        // request is deliberately failed and the row stays expired.
+        expect(reply.result).toBeUndefined();
+        expect(String((reply.error as { message?: unknown }).message)).toContain(
+          "did not answer before the request wait expired",
+        );
+        expect((yield* repository.getById(recorded.id))?.state).toBe("expired");
+        expect((yield* repository.getById(recorded.id))?.answer).toBeUndefined();
 
         yield* peer.completeTurn("completed");
         yield* Fiber.join(fiber);
