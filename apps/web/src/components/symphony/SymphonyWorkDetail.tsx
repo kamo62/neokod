@@ -352,6 +352,12 @@ export function ApprovalRequestHistoryList({
                   </code>
                 )}
               </div>
+              {request.historyUnavailable === undefined ? null : (
+                <p className="rounded-md border border-warning/40 bg-warning/5 px-2.5 py-1.5 text-[11px] text-foreground">
+                  Stored answer or note history is unavailable: {request.historyUnavailable}.
+                  Missing content is not evidence that the operator left it empty.
+                </p>
+              )}
               {history.answerText !== null ? (
                 <div className="space-y-1">
                   <p className="whitespace-pre-wrap text-[11px] text-foreground">
@@ -370,7 +376,11 @@ export function ApprovalRequestHistoryList({
                     )}
                   </div>
                 </div>
-              ) : history.answered || history.deliveryPending ? (
+              ) : request.historyUnavailable !== undefined ? null : history.deliveryPending ? (
+                <p className="text-[11px] text-muted-foreground">
+                  Delivery is pending, but the stored answer content is unavailable.
+                </p>
+              ) : history.answered ? (
                 <p className="text-[11px] text-muted-foreground">
                   No answer content was stored for this request.
                 </p>
