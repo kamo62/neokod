@@ -265,6 +265,105 @@ export const RunErrorSchema = Schema.Struct({
 });
 export type RunError = typeof RunErrorSchema.Type;
 
+export const TrackerKindSchema = Schema.Literals([
+  "github",
+  "jira",
+  "linear",
+  "gitlab",
+  "asana",
+  "azure_boards",
+  "github_projects",
+]);
+export type TrackerKind = typeof TrackerKindSchema.Type;
+
+export const AutonomyLevelSchema = Schema.Literals(["observe", "prepare", "execute", "deliver"]);
+export type AutonomyLevel = typeof AutonomyLevelSchema.Type;
+
+/** Operator text that was deliberately absent versus deliberately empty. */
+export const AcceptedInstructionTextSchema = Schema.Union([
+  Schema.Struct({ state: Schema.Literal("absent") }),
+  Schema.Struct({ state: Schema.Literal("present"), text: Schema.String }),
+]);
+export type AcceptedInstructionText = typeof AcceptedInstructionTextSchema.Type;
+
+export const AcceptedDeliveryScopeSchema = Schema.Struct({
+  /** null records "the workflow did not state a value"; it is not coerced to false. */
+  approvalBeforePush: Schema.NullOr(Schema.Boolean),
+  approvalBeforePullRequest: Schema.NullOr(Schema.Boolean),
+  approvalBeforeMerge: Schema.NullOr(Schema.Boolean),
+});
+export type AcceptedDeliveryScope = typeof AcceptedDeliveryScopeSchema.Type;
+
+export const AcceptedPermissionScopeSchema = Schema.Struct({
+  autonomy: AutonomyLevelSchema,
+  approvalPolicy: Schema.Literals(["untrusted", "on-request", "never"]),
+  threadSandbox: Schema.Literals(["read-only", "workspace-write", "danger-full-access"]),
+  turnSandboxPolicy: Schema.Union([
+    Schema.Struct({ type: Schema.Literal("readOnly") }),
+    Schema.Struct({ type: Schema.Literal("workspaceWrite") }),
+    Schema.Struct({ type: Schema.Literal("dangerFullAccess") }),
+  ]),
+  editsAllowed: Schema.Boolean,
+  approvalsEnabled: Schema.Boolean,
+  protectedPaths: Schema.Array(Schema.String),
+  delivery: AcceptedDeliveryScopeSchema,
+});
+export type AcceptedPermissionScope = typeof AcceptedPermissionScopeSchema.Type;
+
+export const AcceptedWorkflowGuidanceSchema = Schema.Struct({
+  id: WorkflowId,
+  path: Schema.String,
+  /** Persisted workflow `updatedAt` at acceptance; the existing revision authority. */
+  revision: IsoDateTime,
+  digest: Schema.String,
+  /** Parsed agent-facing body only. Front matter is never accepted. */
+  instructions: Schema.String,
+  validationRequired: Schema.Array(Schema.String),
+});
+
+export const AcceptedSourceSnapshotSchema = Schema.Struct({
+  trackerId: Schema.String,
+  kind: TrackerKindSchema,
+  externalId: Schema.optional(Schema.String),
+  externalUrl: Schema.optional(Schema.String),
+  identifier: Schema.String,
+  title: Schema.String,
+  description: Schema.NullOr(Schema.String),
+  acceptanceCriteria: Schema.Array(Schema.String),
+  labels: Schema.Array(Schema.String),
+  /** Tracker `updatedAt`; null means the tracker did not report one. */
+  revision: Schema.NullOr(IsoDateTime),
+  digest: Schema.String,
+});
+
+export const AcceptedGuidanceTextSchema = Schema.Struct({
+  batch: AcceptedInstructionTextSchema,
+  story: AcceptedInstructionTextSchema,
+  digest: Schema.String,
+});
+
+export const AcceptedTargetSchema = Schema.Struct({
+  repositoryId: Schema.optional(Schema.String),
+  repositoryPath: Schema.String,
+  workflowPath: Schema.String,
+  workspacePath: Schema.optional(Schema.String),
+  baseBranch: Schema.optional(Schema.String),
+  provider: ProviderInstanceRef,
+  model: Schema.optional(Schema.String),
+});
+
+export const AcceptedGuidanceSnapshotSchema = Schema.Struct({
+  schemaVersion: Schema.Literal(1),
+  acceptedAt: IsoDateTime,
+  digest: Schema.String,
+  workflow: AcceptedWorkflowGuidanceSchema,
+  source: AcceptedSourceSnapshotSchema,
+  guidance: AcceptedGuidanceTextSchema,
+  target: AcceptedTargetSchema,
+  permission: AcceptedPermissionScopeSchema,
+});
+export type AcceptedGuidanceSnapshot = typeof AcceptedGuidanceSnapshotSchema.Type;
+
 export const RunEventSchema = Schema.Struct({
   sequence: RunEventSequence,
   runAttemptId: RunAttemptId,
@@ -289,6 +388,8 @@ export const RunAttemptSchema = Schema.Struct({
   tokenUsage: Schema.optional(TokenUsageSchema),
   sessionId: Schema.optional(TrimmedNonEmptyString),
   threadId: Schema.optional(TrimmedNonEmptyString),
+  /** Frozen at admission; undefined for attempts recorded before this field existed. */
+  acceptedGuidance: Schema.optional(AcceptedGuidanceSnapshotSchema),
 });
 export type RunAttempt = typeof RunAttemptSchema.Type;
 
@@ -760,20 +861,6 @@ export const WorkflowDefinitionSchema = Schema.Struct({
   promptTemplate: Schema.String,
 });
 export type WorkflowDefinition = typeof WorkflowDefinitionSchema.Type;
-
-export const TrackerKindSchema = Schema.Literals([
-  "github",
-  "jira",
-  "linear",
-  "gitlab",
-  "asana",
-  "azure_boards",
-  "github_projects",
-]);
-export type TrackerKind = typeof TrackerKindSchema.Type;
-
-export const AutonomyLevelSchema = Schema.Literals(["observe", "prepare", "execute", "deliver"]);
-export type AutonomyLevel = typeof AutonomyLevelSchema.Type;
 
 export const SymphonyTrackerScopeSchema = Schema.Union([
   Schema.Struct({

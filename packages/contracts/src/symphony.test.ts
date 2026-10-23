@@ -1,10 +1,11 @@
 import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
-import { ApprovalRequestSchema, WorkItemSchema } from "./symphony.ts";
+import { ApprovalRequestSchema, RunAttemptSchema, WorkItemSchema } from "./symphony.ts";
 
 const decodeWorkItem = Schema.decodeUnknownSync(WorkItemSchema);
 const decodeApprovalRequest = Schema.decodeUnknownSync(ApprovalRequestSchema);
+const decodeRunAttempt = Schema.decodeUnknownSync(RunAttemptSchema);
 
 const workItem = {
   id: "work-item-1",
@@ -207,5 +208,80 @@ describe("ApprovalRequestSchema question payload and answer history", () => {
         },
       }).decisionNote?.delivery,
     ).toBe("history_only");
+  });
+});
+
+const runAttempt = {
+  id: "run-1",
+  workItemId: "work-item-1",
+  attemptNumber: 1,
+  workspacePath: "/repo",
+  provider: { instanceId: "codex_default", driver: "codex" },
+  status: "streaming_turn",
+  startedAt: "2026-08-08T10:00:00.000Z",
+  finishedAt: null,
+  error: null,
+} as const;
+
+const acceptedGuidance = {
+  schemaVersion: 1,
+  acceptedAt: "2026-08-08T10:00:00.000Z",
+  digest: "sha256:abc",
+  workflow: {
+    id: "workflow-1",
+    path: "/repo/WORKFLOW.md",
+    revision: "2026-08-08T09:00:00.000Z",
+    digest: "sha256:workflow",
+    instructions: "Implement the issue.",
+    validationRequired: [],
+  },
+  source: {
+    trackerId: "github:owner/repo",
+    kind: "github",
+    identifier: "#1",
+    title: "Issue 1",
+    description: null,
+    acceptanceCriteria: [],
+    labels: ["agent-ready"],
+    revision: null,
+    digest: "sha256:source",
+  },
+  guidance: {
+    batch: { state: "absent" },
+    story: { state: "present", text: "" },
+    digest: "sha256:guidance",
+  },
+  target: {
+    repositoryPath: "/repo",
+    workflowPath: "/repo/WORKFLOW.md",
+    provider: { instanceId: "codex_default", driver: "codex" },
+  },
+  permission: {
+    autonomy: "execute",
+    approvalPolicy: "on-request",
+    threadSandbox: "workspace-write",
+    turnSandboxPolicy: { type: "workspaceWrite" },
+    editsAllowed: true,
+    approvalsEnabled: true,
+    protectedPaths: [],
+    delivery: {
+      approvalBeforePush: null,
+      approvalBeforePullRequest: true,
+      approvalBeforeMerge: null,
+    },
+  },
+} as const;
+
+describe("RunAttemptSchema accepted guidance", () => {
+  it("keeps legacy attempts without an invented snapshot", () => {
+    expect(decodeRunAttempt(runAttempt).acceptedGuidance).toBeUndefined();
+  });
+
+  it("round-trips a frozen accepted snapshot and keeps absent versus empty guidance distinct", () => {
+    const decoded = decodeRunAttempt({ ...runAttempt, acceptedGuidance });
+    expect(decoded.acceptedGuidance).toEqual(acceptedGuidance);
+    expect(decoded.acceptedGuidance?.guidance.batch.state).toBe("absent");
+    expect(decoded.acceptedGuidance?.guidance.story).toEqual({ state: "present", text: "" });
+    expect(decoded.acceptedGuidance?.permission.delivery.approvalBeforePush).toBeNull();
   });
 });
