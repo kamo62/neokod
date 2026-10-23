@@ -44,10 +44,42 @@ describe("LiveRequests", () => {
         workItemId,
         runAttemptId,
         prompt: "Which branch?",
+        questionIds: ["q1"],
       });
-      yield* service.respondToUserInput(runAttemptId, "req-2", "main");
-      const text = yield* Deferred.await(deferred);
-      expect(text).toBe("main");
+      yield* service.respondToUserInput(runAttemptId, "req-2", { q1: "main" });
+      const answers = yield* Deferred.await(deferred);
+      expect(answers).toEqual({ q1: "main" });
+    }),
+  );
+
+  it.effect("refuses an answer map that does not match the question ids exactly", () =>
+    Effect.gen(function* () {
+      const service = yield* makeLiveRequests;
+      const deferred = yield* service.registerUserInput({
+        requestId: "req-2-mismatch",
+        workItemId,
+        runAttemptId,
+        prompt: "Which branch?",
+        questionIds: ["q1", "q2"],
+      });
+      const missing = yield* Effect.result(
+        service.respondToUserInput(runAttemptId, "req-2-mismatch", { q1: "main" }),
+      );
+      expect(missing._tag).toBe("Failure");
+      const extra = yield* Effect.result(
+        service.respondToUserInput(runAttemptId, "req-2-mismatch", {
+          q1: "main",
+          q2: "why",
+          q3: "not asked",
+        }),
+      );
+      expect(extra._tag).toBe("Failure");
+      expect(yield* Deferred.isDone(deferred)).toBe(false);
+      yield* service.respondToUserInput(runAttemptId, "req-2-mismatch", {
+        q1: "main",
+        q2: "why",
+      });
+      expect(yield* Deferred.await(deferred)).toEqual({ q1: "main", q2: "why" });
     }),
   );
 
