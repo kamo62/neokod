@@ -1,0 +1,43 @@
+{
+  "nativeSolAttempt": {
+    "head": "8521d00c1eb4e19446ecfce11da80488674c33ea",
+    "exitCode": 1,
+    "result": "usage limited, no review produced",
+    "reportedResetLocal": "14:49 Africa/Johannesburg",
+    "onboardAgentAttempt": "same usage-limit result"
+  },
+  "routeChange": {
+    "sameModel": "github-copilot/gpt-6.1-sol",
+    "effort": "high",
+    "mode": "plan",
+    "reason": "native CLI and onboard Sol unavailable under observed usage limit",
+    "status": "review in progress; not acceptance"
+  },
+  "directClaude": {
+    "model": "claude-opus-5-5",
+    "reportedResetLocal": "13:50 Africa/Johannesburg",
+    "result": "session limited; earlier source reviews succeeded"
+  },
+  "opusFallback": {
+    "model": "github-copilot/claude-opus-5.5",
+    "effort": "high",
+    "mode": "plan",
+    "reason": "observed direct-Claude session limit"
+  },
+  "rootChecks": {
+    "source": "e2bb8fef1",
+    "scope": "S6 + accepted projection + docs only",
+    "vp check": {
+      "exitCode": 0,
+      "errors": 0,
+      "warnings": 49
+    },
+    "vp run typecheck": {
+      "exitCode": 0,
+      "packages": 10
+    },
+    "build": false,
+    "install": false,
+    "Playwright": false
+  }
+}
