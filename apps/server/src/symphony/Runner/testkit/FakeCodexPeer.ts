@@ -337,6 +337,7 @@ export const makeFakeCodexRuntime = (input: {
   readonly liveRequests: LiveRequestsService;
   readonly recordRequest?: AgentRuntimeDeps["recordRequest"];
   readonly requestTimedOut?: AgentRuntimeDeps["requestTimedOut"];
+  readonly onChildSpawned?: AgentRuntimeDeps["onChildSpawned"];
   readonly secretEnvironmentNames?: ReadonlyArray<string>;
 }): Effect.Effect<AgentRuntimeService, never, Scope.Scope> =>
   makeCodexAgentRuntime({
@@ -346,6 +347,7 @@ export const makeFakeCodexRuntime = (input: {
     liveRequests: input.liveRequests,
     ...(input.recordRequest !== undefined ? { recordRequest: input.recordRequest } : {}),
     ...(input.requestTimedOut !== undefined ? { requestTimedOut: input.requestTimedOut } : {}),
+    ...(input.onChildSpawned !== undefined ? { onChildSpawned: input.onChildSpawned } : {}),
     ...(input.secretEnvironmentNames !== undefined
       ? { secretEnvironmentNames: input.secretEnvironmentNames }
       : {}),
