@@ -1014,6 +1014,15 @@ export const makeRunDispatcher = Effect.gen(function* () {
           return current;
         });
 
+      const refreshPublicationPolicy = () =>
+        publicationPolicyFor().pipe(
+          Effect.map((policy) =>
+            policy === null
+              ? ({ status: "refused" } as const)
+              : ({ status: "available", config: policy.config } as const),
+          ),
+        );
+
       const runDispatch = Effect.gen(function* () {
         if (yield* isStopping(runAttemptId)) {
           return runAttemptId;
@@ -1122,6 +1131,7 @@ export const makeRunDispatcher = Effect.gen(function* () {
               issue,
               runAttemptId,
               config: publicationPolicy.config,
+              refreshPublicationPolicy,
               workspacePath: workspace.path,
               branch: workspace.branch,
               baseBranch: workspace.baseBranch,
@@ -1207,6 +1217,7 @@ export const makeRunDispatcher = Effect.gen(function* () {
               issue,
               runAttemptId,
               config: publicationPolicy.config,
+              refreshPublicationPolicy,
               workspacePath: workspace.path,
               branch: workspace.branch,
               baseBranch: workspace.baseBranch,

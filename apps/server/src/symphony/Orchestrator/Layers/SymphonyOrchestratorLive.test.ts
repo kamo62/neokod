@@ -214,7 +214,7 @@ const makeIssue = (
   priority: 1,
   state,
   branchName: null,
-  url: null,
+  url: `https://github.com/owner/repo/issues/${id}`,
   assigneeId: null,
   labels,
   blockedBy: [],
@@ -257,6 +257,16 @@ it("qualified tracker source rejects scope changes and preserves manual provenan
       makeConfig("/repo"),
     ),
   ).toBeNull();
+  expect(
+    trackerSourceMismatch(
+      {
+        ...baseItem,
+        source: { kind: "github", externalId: "1", externalUrl: "" },
+      },
+      issueAt(null),
+      makeConfig("/repo"),
+    ),
+  ).toContain("cannot be established");
   expect(
     trackerSourceMismatch(
       baseItem,
