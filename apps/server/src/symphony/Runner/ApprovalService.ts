@@ -25,6 +25,7 @@ import {
   SymphonyPersistenceSqlError,
 } from "../Persistence/Errors.ts";
 import { nowIso } from "../Domain/Time.ts";
+import { questionIsSensitive } from "../Domain/Approvals.ts";
 import { LiveRequests, type ApprovalDecision, type UserInputAnswers } from "./LiveRequests.ts";
 
 /**
@@ -73,17 +74,28 @@ export class ApprovalAnswerValidationError extends Error {
 export class ApprovalHistoryPendingError extends Error {
   readonly requestId: string;
   readonly delivered: boolean;
+  readonly retryable: boolean;
 
-  constructor(requestId: string, delivered: boolean, detail: string) {
+  constructor(requestId: string, delivered: boolean, detail: string, retryable = true) {
     super(
-      delivered
-        ? `The answer for request ${requestId} was accepted locally, but its history could not be saved (${detail}). Provider receipt is unknown. Retry to finish recording it; do not resend the provider response.`
-        : `The answer for request ${requestId} could not be saved (${detail}); nothing was sent. Retry the request.`,
+      !retryable
+        ? `The answer for request ${requestId} was accepted locally; provider receipt is unknown. Its history remains delivery-unknown and cannot be finalised by retry because the secret answer cannot be compared. It will be reconciled at startup (${detail}).`
+        : delivered
+          ? `The answer for request ${requestId} was accepted locally, but its history could not be saved (${detail}). Provider receipt is unknown. Retry to finish recording it; do not resend the provider response.`
+          : `The answer for request ${requestId} could not be saved (${detail}); nothing was sent. Retry the request.`,
     );
     this.name = "ApprovalHistoryPendingError";
     this.requestId = requestId;
     this.delivered = delivered;
+    this.retryable = retryable;
   }
+}
+
+/** Explicit reconciliation evidence; unavailable is not "zero staged rows". */
+export interface ApprovalReconciliationResult {
+  readonly reconciled: number;
+  readonly failedIds: ReadonlyArray<string>;
+  readonly unavailable?: string;
 }
 
 export interface ApprovalDecisionSubmission {
@@ -98,19 +110,6 @@ export interface UserInputAnswerSubmission {
   readonly runAttemptId?: RunAttemptId;
 }
 
-/**
- * Sensitive answers are never persisted. The provider's `isSecret` flag is
- * authoritative; the label fallback covers older providers that predate the
- * flag. The agent still receives the real answer through the live Deferred.
- */
-const SENSITIVE_QUESTION_PATTERN =
-  /(password|passphrase|secret|token|api[\s_-]?key|private[\s_-]?key|credential)/i;
-
-const isSensitiveQuestion = (question: ApprovalQuestion): boolean =>
-  question.sensitive === true ||
-  SENSITIVE_QUESTION_PATTERN.test(question.header) ||
-  SENSITIVE_QUESTION_PATTERN.test(question.question);
-
 const REDACTED_ANSWER = "[redacted]";
 
 const decodeQuestionPayload = Schema.decodeUnknownOption(ApprovalQuestionPayloadSchema);
@@ -119,20 +118,31 @@ const decodeQuestionPayload = Schema.decodeUnknownOption(ApprovalQuestionPayload
  * Validate the whole payload before persistence. Anything that cannot be
  * represented becomes explicitly `unsupported`; no partial question list is
  * written where a later list decode could hide every other request.
+ *
+ * Pattern-detected sensitivity is normalised into the stored payload so the UI
+ * reads the same authoritative flag that durable redaction uses.
  */
 const normaliseQuestionPayload = (
   payload: ApprovalQuestionPayload | undefined,
 ): ApprovalQuestionPayload | undefined => {
   if (payload === undefined) return undefined;
   const decoded = decodeQuestionPayload(payload);
-  return Option.isSome(decoded)
-    ? decoded.value
-    : {
-        kind: "unsupported",
-        providerMethod:
-          payload.kind === "unsupported" ? payload.providerMethod : "item/tool/requestUserInput",
-        detail: "the question payload could not be validated",
-      };
+  if (Option.isNone(decoded)) {
+    return {
+      kind: "unsupported",
+      providerMethod:
+        payload.kind === "unsupported" ? payload.providerMethod : "item/tool/requestUserInput",
+      detail: "the question payload could not be validated",
+    };
+  }
+  const value = decoded.value;
+  if (value.kind !== "structured") return value;
+  return {
+    ...value,
+    questions: value.questions.map((question) =>
+      questionIsSensitive(question) ? { ...question, sensitive: true } : question,
+    ),
+  };
 };
 
 const hasRedactedAnswer = (record: ApprovalAnswerRecord | undefined): boolean =>
@@ -303,7 +313,7 @@ const prepareAnswer = (
     }
 
     const sensitiveIds = new Set(
-      payload.questions.filter(isSensitiveQuestion).map((question) => question.id),
+      payload.questions.filter(questionIsSensitive).map((question) => question.id),
     );
     const redacted = validated.entries.map((entry) =>
       sensitiveIds.has(entry.questionId)
@@ -415,7 +425,7 @@ export interface ApprovalServiceShape {
    * failed) are left for an operator retry. Others become `interrupted` while
    * preserving their stored answer/note as delivery-unknown.
    */
-  readonly reconcileUncertainDeliveries?: () => Effect.Effect<number>;
+  readonly reconcileUncertainDeliveries?: () => Effect.Effect<ApprovalReconciliationResult>;
 }
 
 export class ApprovalService extends Context.Service<ApprovalService, ApprovalServiceShape>()(
@@ -544,24 +554,34 @@ export const makeApprovalService = Effect.gen(function* () {
         if (record.runAttemptId === undefined) {
           return yield* Effect.fail(new ApprovalRequestNotFoundError(id));
         }
-        yield* repository
-          .stageDelivery(record.id, decision, details)
-          .pipe(
-            Effect.mapError((cause) => new ApprovalHistoryPendingError(id, false, String(cause))),
-          );
-        const live = yield* Effect.result(
-          liveRequests.respondToApproval(record.runAttemptId, record.requestId, decision),
+        const claimedLocally = yield* Effect.uninterruptible(
+          Effect.gen(function* () {
+            yield* repository
+              .stageDelivery(record.id, decision, details)
+              .pipe(
+                Effect.mapError(
+                  (cause) => new ApprovalHistoryPendingError(id, false, String(cause)),
+                ),
+              );
+            const live = yield* Effect.result(
+              liveRequests.respondToApproval(record.runAttemptId!, record.requestId, decision),
+            );
+            if (live._tag === "Failure") {
+              // The live claim lost (timeout, run settlement or another
+              // resolver). The staged content was never delivered, so close it
+              // explicitly rather than leaving an invisible delivering row.
+              yield* repository
+                .abortDelivery(record.id, "interrupted")
+                .pipe(Effect.catch(() => logHistoryFailure("aborted delivery", id)));
+              return false;
+            }
+            yield* markConsumed(record.id);
+            return true;
+          }),
         );
-        if (live._tag === "Failure") {
-          // The live claim lost (timeout, run settlement or another resolver).
-          // The staged content was never delivered, so close it explicitly
-          // rather than leaving an invisible delivering row.
-          yield* repository
-            .abortDelivery(record.id, "interrupted")
-            .pipe(Effect.catch(() => logHistoryFailure("aborted delivery", id)));
+        if (!claimedLocally) {
           return yield* Effect.fail(new ApprovalRequestNotFoundError(id));
         }
-        yield* markConsumed(record.id);
         yield* repository
           .completeDelivery(record.id, decision)
           .pipe(
@@ -592,14 +612,23 @@ export const makeApprovalService = Effect.gen(function* () {
         }
         const prepared = yield* prepareAnswer(record, submission);
         if (record.state === "delivering") {
-          // A secret answer cannot be compared from its redacted history. A
-          // retry is therefore stale/unknown, never a success that claims a
-          // different secret was delivered.
-          if (
-            hasRedactedAnswer(record.answer) ||
-            !sameAnswers(record.answer, prepared.record) ||
-            !(yield* wasConsumed(record.id))
-          ) {
+          // A secret answer cannot be compared from its redacted history.
+          // With a local receipt the delivery is known locally but history
+          // cannot safely be finalised by retry; without one it is stale.
+          if (hasRedactedAnswer(record.answer)) {
+            if (yield* wasConsumed(record.id)) {
+              return yield* Effect.fail(
+                new ApprovalHistoryPendingError(
+                  id,
+                  true,
+                  "the secret answer cannot be compared for a retry",
+                  false,
+                ),
+              );
+            }
+            return yield* Effect.fail(new ApprovalRequestNotFoundError(id));
+          }
+          if (!sameAnswers(record.answer, prepared.record) || !(yield* wasConsumed(record.id))) {
             return yield* Effect.fail(new ApprovalRequestNotFoundError(id));
           }
           yield* repository
@@ -623,29 +652,47 @@ export const makeApprovalService = Effect.gen(function* () {
         if (record.runAttemptId === undefined) {
           return yield* Effect.fail(new ApprovalRequestNotFoundError(id));
         }
-        yield* repository
-          .stageDelivery(record.id, "answered", { answer: prepared.record })
-          .pipe(
-            Effect.mapError((cause) => new ApprovalHistoryPendingError(id, false, String(cause))),
-          );
-        const result = yield* Effect.result(
-          liveRequests.respondToUserInput(
-            record.runAttemptId,
-            record.requestId,
-            prepared.answerMap,
-          ),
+        const claimedLocally = yield* Effect.uninterruptible(
+          Effect.gen(function* () {
+            yield* repository
+              .stageDelivery(record.id, "answered", { answer: prepared.record })
+              .pipe(
+                Effect.mapError(
+                  (cause) => new ApprovalHistoryPendingError(id, false, String(cause)),
+                ),
+              );
+            const result = yield* Effect.result(
+              liveRequests.respondToUserInput(
+                record.runAttemptId!,
+                record.requestId,
+                prepared.answerMap,
+              ),
+            );
+            if (result._tag === "Failure") {
+              yield* repository
+                .abortDelivery(record.id, "interrupted")
+                .pipe(Effect.catch(() => logHistoryFailure("aborted answer", id)));
+              return false;
+            }
+            yield* markConsumed(record.id);
+            return true;
+          }),
         );
-        if (result._tag === "Failure") {
-          yield* repository
-            .abortDelivery(record.id, "interrupted")
-            .pipe(Effect.catch(() => logHistoryFailure("aborted answer", id)));
+        if (!claimedLocally) {
           return yield* Effect.fail(new ApprovalRequestNotFoundError(id));
         }
-        yield* markConsumed(record.id);
         yield* repository
           .completeDelivery(record.id, "answered")
           .pipe(
-            Effect.mapError((cause) => new ApprovalHistoryPendingError(id, true, String(cause))),
+            Effect.mapError(
+              (cause) =>
+                new ApprovalHistoryPendingError(
+                  id,
+                  true,
+                  String(cause),
+                  !hasRedactedAnswer(prepared.record),
+                ),
+            ),
           );
         yield* clearConsumed(record.id);
       }),
@@ -674,6 +721,13 @@ export const makeApprovalService = Effect.gen(function* () {
                 record.requestId,
                 "approval wait timed out",
               );
+        if (record.state === "delivering") {
+          if (yield* wasConsumed(record.id)) return;
+          yield* repository
+            .abortDelivery(record.id, "expired")
+            .pipe(Effect.catch(() => logHistoryFailure("expired staged delivery", id)));
+          return;
+        }
         if (!claimed && record.state !== "pending") {
           return;
         }
@@ -696,6 +750,13 @@ export const makeApprovalService = Effect.gen(function* () {
                 record.requestId,
                 "run interrupted; approval unanswered",
               );
+        if (record.state === "delivering") {
+          if (yield* wasConsumed(record.id)) return;
+          yield* repository
+            .abortDelivery(record.id, "interrupted")
+            .pipe(Effect.catch(() => logHistoryFailure("interrupted staged delivery", id)));
+          return;
+        }
         if (!claimed && record.state !== "pending") {
           return;
         }
@@ -721,10 +782,20 @@ export const makeApprovalService = Effect.gen(function* () {
           .listForRun(runAttemptId)
           .pipe(Effect.catch(() => Effect.succeed([] as ApprovalRequest[])));
         const record = records.find(
-          (candidate) => candidate.requestId === requestId && candidate.state === "pending",
+          (candidate) =>
+            candidate.requestId === requestId &&
+            (candidate.state === "pending" || candidate.state === "delivering"),
         );
         if (record !== undefined) {
-          yield* repository.decide(record.id, "expired").pipe(Effect.catch(() => Effect.void));
+          if (record.state === "delivering") {
+            if (!(yield* wasConsumed(record.id))) {
+              yield* repository
+                .abortDelivery(record.id, "expired")
+                .pipe(Effect.catch(() => logHistoryFailure("expired staged delivery", record.id)));
+            }
+          } else {
+            yield* repository.decide(record.id, "expired").pipe(Effect.catch(() => Effect.void));
+          }
         }
         return true;
       }),
@@ -733,20 +804,29 @@ export const makeApprovalService = Effect.gen(function* () {
   const reconcileUncertainDeliveries: ApprovalServiceShape["reconcileUncertainDeliveries"] = () =>
     withResolution(
       Effect.gen(function* () {
-        const rows = yield* repository
-          .listDelivering()
-          .pipe(Effect.catch(() => Effect.succeed([] as ApprovalRequest[])));
+        const listed = yield* Effect.result(repository.listDelivering());
+        if (listed._tag === "Failure") {
+          return {
+            reconciled: 0,
+            failedIds: [],
+            unavailable: String(listed.failure),
+          } satisfies ApprovalReconciliationResult;
+        }
         let reconciled = 0;
-        for (const row of rows) {
+        const failedIds: string[] = [];
+        for (const row of listed.success) {
           // A positive receipt in this process means the live Deferred was
           // consumed here; leave it for an operator retry to finalise history.
           if (yield* wasConsumed(row.id)) continue;
-          yield* repository
-            .reconcileDelivery(row.id, "interrupted")
-            .pipe(Effect.catch(() => logHistoryFailure("reconciled delivery", row.id)));
-          reconciled += 1;
+          const result = yield* Effect.result(repository.reconcileDelivery(row.id, "interrupted"));
+          if (result._tag === "Success") {
+            reconciled += 1;
+          } else {
+            failedIds.push(String(row.id));
+            yield* logHistoryFailure("reconciled delivery", row.id);
+          }
         }
-        return reconciled;
+        return { reconciled, failedIds } satisfies ApprovalReconciliationResult;
       }),
     );
 

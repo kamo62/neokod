@@ -21,6 +21,7 @@ import { nowIso } from "../../Domain/Time.ts";
 import {
   approvalRequestKindForAction,
   normaliseApprovalRequestAction,
+  questionIsSensitive,
 } from "../../Domain/Approvals.ts";
 import { SymphonyPersistenceDecodeError, SymphonyPersistenceSqlError } from "../Errors.ts";
 import { decodeJson, encodeJson } from "../Json.ts";
@@ -55,6 +56,20 @@ const decodeAnswerRecord = Schema.decodeUnknownEffect(ApprovalAnswerRecordSchema
 const decodeDecisionNote = Schema.decodeUnknownEffect(ApprovalDecisionNoteSchema);
 const decodeApprovalRequest = Schema.decodeUnknownEffect(ApprovalRequestSchema);
 
+/**
+ * Legacy structured payloads may predate stored pattern-detected sensitivity.
+ * Normalise that flag on read so UI masking and redaction agree.
+ */
+const normalisePayloadSensitivity = (payload: ApprovalQuestionPayload): ApprovalQuestionPayload =>
+  payload.kind === "structured"
+    ? {
+        ...payload,
+        questions: payload.questions.map((question) =>
+          questionIsSensitive(question) ? { ...question, sensitive: true } : question,
+        ),
+      }
+    : payload;
+
 const payloadKind = (payload: Record<string, unknown>): ApprovalRequestKind | undefined => {
   const value = payload.kind;
   return value === "approval" || value === "user_input" ? value : undefined;
@@ -72,18 +87,23 @@ const rowToApproval = (
   row: Schema.Schema.Type<typeof ApprovalRowSchema>,
 ): Effect.Effect<ApprovalRequest, SymphonyPersistenceDecodeError> =>
   Effect.gen(function* () {
+    const historyProblems: string[] = [];
     const payload = yield* Effect.try({
       try: () =>
         row.payloadJson === null
           ? ({} as Record<string, unknown>)
           : (decodeJson(row.payloadJson) as Record<string, unknown>),
-      catch: (cause) =>
-        new SymphonyPersistenceDecodeError({
-          operation: "ApprovalRepository.rowToApproval",
-          issue: `approval row ${String(row.id)} payload could not be decoded`,
-          cause,
-        }),
-    });
+      catch: () => null,
+    }).pipe(
+      Effect.catch(() => Effect.succeed(null)),
+      Effect.map((decoded) => {
+        if (decoded === null) {
+          historyProblems.push("the stored request payload could not be decoded");
+          return {} as Record<string, unknown>;
+        }
+        return decoded;
+      }),
+    );
     const affectedFiles = Array.isArray(payload.affectedFiles)
       ? (payload.affectedFiles as string[]).map(String)
       : [];
@@ -112,7 +132,7 @@ const rowToApproval = (
               json === null
                 ? Effect.succeed(null)
                 : decodeQuestionPayload(json).pipe(
-                    Effect.map((payload) => payload),
+                    Effect.map((payload) => normalisePayloadSensitivity(payload)),
                     Effect.catch(() => Effect.succeed(null)),
                   ),
             ),
@@ -135,7 +155,6 @@ const rowToApproval = (
             : ({ kind: "legacy_text" as const, text: reason } as const)
           : undefined;
 
-    const historyProblems: string[] = [];
     const answer =
       row.answerJson === null
         ? undefined

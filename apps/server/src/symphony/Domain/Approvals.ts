@@ -46,3 +46,21 @@ export const approvalRequestKindForAction = (action: ApprovalRequestAction): App
 export const approvalRequestKind = (
   request: Pick<ApprovalRequest, "kind" | "action">,
 ): ApprovalRequestKind => request.kind ?? approvalRequestKindForAction(request.action);
+
+/**
+ * One authority for effective question sensitivity. The provider's explicit
+ * `isSecret` flag wins; the label fallback covers older providers. Persistence
+ * normalises this into the stored question payload so UI masking and durable
+ * redaction read the same flag.
+ */
+const SENSITIVE_QUESTION_LABEL_PATTERN =
+  /(password|passphrase|secret|token|api[\s_-]?key|private[\s_-]?key|credential)/i;
+
+export const questionIsSensitive = (question: {
+  readonly header: string;
+  readonly question: string;
+  readonly sensitive?: boolean | undefined;
+}): boolean =>
+  question.sensitive === true ||
+  SENSITIVE_QUESTION_LABEL_PATTERN.test(question.header) ||
+  SENSITIVE_QUESTION_LABEL_PATTERN.test(question.question);

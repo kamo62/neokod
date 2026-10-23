@@ -177,12 +177,14 @@ export interface LiveRequestsService {
   >;
 
   /**
-   * Remove one registration that this caller just created, before any waiter
-   * observes it. Returns false when absent. Does not fail the Deferred.
+   * Remove the exact registration this caller created, matched by Deferred
+   * identity. Returns false when it is absent or replaced. Does not fail the
+   * Deferred.
    */
   readonly withdrawPending: (
     runAttemptId: RunAttemptId,
     requestId: string,
+    deferred: Deferred.Deferred<unknown>,
   ) => Effect.Effect<boolean>;
 
   /**
@@ -384,10 +386,15 @@ export const makeLiveRequestsWithHooks = (hooks: LiveRequestsTestHooks) =>
           })),
       );
 
-    const withdrawPending: LiveRequestsService["withdrawPending"] = (runAttemptId, requestId) =>
+    const withdrawPending: LiveRequestsService["withdrawPending"] = (
+      runAttemptId,
+      requestId,
+      deferred,
+    ) =>
       Ref.modify(store, (current): readonly [boolean, Record<string, PendingApprovalRequest>] => {
         const key = keyOf(runAttemptId, requestId);
-        if (current[key] === undefined) return [false, current];
+        const entry = current[key];
+        if (entry === undefined || entry.deferred !== deferred) return [false, current];
         const next = { ...current };
         delete next[key];
         return [true, next];

@@ -8,6 +8,8 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as Exit from "effect/Exit";
+import * as Scope from "effect/Scope";
 import * as TestClock from "effect/testing/TestClock";
 
 import { SqlitePersistenceMemory } from "../../persistence/Layers/Sqlite.ts";
@@ -20,6 +22,7 @@ import { approvalServiceRequestCallbacks } from "./AgentRequestCallbacks.ts";
 import { LiveRequests, LiveRequestsLive, makeLiveRequests } from "./LiveRequests.ts";
 import {
   ApprovalHistoryPendingError,
+  type ApprovalReconciliationResult,
   ApprovalRequestNotFoundError,
   ApprovalService,
   ApprovalServiceLive,
@@ -91,6 +94,7 @@ const slowLookupStack = ApprovalServiceLive.pipe(
 const failingDeliveryRepositoryLayer = (input: {
   readonly stageFailures?: number;
   readonly completeFailures?: number;
+  readonly listDeliveringFailures?: number;
 }) =>
   Layer.effect(
     ApprovalRepository,
@@ -98,6 +102,7 @@ const failingDeliveryRepositoryLayer = (input: {
       const repository = yield* ApprovalRepository;
       let stageFailures = input.stageFailures ?? 0;
       let completeFailures = input.completeFailures ?? 0;
+      let listDeliveringFailures = input.listDeliveringFailures ?? 0;
       const sqlError = (operation: string) =>
         new SymphonyPersistenceSqlError({ operation, detail: "disk I/O error" });
       return ApprovalRepository.of({
@@ -118,6 +123,14 @@ const failingDeliveryRepositoryLayer = (input: {
             }
             return repository.completeDelivery(id, decision);
           }),
+        listDelivering: () =>
+          Effect.suspend(() => {
+            if (listDeliveringFailures > 0) {
+              listDeliveringFailures -= 1;
+              return Effect.fail(sqlError("test.listDelivering"));
+            }
+            return repository.listDelivering();
+          }),
       });
     }),
   ).pipe(Layer.provide(ApprovalRepositoryLive));
@@ -125,6 +138,7 @@ const failingDeliveryRepositoryLayer = (input: {
 const failingDeliveryStack = (input: {
   readonly stageFailures?: number;
   readonly completeFailures?: number;
+  readonly listDeliveringFailures?: number;
 }) =>
   ApprovalServiceLive.pipe(
     Layer.provideMerge(failingDeliveryRepositoryLayer(input)),
@@ -868,13 +882,34 @@ layer("ApprovalService durable ids", (it) => {
         expect(retry._tag).toBe("Failure");
         expect((yield* repository.getById(record.id))?.state).toBe("delivering");
 
-        expect(yield* restarted.reconcileUncertainDeliveries?.() ?? Effect.succeed(0)).toBe(1);
+        const reconciledResult = yield* (
+          restarted.reconcileUncertainDeliveries?.() ??
+            Effect.succeed({ reconciled: 0, failedIds: [] })
+        );
+        expect(reconciledResult).toEqual({ reconciled: 1, failedIds: [] });
         const reconciled = yield* repository.getById(record.id);
         expect(reconciled?.state).toBe("interrupted");
         expect(reconciled?.decision).toBe("interrupted");
         // Stored answer content is preserved as delivery-unknown, not erased or
         // promoted to answered.
         expect(reconciled?.answer?.answers).toEqual([{ questionId: "q1", answer: "main" }]);
+      }),
+    ),
+  );
+
+  it.effect("reconciliation reports unavailable rather than zero when the read fails", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const context = yield* Layer.build(
+          Layer.fresh(failingDeliveryStack({ listDeliveringFailures: 1 })),
+        );
+        const service = Context.get(context, ApprovalService);
+        const result = yield* (
+          service.reconcileUncertainDeliveries?.() ??
+            Effect.succeed<ApprovalReconciliationResult>({ reconciled: 0, failedIds: [] })
+        );
+        expect(result.reconciled).toBe(0);
+        expect(result.unavailable).toBeDefined();
       }),
     ),
   );
@@ -1085,6 +1120,53 @@ layer("ApprovalService durable ids", (it) => {
         yield* Fiber.join(fiber);
       }),
     ),
+  );
+
+  it.effect("scope closure finalises a pending request instead of leaving it answerable", () =>
+    Effect.gen(function* () {
+      yield* seedWorkItem("wi-scope-close");
+      const service = yield* ApprovalService;
+      const live = yield* LiveRequests;
+      const repository = yield* ApprovalRepository;
+      const peer = yield* makeFakeCodexPeer();
+      const runAttemptId = RunAttemptId.make("run-scope-close");
+      const workItemId = WorkItemId.make("wi-scope-close");
+      const scope = yield* Scope.make();
+      const runtime = yield* makeFakeCodexRuntime({
+        peer,
+        liveRequests: live,
+        ...approvalServiceRequestCallbacks(service),
+      }).pipe(Effect.provideService(Scope.Scope, scope));
+      yield* runtime
+        .runTurn({
+          issue: makeRunnerTestIssue("scope-close"),
+          config: makeRunnerTestConfig({ liveRequestsWaitTimeoutMs: 30_000 }),
+          workspacePath: "/tmp/fake-ws",
+          branch: "b",
+          runAttemptId,
+          workItemId,
+        })
+        .pipe(Effect.provideService(Scope.Scope, scope), Effect.forkIn(scope));
+      yield* peer.awaitClientRequest("turn/start");
+      yield* peer.sendCommandApproval();
+
+      let recorded: ApprovalRequest | undefined;
+      for (let attempt = 0; attempt < 100 && recorded === undefined; attempt += 1) {
+        yield* Effect.yieldNow;
+        const rows = yield* repository.listForRun(runAttemptId);
+        recorded = rows[0];
+      }
+      if (recorded === undefined) throw new Error("the runtime did not record the request");
+      yield* Effect.repeat(Effect.yieldNow, { times: 20 });
+
+      // Closing the runtime scope interrupts the waiting handler. The
+      // uninterruptible finaliser must withdraw the exact registration and
+      // close the pending row, not leave an advertised answerable request.
+      yield* Scope.close(scope, Exit.void);
+      const row = yield* repository.getById(recorded.id);
+      expect(row?.state).toBe("interrupted");
+      expect(yield* live.listPending(runAttemptId)).toHaveLength(0);
+    }),
   );
 
   it.effect("a runtime wait timeout expires a question and sends no synthetic answer", () =>
