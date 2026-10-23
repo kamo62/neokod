@@ -103,7 +103,8 @@ export class AgentRuntimePermissionConflictError extends Error {
 export type AgentRuntimeRunError =
   | AgentRuntimeSpawnError
   | AgentRuntimeTargetMismatchError
-  | AgentRuntimePermissionConflictError;
+  | AgentRuntimePermissionConflictError
+  | AgentRuntimeChildOwnershipError;
 
 /**
  * The callback had positive knowledge of a spawned child but could not record
@@ -111,11 +112,16 @@ export type AgentRuntimeRunError =
  */
 export class AgentRuntimeChildOwnershipError extends Error {
   readonly detail: string;
+  /** Positively observed spawned child, when raised by the runtime. */
+  readonly pid: number | undefined;
+  readonly identity: ProcessGroupIdentity | undefined;
 
-  constructor(detail: string) {
+  constructor(detail: string, pid?: number, identity?: ProcessGroupIdentity) {
     super(`Failed to record agent child ownership: ${detail}`);
     this.name = "AgentRuntimeChildOwnershipError";
     this.detail = detail;
+    this.pid = pid;
+    this.identity = identity;
   }
 }
 
@@ -413,10 +419,7 @@ export const makeCodexAgentRuntime = (
             }),
           ),
           Effect.mapError(
-            (cause) =>
-              new AgentRuntimeSpawnError(
-                `the agent child owns pid ${childPid}, but recording its ownership failed; refusing to continue (${cause.message})`,
-              ),
+            (cause) => new AgentRuntimeChildOwnershipError(cause.detail, childPid, childIdentity),
           ),
         );
       }

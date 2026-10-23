@@ -886,8 +886,12 @@ export const ApprovalRequestSchema = Schema.Struct({
   historyUnavailable: Schema.optional(Schema.String),
   /**
    * How the request closed. The durable column records the same value as
-   * `state` on every close, including `interrupted` (the run died while the
-   * request was pending), so an interrupted row stays decodable.
+   * `state` on normal closes, including `interrupted` (the run died while the
+   * request was pending). For a staged delivery, `decision` records the local
+   * staged submission (`answered`/`approved`/`rejected`) even while `state` is
+   * `delivering`, and startup reconciliation preserves that decision when it
+   * changes the state to `interrupted`: delivery to the provider remains
+   * unknown.
    */
   decision: Schema.optional(
     Schema.Literals(["delivering", "answered", "approved", "rejected", "expired", "interrupted"]),
