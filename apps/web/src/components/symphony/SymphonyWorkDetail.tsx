@@ -8,10 +8,12 @@ import type {
   ApprovalRequest,
   EnvironmentId,
   EvidenceBundle,
+  RunAttempt,
   RunAttemptId,
   RunDetails,
   SymphonyBoardCard,
   SymphonyProject,
+  SymphonyStopResult,
 } from "@neokod/contracts";
 import { RunAttemptId as RunAttemptIdValue } from "@neokod/contracts";
 
@@ -22,6 +24,7 @@ import type {
   SymphonyWorkAction,
   SymphonyWorkAttentionEntry,
   SymphonyWorkAttempt,
+  SymphonyWorkAttemptOutcome,
   SymphonyWorkItemProjection,
 } from "../../symphonyWork.logic";
 import { Badge } from "../ui/badge";
@@ -231,6 +234,56 @@ const Muted = ({ children }: { readonly children: string }) => (
   <p className="text-xs text-muted-foreground">{children}</p>
 );
 
+export const stopAcknowledgementNote = (result: SymphonyStopResult): string => {
+  const outcome = result.outcome;
+  if (outcome?.status === "confirmed") {
+    return `Stop confirmed by the server: ${outcome.evidence}. Ownership ${
+      outcome.released ? "released" : "not released"
+    }.`;
+  }
+  if (outcome?.status === "held") {
+    return `Stop held: ${outcome.reason}${
+      outcome.detail === undefined ? "." : `. ${outcome.detail}`
+    } Ownership was not released.`;
+  }
+  return "Stop acknowledgement did not include a confirmed or held outcome. The attempt may still be running; this is not confirmation.";
+};
+
+export function AttemptOutcomeBadge({ outcome }: { readonly outcome: SymphonyWorkAttemptOutcome }) {
+  if (outcome.state === "stopped") {
+    return (
+      <Badge variant="success" size="sm">
+        Stop confirmed
+      </Badge>
+    );
+  }
+  if (outcome.state === "stop_requested") {
+    return (
+      <Badge variant="warning" size="sm">
+        Stop requested; closure unknown
+      </Badge>
+    );
+  }
+  if (outcome.state === "unknown") {
+    return (
+      <Badge variant="warning" size="sm">
+        Outcome unknown
+      </Badge>
+    );
+  }
+  return null;
+}
+
+export function AttemptAttribution({ attempt }: { readonly attempt: RunAttempt }) {
+  return (
+    <p className="text-[10px] leading-relaxed text-muted-foreground">
+      Attempt {attempt.attemptNumber} · {attempt.provider.instanceId} ({attempt.provider.driver})
+      {attempt.model === undefined ? "" : ` · ${attempt.model}`} · target{" "}
+      <span className="font-mono">{attempt.workspacePath}</span>
+    </p>
+  );
+}
+
 const requestStateVariant = (
   state: ApprovalRequest["state"],
 ): "error" | "info" | "secondary" | "success" | "warning" => {
@@ -239,6 +292,8 @@ const requestStateVariant = (
       return "success";
     case "rejected":
       return "error";
+    case "delivering":
+      return "warning";
     case "answered":
       return "info";
     case "expired":
@@ -276,9 +331,11 @@ export function ApprovalRequestHistoryList({
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-[11px] font-medium text-foreground">
                   {mode === "question"
-                    ? history.answered
-                      ? "Question answered"
-                      : "Question closed"
+                    ? history.deliveryPending
+                      ? "Question answer delivery pending"
+                      : history.answered
+                        ? "Question answered"
+                        : "Question closed"
                     : `Approval ${request.state}`}
                 </span>
                 <Badge variant={requestStateVariant(request.state)} size="sm">
@@ -295,30 +352,28 @@ export function ApprovalRequestHistoryList({
                   </code>
                 )}
               </div>
-              {history.answered ? (
-                history.answerText === null ? (
-                  <p className="text-[11px] text-muted-foreground">
-                    No answer content was stored for this legacy request.
+              {history.answerText !== null ? (
+                <div className="space-y-1">
+                  <p className="whitespace-pre-wrap text-[11px] text-foreground">
+                    {history.answerText}
                   </p>
-                ) : (
-                  <div className="space-y-1">
-                    <p className="whitespace-pre-wrap text-[11px] text-foreground">
-                      {history.answerText}
-                    </p>
-                    <div className="flex flex-wrap items-center gap-2">
-                      {history.answerRedacted ? (
-                        <Badge variant="warning" size="sm">
-                          Redacted
-                        </Badge>
-                      ) : null}
-                      {history.answerDeliveryLabel === null ? null : (
-                        <span className="text-[10px] text-muted-foreground">
-                          {history.answerDeliveryLabel}
-                        </span>
-                      )}
-                    </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {history.answerRedacted ? (
+                      <Badge variant="warning" size="sm">
+                        Redacted
+                      </Badge>
+                    ) : null}
+                    {history.answerDeliveryLabel === null ? null : (
+                      <span className="text-[10px] text-muted-foreground">
+                        {history.answerDeliveryLabel}
+                      </span>
+                    )}
                   </div>
-                )
+                </div>
+              ) : history.answered || history.deliveryPending ? (
+                <p className="text-[11px] text-muted-foreground">
+                  No answer content was stored for this request.
+                </p>
               ) : null}
               {history.noteText === null ? null : (
                 <div className="rounded-md bg-muted/40 px-2.5 py-1.5">
@@ -452,9 +507,14 @@ export function ExactRequestActions({
   }
   if (!loaded) {
     return (
-      <Button size="sm" variant="outline" onClick={() => setLoaded(true)}>
-        Load exact request
-      </Button>
+      <div className="space-y-1.5">
+        <p className="text-[10px] text-muted-foreground">
+          Owning attempt <span className="font-mono">{String(entry.runAttemptId)}</span>
+        </p>
+        <Button size="sm" variant="outline" onClick={() => setLoaded(true)}>
+          Load exact request
+        </Button>
+      </div>
     );
   }
   if (query.isPending && query.data === null) {
@@ -498,16 +558,19 @@ export function ExactRequestActions({
     );
   }
   return (
-    <RequestActions
-      environmentId={environmentId}
-      entry={entry}
-      request={request}
-      actions={actions}
-      onRefresh={() => {
-        query.refresh();
-        onRefresh();
-      }}
-    />
+    <div className="space-y-2">
+      {query.data === null ? null : <AttemptAttribution attempt={query.data.runAttempt} />}
+      <RequestActions
+        environmentId={environmentId}
+        entry={entry}
+        request={request}
+        actions={actions}
+        onRefresh={() => {
+          query.refresh();
+          onRefresh();
+        }}
+      />
+    </div>
   );
 }
 
@@ -538,6 +601,13 @@ function RequestList({
             details !== null &&
             entry.runAttemptId !== null &&
             String(entry.runAttemptId) === String(details.runAttempt.id);
+          const attributionAttempt =
+            details !== null &&
+            (sameAttempt ||
+              (request?.runAttemptId !== undefined &&
+                String(request.runAttemptId) === String(details.runAttempt.id)))
+              ? details.runAttempt
+              : null;
           return (
             <li key={entry.item.id} className="space-y-2 py-2.5 first:pt-0 last:pb-0">
               <div className="flex items-start justify-between gap-3">
@@ -549,6 +619,9 @@ function RequestList({
                 </Badge>
               </div>
               <p className="text-[11px] text-muted-foreground">{entry.item.whyHuman}</p>
+              {attributionAttempt === null ? null : (
+                <AttemptAttribution attempt={attributionAttempt} />
+              )}
               <div className="flex flex-wrap items-center gap-2">
                 {entry.runAttemptId === null ? null : (
                   <Link
@@ -843,10 +916,11 @@ function PlanPanel({
     return (
       <div className="space-y-4">
         <section className="rounded-2xl border bg-card px-4 py-4">
-          <h2 className="text-[12px] font-semibold text-foreground">Legacy attempt</h2>
+          <h2 className="text-[12px] font-semibold text-foreground">Accepted brief not recorded</h2>
           <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
-            This attempt predates accepted-guidance storage. The current tracker brief is shown
-            below, but it is not proof of what this attempt accepted.
+            No accepted brief is recorded for this attempt. It may predate accepted-guidance
+            persistence or the server may not publish it yet. The current tracker brief below is not
+            proof of what this attempt accepted.
           </p>
           <CurrentBrief workItem={details.workItem} />
         </section>
@@ -1027,6 +1101,7 @@ function DetailTabPanel({
                   <Badge variant={entry.status === null ? "warning" : "secondary"} size="sm">
                     {entry.status === null ? "status unknown" : lifecycleLabel(entry.status)}
                   </Badge>
+                  <AttemptOutcomeBadge outcome={entry.outcome} />
                   {entry.hasOutstandingAttention ? (
                     <Badge variant="warning" size="sm">
                       Needs attention
@@ -1258,7 +1333,7 @@ export function SymphonyWorkDetail({
               <p>{actionNote}</p>
               <Button size="sm" variant="outline" className="mt-2" onClick={onReconcile}>
                 <RefreshCwIcon className="size-3.5" />
-                Reconcile status
+                Refresh evidence
               </Button>
             </div>
           )}
@@ -1289,29 +1364,23 @@ export function SymphonyWorkDetail({
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto p-6" role="tabpanel">
-          {error !== null && details !== null ? (
+          {error === null ? null : (
             <div className="mb-4 flex items-start justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive-foreground">
-              <p>Live detail stopped updating. Showing the last received record. {error}</p>
-              <Button size="sm" variant="outline" onClick={onRefresh}>
-                <RefreshCwIcon className="size-3.5" />
-                Retry
-              </Button>
-            </div>
-          ) : null}
-          {loading && details === null ? (
-            <div className="space-y-3">
-              <Skeleton className="h-16 rounded-2xl" />
-              <Skeleton className="h-32 rounded-2xl" />
-            </div>
-          ) : error !== null && details === null ? (
-            <div className="space-y-3">
-              <p className="text-sm text-destructive-foreground">
-                Could not load the exact attempt record. {error}
+              <p>
+                {details === null
+                  ? `Could not load the exact attempt record. Requests on older attempts remain available in Activity. ${error}`
+                  : `Live detail stopped updating. Showing the last received record. ${error}`}
               </p>
               <Button size="sm" variant="outline" onClick={onRefresh}>
                 <RefreshCwIcon className="size-3.5" />
                 Retry
               </Button>
+            </div>
+          )}
+          {loading && details === null ? (
+            <div className="space-y-3">
+              <Skeleton className="h-16 rounded-2xl" />
+              <Skeleton className="h-32 rounded-2xl" />
             </div>
           ) : (
             <DetailTabPanel
