@@ -1,0 +1,30 @@
+{
+  "sessionId": "ses_e98008948ffebLxnSQ30q03gFF",
+  "requestedModel": "github-copilot/gpt-6.1-sol",
+  "effectiveConfig": [
+    {
+      "id": "model",
+      "currentValue": "github-copilot/gpt-6.1-sol"
+    },
+    {
+      "id": "effort",
+      "currentValue": "high"
+    },
+    {
+      "id": "mode",
+      "currentValue": "plan"
+    }
+  ],
+  "result": {
+    "stopReason": "end_turn",
+    "usage": {
+      "inputTokens": 138215,
+      "outputTokens": 4534,
+      "totalTokens": 1308047,
+      "thoughtTokens": 4466,
+      "cachedReadTokens": 1160832
+    },
+    "_meta": {}
+  },
+  "evidence": "source review only; not live acceptance"
+}
