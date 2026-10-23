@@ -46,6 +46,32 @@ export interface ApprovalRepositoryShape {
     },
   ) => Effect.Effect<void, SymphonyPersistenceError>;
 
+  /**
+   * Persist accepted content before the live Deferred is consumed. The row
+   * moves to `delivering` so a retry can finish history without resolving the
+   * provider a second time.
+   */
+  readonly stageDelivery: (
+    id: string,
+    decision: "answered" | "approved" | "rejected",
+    details?: {
+      readonly answer?: ApprovalAnswerRecord;
+      readonly decisionNote?: ApprovalDecisionNote;
+    },
+  ) => Effect.Effect<void, SymphonyPersistenceError>;
+
+  /** Finalise a staged delivery after the live request was consumed. */
+  readonly completeDelivery: (
+    id: string,
+    decision: "answered" | "approved" | "rejected",
+  ) => Effect.Effect<void, SymphonyPersistenceError>;
+
+  /** Close a staged delivery whose live claim lost; its content was not sent. */
+  readonly abortDelivery: (
+    id: string,
+    decision: "expired" | "interrupted",
+  ) => Effect.Effect<void, SymphonyPersistenceError>;
+
   /** List pending (undecided) requests, newest first. */
   readonly listPending: (options?: {
     readonly limit?: number;
@@ -57,6 +83,12 @@ export interface ApprovalRepositoryShape {
   ) => Effect.Effect<ApprovalRequest[], SymphonyPersistenceError>;
 
   readonly getById: (id: string) => Effect.Effect<ApprovalRequest | null, SymphonyPersistenceError>;
+
+  /** The durable row for a provider request within one run/attempt, newest first. */
+  readonly findByRequest: (
+    runAttemptId: RunAttemptId,
+    requestId: string,
+  ) => Effect.Effect<ApprovalRequest | null, SymphonyPersistenceError>;
 }
 
 export class ApprovalRepository extends Context.Service<

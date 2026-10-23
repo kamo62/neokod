@@ -1,4 +1,9 @@
-import type { ApprovalRequest, AttentionItem } from "@neokod/contracts";
+import type {
+  ApprovalAnswerInput,
+  ApprovalQuestion,
+  ApprovalRequest,
+  AttentionItem,
+} from "@neokod/contracts";
 
 /**
  * Which controls an attention row offers.
@@ -16,6 +21,43 @@ export function attentionMode(item: Pick<AttentionItem, "availableActions">): At
   return "info";
 }
 
+export interface ApprovalQuestionDraft {
+  readonly selected: ReadonlyArray<string>;
+  readonly custom: string;
+}
+
+/**
+ * Serialise one draft per question into the exact answer map the server
+ * validates. A custom answer to a multi-select question is a singleton array,
+ * including when the question has no options.
+ */
+export function buildApprovalAnswerInputs(
+  questions: ReadonlyArray<ApprovalQuestion>,
+  drafts: Readonly<Record<string, ApprovalQuestionDraft>>,
+): ReadonlyArray<ApprovalAnswerInput> | null {
+  const answers: ApprovalAnswerInput[] = [];
+  for (const question of questions) {
+    const draft = drafts[question.id] ?? { selected: [], custom: "" };
+    const custom = draft.custom.trim();
+    if (custom.length > 0) {
+      answers.push({
+        questionId: question.id,
+        answer: question.multiSelect === true ? [custom] : custom,
+      });
+      continue;
+    }
+    if (question.multiSelect === true) {
+      if (draft.selected.length === 0) return null;
+      answers.push({ questionId: question.id, answer: [...draft.selected] });
+      continue;
+    }
+    const selected = draft.selected[0];
+    if (selected === undefined || selected.length === 0) return null;
+    answers.push({ questionId: question.id, answer: selected });
+  }
+  return answers;
+}
+
 /**
  * Question vs approval for a durable request. The request kind is explicit on
  * current payloads; payloads written before it existed only carry the action,
@@ -31,6 +73,8 @@ export function approvalRequestMode(
 export interface ApprovalRequestHistory {
   /** True only for an answered question, never for a permission approval. */
   readonly answered: boolean;
+  /** Staged content whose history finalisation did not complete. */
+  readonly deliveryPending: boolean;
   /** Stored answer content, labelled honestly; null when nothing was stored. */
   readonly answerText: string | null;
   readonly answerRedacted: boolean;
@@ -73,9 +117,15 @@ export function approvalRequestHistory(request: ApprovalRequest): ApprovalReques
 
   return {
     answered: request.state === "answered",
+    deliveryPending: request.state === "delivering",
     answerText: answerTextValue,
     answerRedacted: answer?.answers.some((entry) => entry.redacted === true) ?? false,
-    answerDeliveryLabel: answer === undefined ? null : "Provider receipt not confirmed",
+    answerDeliveryLabel:
+      answer === undefined
+        ? null
+        : request.state === "delivering"
+          ? "Delivery to the agent was accepted; history finalisation is pending"
+          : "Provider receipt not confirmed",
     noteText: note?.text ?? null,
     noteDeliveryLabel: note === undefined ? null : "History only; not sent to the agent",
   };

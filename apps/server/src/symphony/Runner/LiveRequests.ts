@@ -114,6 +114,19 @@ export class LiveRequestAnswerMismatchError extends Error {
   }
 }
 
+/** A provider request id is already live for this run; keep its Deferred. */
+export class LiveRequestAlreadyPendingError extends Error {
+  readonly requestId: string;
+  readonly runAttemptId: string;
+
+  constructor(requestId: string, runAttemptId: string) {
+    super(`Request ${requestId} is already pending for run ${runAttemptId}`);
+    this.name = "LiveRequestAlreadyPendingError";
+    this.requestId = requestId;
+    this.runAttemptId = runAttemptId;
+  }
+}
+
 export interface LiveRequestsService {
   /**
    * Register a blocking approval request. Returns the Deferred the agent waits
@@ -125,7 +138,7 @@ export interface LiveRequestsService {
     readonly runAttemptId: RunAttemptId;
     readonly action: string;
     readonly prompt: string;
-  }) => Effect.Effect<Deferred.Deferred<ApprovalDecision>>;
+  }) => Effect.Effect<Deferred.Deferred<ApprovalDecision>, LiveRequestAlreadyPendingError>;
 
   /**
    * Register a blocking user-input request. Returns the Deferred the agent
@@ -137,7 +150,7 @@ export interface LiveRequestsService {
     readonly runAttemptId: RunAttemptId;
     readonly prompt: string;
     readonly questionIds?: ReadonlyArray<string>;
-  }) => Effect.Effect<Deferred.Deferred<UserInputAnswers>>;
+  }) => Effect.Effect<Deferred.Deferred<UserInputAnswers>, LiveRequestAlreadyPendingError>;
 
   /** Answer a pending approval. Fails with LiveRequestNotFoundError if absent. */
   readonly respondToApproval: (
@@ -212,11 +225,12 @@ export const makeLiveRequestsWithHooks = (hooks: LiveRequestsTestHooks) =>
     const keyOf = (runAttemptId: RunAttemptId, requestId: string): string =>
       `${runAttemptId}:${requestId}`;
 
-    const put = (entry: PendingApprovalRequest) =>
-      Ref.update(store, (current) => ({
-        ...current,
-        [keyOf(entry.runAttemptId, entry.requestId)]: entry,
-      }));
+    const putIfAbsent = (entry: PendingApprovalRequest) =>
+      Ref.modify(store, (current): readonly [boolean, Record<string, PendingApprovalRequest>] => {
+        const key = keyOf(entry.runAttemptId, entry.requestId);
+        if (current[key] !== undefined) return [false, current];
+        return [true, { ...current, [key]: entry }];
+      });
 
     /**
      * Atomic compare-and-set: the caller that removes the entry owns the
@@ -270,7 +284,7 @@ export const makeLiveRequestsWithHooks = (hooks: LiveRequestsTestHooks) =>
     const registerApproval: LiveRequestsService["registerApproval"] = (input) =>
       Effect.gen(function* () {
         const deferred = yield* Deferred.make<ApprovalDecision>();
-        yield* put({
+        const inserted = yield* putIfAbsent({
           requestId: input.requestId,
           workItemId: input.workItemId,
           runAttemptId: input.runAttemptId,
@@ -279,13 +293,18 @@ export const makeLiveRequestsWithHooks = (hooks: LiveRequestsTestHooks) =>
           prompt: input.prompt,
           deferred: deferred as Deferred.Deferred<unknown>,
         });
+        if (!inserted) {
+          return yield* Effect.fail(
+            new LiveRequestAlreadyPendingError(input.requestId, String(input.runAttemptId)),
+          );
+        }
         return deferred;
       });
 
     const registerUserInput: LiveRequestsService["registerUserInput"] = (input) =>
       Effect.gen(function* () {
         const deferred = yield* Deferred.make<UserInputAnswers>();
-        yield* put({
+        const inserted = yield* putIfAbsent({
           requestId: input.requestId,
           workItemId: input.workItemId,
           runAttemptId: input.runAttemptId,
@@ -295,6 +314,11 @@ export const makeLiveRequestsWithHooks = (hooks: LiveRequestsTestHooks) =>
           ...(input.questionIds !== undefined ? { questionIds: input.questionIds } : {}),
           deferred: deferred as Deferred.Deferred<unknown>,
         });
+        if (!inserted) {
+          return yield* Effect.fail(
+            new LiveRequestAlreadyPendingError(input.requestId, String(input.runAttemptId)),
+          );
+        }
         return deferred;
       });
 
