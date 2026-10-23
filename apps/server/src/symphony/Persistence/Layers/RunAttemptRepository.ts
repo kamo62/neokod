@@ -1,4 +1,4 @@
-import type { RunAttempt, RunAttemptStatus } from "@neokod/contracts";
+import type { AcceptedGuidanceSnapshot, RunAttempt, RunAttemptStatus } from "@neokod/contracts";
 import { RunAttemptId, RunAttemptSchema, SymphonyProjectId, WorkItemId } from "@neokod/contracts";
 import { Schema } from "effect";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
@@ -8,10 +8,11 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 
 import { nowIso } from "../../Domain/Time.ts";
-import { SymphonyPersistenceSqlError } from "../Errors.ts";
+import { SymphonyPersistenceDecodeError, SymphonyPersistenceSqlError } from "../Errors.ts";
 import { decodeJson, encodeJson } from "../Json.ts";
 import {
   RunAttemptRepository,
+  validateAcceptedGuidanceSnapshot,
   type RunAttemptRepositoryShape,
 } from "../Services/RunAttemptRepository.ts";
 
@@ -33,34 +34,63 @@ const RunAttemptRowSchema = Schema.Struct({
   acceptedGuidanceJson: Schema.NullOr(Schema.String),
 });
 
-const rowToAttempt = (row: Schema.Schema.Type<typeof RunAttemptRowSchema>): RunAttempt => ({
-  id: row.id,
-  workItemId: row.workItemId,
-  attemptNumber: row.attemptNumber,
-  workspacePath: row.workspacePath,
-  provider: decodeJson(row.provider) as RunAttempt["provider"],
-  model: row.model ?? undefined,
-  status: row.status as RunAttemptStatus,
-  currentStage: row.currentStage ?? undefined,
-  startedAt: row.startedAt,
-  finishedAt: row.finishedAt === null ? null : row.finishedAt,
-  error: row.errorJson === null ? null : (decodeJson(row.errorJson) as RunAttempt["error"]),
-  tokenUsage:
-    row.tokenUsageJson === null
-      ? undefined
-      : (decodeJson(row.tokenUsageJson) as RunAttempt["tokenUsage"]),
-  sessionId: row.sessionId ?? undefined,
-  threadId: row.threadId ?? undefined,
-  ...(row.acceptedGuidanceJson === null
-    ? {}
-    : {
-        acceptedGuidance: decodeJson(row.acceptedGuidanceJson) as NonNullable<
-          RunAttempt["acceptedGuidance"]
-        >,
-      }),
-});
+type RunAttemptRow = Schema.Schema.Type<typeof RunAttemptRowSchema>;
 
-const attemptToRow = (attempt: RunAttempt): Schema.Schema.Type<typeof RunAttemptRowSchema> => ({
+const decodeAcceptedGuidance = (
+  json: string,
+  operation: string,
+): Effect.Effect<AcceptedGuidanceSnapshot, SymphonyPersistenceDecodeError> =>
+  Effect.suspend(() => {
+    const parsed = Schema.decodeUnknownOption(Schema.UnknownFromJsonString)(json);
+    if (Option.isNone(parsed)) {
+      return Effect.fail(
+        new SymphonyPersistenceDecodeError({
+          operation,
+          issue: "accepted guidance JSON is not readable",
+        }),
+      );
+    }
+    const validation = validateAcceptedGuidanceSnapshot(parsed.value);
+    if (validation._tag === "invalid") {
+      return Effect.fail(
+        new SymphonyPersistenceDecodeError({ operation, issue: validation.issue }),
+      );
+    }
+    return Effect.succeed(validation.snapshot);
+  });
+
+const rowToAttempt = (
+  row: RunAttemptRow,
+  operation: string,
+): Effect.Effect<RunAttempt, SymphonyPersistenceDecodeError> =>
+  Effect.gen(function* () {
+    const acceptedGuidance =
+      row.acceptedGuidanceJson === null
+        ? undefined
+        : yield* decodeAcceptedGuidance(row.acceptedGuidanceJson, operation);
+    return {
+      id: row.id,
+      workItemId: row.workItemId,
+      attemptNumber: row.attemptNumber,
+      workspacePath: row.workspacePath,
+      provider: decodeJson(row.provider) as RunAttempt["provider"],
+      model: row.model ?? undefined,
+      status: row.status as RunAttemptStatus,
+      currentStage: row.currentStage ?? undefined,
+      startedAt: row.startedAt,
+      finishedAt: row.finishedAt === null ? null : row.finishedAt,
+      error: row.errorJson === null ? null : (decodeJson(row.errorJson) as RunAttempt["error"]),
+      tokenUsage:
+        row.tokenUsageJson === null
+          ? undefined
+          : (decodeJson(row.tokenUsageJson) as RunAttempt["tokenUsage"]),
+      sessionId: row.sessionId ?? undefined,
+      threadId: row.threadId ?? undefined,
+      ...(acceptedGuidance === undefined ? {} : { acceptedGuidance }),
+    };
+  });
+
+const attemptToRow = (attempt: RunAttempt, acceptedGuidanceJson: string | null): RunAttemptRow => ({
   id: attempt.id,
   workItemId: attempt.workItemId,
   attemptNumber: attempt.attemptNumber,
@@ -76,9 +106,22 @@ const attemptToRow = (attempt: RunAttempt): Schema.Schema.Type<typeof RunAttempt
   tokenUsageJson: attempt.tokenUsage === undefined ? null : encodeJson(attempt.tokenUsage),
   sessionId: attempt.sessionId ?? null,
   threadId: attempt.threadId ?? null,
-  acceptedGuidanceJson:
-    attempt.acceptedGuidance === undefined ? null : encodeJson(attempt.acceptedGuidance),
+  acceptedGuidanceJson,
 });
+
+const encodeAcceptedGuidance = (
+  attempt: RunAttempt,
+  operation: string,
+): Effect.Effect<string | null, SymphonyPersistenceDecodeError> => {
+  if (attempt.acceptedGuidance === undefined) {
+    return Effect.succeed(null);
+  }
+  const validation = validateAcceptedGuidanceSnapshot(attempt.acceptedGuidance);
+  if (validation._tag === "invalid") {
+    return Effect.fail(new SymphonyPersistenceDecodeError({ operation, issue: validation.issue }));
+  }
+  return Effect.succeed(encodeJson(validation.snapshot));
+};
 
 const SELECT_COLUMNS = `
   id, work_item_id AS "workItemId", attempt_number AS "attemptNumber",
@@ -133,29 +176,27 @@ const makeRepository = Effect.gen(function* () {
           error_json = ${row.errorJson},
           token_usage_json = ${row.tokenUsageJson},
           session_id = ${row.sessionId},
-          thread_id = ${row.threadId},
-          -- First accepted snapshot wins. A legacy NULL row may accept its
-          -- first snapshot; an existing snapshot is never replaced.
-          accepted_guidance_json = COALESCE(
-            symphony_run_attempts.accepted_guidance_json,
-            ${row.acceptedGuidanceJson}
-          )
+          thread_id = ${row.threadId}
         WHERE id = ${row.id}
         RETURNING ${cols}
       `,
   });
 
   const create: RunAttemptRepositoryShape["create"] = (attempt) =>
-    createRow(attemptToRow(attempt)).pipe(
-      Effect.mapError(toSqlError("RunAttemptRepository.create")),
-      Effect.map(rowToAttempt),
+    encodeAcceptedGuidance(attempt, "RunAttemptRepository.create").pipe(
+      Effect.flatMap((acceptedGuidanceJson) =>
+        createRow(attemptToRow(attempt, acceptedGuidanceJson)).pipe(
+          Effect.mapError(toSqlError("RunAttemptRepository.create")),
+          Effect.flatMap((row) => rowToAttempt(row, "RunAttemptRepository.create")),
+        ),
+      ),
     );
 
   const update: RunAttemptRepositoryShape["update"] = (attempt) =>
-    updateRow(attemptToRow(attempt)).pipe(
+    updateRow(attemptToRow(attempt, null)).pipe(
       Effect.mapError(toSqlError("RunAttemptRepository.update")),
       Effect.map(Option.getOrThrowWith(() => new Error(`Missing attempt row ${attempt.id}`))),
-      Effect.map(rowToAttempt),
+      Effect.flatMap((row) => rowToAttempt(row, "RunAttemptRepository.update")),
     );
 
   const selectById = (id: RunAttemptId) =>
@@ -173,7 +214,12 @@ const makeRepository = Effect.gen(function* () {
   const getById: RunAttemptRepositoryShape["getById"] = (id) =>
     selectById(id).pipe(
       Effect.mapError(toSqlError("RunAttemptRepository.getById")),
-      Effect.map(Option.match({ onNone: () => null, onSome: rowToAttempt })),
+      Effect.flatMap(
+        Option.match({
+          onNone: () => Effect.succeed(null),
+          onSome: (row) => rowToAttempt(row, "RunAttemptRepository.getById"),
+        }),
+      ),
     );
 
   const listByWorkItem: RunAttemptRepositoryShape["listByWorkItem"] = (workItemId) =>
@@ -184,7 +230,9 @@ const makeRepository = Effect.gen(function* () {
       ORDER BY attempt_number ASC
     `.pipe(
       Effect.mapError(toSqlError("RunAttemptRepository.listByWorkItem")),
-      Effect.map((rows) => rows.map(rowToAttempt)),
+      Effect.flatMap((rows) =>
+        Effect.forEach(rows, (row) => rowToAttempt(row, "RunAttemptRepository.listByWorkItem")),
+      ),
     );
 
   const latestForWorkItem: RunAttemptRepositoryShape["latestForWorkItem"] = (workItemId) =>
@@ -201,7 +249,12 @@ const makeRepository = Effect.gen(function* () {
         `,
     })({ workItemId }).pipe(
       Effect.mapError(toSqlError("RunAttemptRepository.latestForWorkItem")),
-      Effect.map(Option.match({ onNone: () => null, onSome: rowToAttempt })),
+      Effect.flatMap(
+        Option.match({
+          onNone: () => Effect.succeed(null),
+          onSome: (row) => rowToAttempt(row, "RunAttemptRepository.latestForWorkItem"),
+        }),
+      ),
     );
 
   const latestIdsForProject: RunAttemptRepositoryShape["latestIdsForProject"] = (projectId) =>
@@ -234,7 +287,9 @@ const makeRepository = Effect.gen(function* () {
       ${options?.limit === undefined ? sql`` : sql`LIMIT ${options.limit}`}
     `.pipe(
       Effect.mapError(toSqlError("RunAttemptRepository.listRecent")),
-      Effect.map((rows) => rows.map(rowToAttempt)),
+      Effect.flatMap((rows) =>
+        Effect.forEach(rows, (row) => rowToAttempt(row, "RunAttemptRepository.listRecent")),
+      ),
     );
 
   // Terminal statuses are immutable (fix-lane item 5): a late cancelRun
