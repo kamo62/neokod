@@ -1,0 +1,183 @@
+--- /tmp/neokod-implementation-2026-10-23/live-proof/neokod-live-proof.mts
++++ /tmp/neokod-nightly-audit-2026-10-24/live-proof/neokod-live-proof.mts
+@@ -72,31 +72,34 @@
+ 
+ import {
+   makeCodexAgentRuntime,
+-} from "/Users/kamogelo/.codex/worktrees/neokod-feedback/t3code/apps/server/src/symphony/Runner/AgentRuntime.ts";
+-import { buildCodexInitializeParams } from "/Users/kamogelo/.codex/worktrees/neokod-feedback/t3code/apps/server/src/provider/Layers/CodexProvider.ts";
++} from "/Users/kamogelo/.codex/worktrees/neokod-core-execution/t3code/apps/server/src/symphony/Runner/AgentRuntime.ts";
++import { buildCodexInitializeParams } from "/Users/kamogelo/.codex/worktrees/neokod-core-execution/t3code/apps/server/src/provider/Layers/CodexProvider.ts";
+ import {
+   ApprovalService,
+   ApprovalServiceLive,
+-} from "/Users/kamogelo/.codex/worktrees/neokod-feedback/t3code/apps/server/src/symphony/Runner/ApprovalService.ts";
+-import { approvalServiceRequestCallbacks } from "/Users/kamogelo/.codex/worktrees/neokod-feedback/t3code/apps/server/src/symphony/Runner/AgentRequestCallbacks.ts";
+-import { resolveAcceptedPermissions } from "/Users/kamogelo/.codex/worktrees/neokod-feedback/t3code/apps/server/src/symphony/Runner/AcceptedGuidance.ts";
++} from "/Users/kamogelo/.codex/worktrees/neokod-core-execution/t3code/apps/server/src/symphony/Runner/ApprovalService.ts";
++import { approvalServiceRequestCallbacks } from "/Users/kamogelo/.codex/worktrees/neokod-core-execution/t3code/apps/server/src/symphony/Runner/AgentRequestCallbacks.ts";
++import { resolveAcceptedPermissions } from "/Users/kamogelo/.codex/worktrees/neokod-core-execution/t3code/apps/server/src/symphony/Runner/AcceptedGuidance.ts";
+ import {
+   LiveRequests,
+   LiveRequestsLive,
+-} from "/Users/kamogelo/.codex/worktrees/neokod-feedback/t3code/apps/server/src/symphony/Runner/LiveRequests.ts";
+-import { ApprovalRepository } from "/Users/kamogelo/.codex/worktrees/neokod-feedback/t3code/apps/server/src/symphony/Persistence/Services/ApprovalRepository.ts";
+-import { ApprovalRepositoryLive } from "/Users/kamogelo/.codex/worktrees/neokod-feedback/t3code/apps/server/src/symphony/Persistence/Layers/ApprovalRepository.ts";
+-import { WorkItemRepository } from "/Users/kamogelo/.codex/worktrees/neokod-feedback/t3code/apps/server/src/symphony/Persistence/Services/WorkItemRepository.ts";
+-import { WorkItemRepositoryLive } from "/Users/kamogelo/.codex/worktrees/neokod-feedback/t3code/apps/server/src/symphony/Persistence/Layers/WorkItemRepository.ts";
+-import { makeSqlitePersistenceLive } from "/Users/kamogelo/.codex/worktrees/neokod-feedback/t3code/apps/server/src/persistence/Layers/Sqlite.ts";
++} from "/Users/kamogelo/.codex/worktrees/neokod-core-execution/t3code/apps/server/src/symphony/Runner/LiveRequests.ts";
++import { ApprovalRepository } from "/Users/kamogelo/.codex/worktrees/neokod-core-execution/t3code/apps/server/src/symphony/Persistence/Services/ApprovalRepository.ts";
++import { ApprovalRepositoryLive } from "/Users/kamogelo/.codex/worktrees/neokod-core-execution/t3code/apps/server/src/symphony/Persistence/Layers/ApprovalRepository.ts";
++import { WorkItemRepository } from "/Users/kamogelo/.codex/worktrees/neokod-core-execution/t3code/apps/server/src/symphony/Persistence/Services/WorkItemRepository.ts";
++import { WorkItemRepositoryLive } from "/Users/kamogelo/.codex/worktrees/neokod-core-execution/t3code/apps/server/src/symphony/Persistence/Layers/WorkItemRepository.ts";
++import { makeSqlitePersistenceLive } from "/Users/kamogelo/.codex/worktrees/neokod-core-execution/t3code/apps/server/src/persistence/Layers/Sqlite.ts";
++
++// This model-tool probe cannot establish no-options support. That remains contract-only
++// evidence because the installed Codex validator requires non-empty options.
+ 
+ // ---------------------------------------------------------------------------
+ // Fixed public fixture inputs
+ // ---------------------------------------------------------------------------
+ 
+-const REPO_ROOT = "/Users/kamogelo/.codex/worktrees/neokod-feedback/t3code";
+-const SOURCE_BASELINE = "0ebac2fb4bd2c9be16bd29bf32c6b89b615cccbc";
+-const TEMP_ROOT = "/tmp/neokod-implementation-2026-10-23";
++const REPO_ROOT = "/Users/kamogelo/.codex/worktrees/neokod-core-execution/t3code";
++const SOURCE_BASELINE = "85a4acfe5a35e04467758be7b95bde2e3491aadf";
++const TEMP_ROOT = "/tmp/neokod-nightly-audit-2026-10-24";
+ const LIVE_PROOF_ROOT = path.join(TEMP_ROOT, "live-proof");
+ const MARKER_PATH = path.join(TEMP_ROOT, "live-proof-source-ready.json");
+ const EXECUTED_PATH = path.join(LIVE_PROOF_ROOT, "executed.json");
+@@ -124,8 +127,8 @@
+   "This is a bounded local verification.",
+   "Do not use shell commands, files, network tools, subagents, or any tool other than request_user_input.",
+   "Call the request_user_input tool exactly once, with exactly two independent public questions:",
+-  '1. header "Fixture colour", question "Which fixture colour should be recorded?", with two options: label "Amber" description "Warm amber", and label "Blue" description "Cool blue".',
+-  '2. header "Fixture label", question "What custom fixture label should be recorded? Type any short public text.", with no options: omit the options field or send an empty options list so the answer is free text.',
++  '1. id "fixture_colour", header "Colour", question "Which fixture colour should be recorded?", with two options: label "Amber" description "Warm amber", and label "Blue" description "Cool blue".',
++  '2. id "fixture_label", header "Label", question "What fixture label should be recorded? You may enter custom text using the native Other answer.", with two options: label "Paper" description "Record Paper", and label "Stone" description "Record Stone". The client supports a native Other free-text answer automatically; do not add an Other option yourself.',
+   "Wait for the answers to both questions, then finish. Do not ask any other question and do not call any other tool.",
+ ].join("\n");
+ 
+@@ -1063,6 +1066,8 @@
+   answerSubmittedAt: string | null;
+   answerSubmittedDuringTurn: number | null;
+   expectedColourAnswer: string | null;
++  expectedColourQuestionId: string | null;
++  expectedLabelQuestionId: string | null;
+   answerError: string | null;
+   timedOutRequestIds: string[];
+   turn1Pending: Array<Record<string, unknown>>;
+@@ -1108,6 +1113,8 @@
+     answerSubmittedAt: null,
+     answerSubmittedDuringTurn: null,
+     expectedColourAnswer: null,
++    expectedColourQuestionId: null,
++    expectedLabelQuestionId: null,
+     answerError: null,
+     timedOutRequestIds: [],
+     turn1Pending: [],
+@@ -1260,15 +1267,15 @@
+       }
+ 
+       // Identify questions by shape, not provider order. The requirement is
+-      // two independent questions: one colour choice and one custom free-text
+-      // question with no options.
++      // two valid option questions, with a custom Other answer for the label.
++      // Codex 0.163.0 rejects no-options model-tool questions.
+       const colour = questions.find(
+         (question) =>
+           question.options.some((option) => option.label.toLowerCase().includes("amber")) &&
+           question.options.some((option) => option.label.toLowerCase().includes("blue")),
+       );
+       const label = questions.find(
+-        (question) => question.options.length === 0 && question.id !== colour?.id,
++        (question) => question.id === "fixture_label" && question.options.length === 2 && question.id !== colour?.id,
+       );
+       const colourOption =
+         colour?.options.find((option) => option.label.toLowerCase() === "amber") ??
+@@ -1287,8 +1294,8 @@
+         addBlocker(
+           input.receipt,
+           "provider",
+-          "CUSTOM_QUESTION_HAS_OPTIONS",
+-          "the custom-label question was not asked without options",
++          "CUSTOM_QUESTION_INVALID",
++          "the label question did not retain its exact id and two valid options",
+         );
+         yield* approvals.expire(row.id).pipe(Effect.catch(() => Effect.void));
+         return;
+@@ -1305,6 +1312,8 @@
+       }
+ 
+       observation.expectedColourAnswer = colourOption.label;
++      observation.expectedColourQuestionId = colour.id;
++      observation.expectedLabelQuestionId = label.id;
+       const answers: ReadonlyArray<ApprovalAnswerInput> = [
+         { questionId: colour.id, answer: colourOption.label },
+         { questionId: label.id, answer: CUSTOM_LABEL_ANSWER },
+@@ -1761,7 +1770,7 @@
+       };
+     }),
+   ).pipe(
+-    Effect.timeout(Duration.millis(READBACK_TIMEOUT_MS)),
++    Effect.timeoutOption(Duration.millis(READBACK_TIMEOUT_MS)),
+     Effect.flatMap(
+       Option.match({
+         onNone: () =>
+@@ -2698,18 +2707,19 @@
+       requestUserInputObserved: providerRequestId !== null,
+       twoQuestions: questionPayload?.kind === "structured" &&
+         questionPayload.questions.length === 2,
+-      customQuestionNoOptions: questionPayload?.kind === "structured" &&
+-        questionPayload.questions.some((question) => question.options.length === 0),
++      validOptionQuestions: questionPayload?.kind === "structured" &&
++        questionPayload.questions.length === 2 &&
++        questionPayload.questions.every((question) => question.options.length === 2),
++      customAnswer: answerEntries.some((entry) =>
++        entry.questionId === observation.expectedLabelQuestionId && entry.answer === CUSTOM_LABEL_ANSWER),
+       answersSubmitted:
+         observation.answerSubmittedAt !== null && observation.answerError === null,
+       answersExactPerQuestion:
+         answerEntries.length === 2 &&
+-        answerEntries[0]?.questionId ===
+-          (questionPayload?.kind === "structured" ? questionPayload.questions[0]?.id : undefined) &&
+-        answerEntries[0]?.answer === observation.expectedColourAnswer &&
+-        answerEntries[1]?.questionId ===
+-          (questionPayload?.kind === "structured" ? questionPayload.questions[1]?.id : undefined) &&
+-        answerEntries[1]?.answer === CUSTOM_LABEL_ANSWER &&
++        answerEntries.some((entry) => entry.questionId === observation.expectedColourQuestionId &&
++          entry.answer === observation.expectedColourAnswer) &&
++        answerEntries.some((entry) => entry.questionId === observation.expectedLabelQuestionId &&
++          entry.answer === CUSTOM_LABEL_ANSWER) &&
+         answerEntries.every((entry) => entry.redacted === false),
+       answerDeliveryUnknown: answerSnapshot?.answer?.delivery === "unknown",
+       answerStateAnswered: answerSnapshot?.state === "answered",
+@@ -2874,12 +2884,10 @@
+ 
+       const exactReloadedAnswers =
+         reloadedAnswers.length === 2 &&
+-        reloadedAnswers[0]?.questionId ===
+-          (questionPayload?.kind === "structured" ? questionPayload.questions[0]?.id : undefined) &&
+-        reloadedAnswers[0]?.answer === observation.expectedColourAnswer &&
+-        reloadedAnswers[1]?.questionId ===
+-          (questionPayload?.kind === "structured" ? questionPayload.questions[1]?.id : undefined) &&
+-        reloadedAnswers[1]?.answer === CUSTOM_LABEL_ANSWER &&
++        reloadedAnswers.some((entry) => entry.questionId === observation.expectedColourQuestionId &&
++          entry.answer === observation.expectedColourAnswer) &&
++        reloadedAnswers.some((entry) => entry.questionId === observation.expectedLabelQuestionId &&
++          entry.answer === CUSTOM_LABEL_ANSWER) &&
+         reloadedAnswers.every((entry) => entry.redacted === false);
+       receipt.assertions.reloadedAnswered = questionRow?.state === "answered";
+       receipt.assertions.reloadedDecisionAnswered = questionRow?.decision === "answered";
+@@ -3004,7 +3012,8 @@
+       "providerSpawned",
+       "requestUserInputObserved",
+       "twoQuestions",
+-      "customQuestionNoOptions",
++      "validOptionQuestions",
++      "customAnswer",
+       "answersSubmitted",
+       "answersExactPerQuestion",
+       "answerDeliveryUnknown",

@@ -1,0 +1,102 @@
+{
+  "status": "passed",
+  "source": "85a4acfe5",
+  "kind": "authenticated source backendRPC smoke with synthetic paused observe fixture",
+  "checks": [
+    {
+      "tag": "symphony.getOverview",
+      "ok": true,
+      "keys": [
+        "running",
+        "queued",
+        "needsAttention",
+        "readyForReview",
+        "retrying",
+        "failedToday",
+        "orchestratorPaused",
+        "activeWorkflowCount",
+        "providerHealth",
+        "trackerHealth",
+        "lastTrackerPollAt",
+        "orchestratorRole",
+        "activeAgentCount",
+        "generatedAt"
+      ]
+    },
+    {
+      "tag": "symphony.listProjects",
+      "ok": true,
+      "count": 1
+    },
+    {
+      "tag": "symphony.getProject",
+      "ok": true,
+      "keys": [
+        "id",
+        "codeProjectId",
+        "title",
+        "repositoryPath",
+        "status",
+        "setupState",
+        "configuration",
+        "revision",
+        "legacyWorkflowId",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    {
+      "tag": "symphony.getProjectBoard",
+      "ok": true,
+      "keys": ["project", "sourceControl", "columns", "generatedAt", "truncated"]
+    },
+    {
+      "tag": "symphony.listQueue",
+      "ok": true,
+      "count": 1
+    },
+    {
+      "tag": "symphony.listRuns",
+      "ok": true,
+      "count": 1
+    },
+    {
+      "tag": "symphony.listAttention",
+      "ok": true,
+      "count": 1
+    },
+    {
+      "tag": "symphony.listHistory",
+      "ok": true,
+      "count": 1
+    },
+    {
+      "tag": "symphony.listWorkflows",
+      "ok": true,
+      "count": 1
+    },
+    {
+      "tag": "symphony.getRun",
+      "ok": true
+    },
+    {
+      "tag": "symphony.getRun existing fixture",
+      "ok": true,
+      "keys": ["workItem", "runAttempt", "timeline", "attentionItems", "approvalRequests"]
+    }
+  ],
+  "before": {
+    "attempts": 1,
+    "approvals": 0,
+    "claims": 0
+  },
+  "after": {
+    "attempts": 1,
+    "approvals": 0,
+    "claims": 0
+  },
+  "dispatch": false,
+  "liveTracker": false,
+  "liveProvider": false,
+  "chrome": false
+}

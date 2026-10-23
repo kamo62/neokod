@@ -1,0 +1,80 @@
+{
+  "capturedAt": "2026-10-23T23:23:32.185355+00:00",
+  "verifiedSignalTargets": [18409, 22641],
+  "descendantsBeforeShutdown": [
+    {
+      "pid": 18409,
+      "parent": 21228,
+      "executable": "node"
+    },
+    {
+      "pid": 22641,
+      "parent": 22625,
+      "executable": "node"
+    },
+    {
+      "pid": 39402,
+      "parent": 18409,
+      "executable": "copilot"
+    },
+    {
+      "pid": 40041,
+      "parent": 18409,
+      "executable": "node"
+    },
+    {
+      "pid": 40171,
+      "parent": 40041,
+      "executable": "codex"
+    },
+    {
+      "pid": 40268,
+      "parent": 40171,
+      "executable": "node"
+    },
+    {
+      "pid": 40271,
+      "parent": 40171,
+      "executable": "node_repl"
+    },
+    {
+      "pid": 40280,
+      "parent": 40268,
+      "executable": "node_repl"
+    },
+    {
+      "pid": 41741,
+      "parent": 18409,
+      "executable": "claude"
+    },
+    {
+      "pid": 41957,
+      "parent": 41741,
+      "executable": "Google Chrome Canary --isolated=true"
+    },
+    {
+      "pid": 41958,
+      "parent": 41741,
+      "executable": "iphone-mcp"
+    },
+    {
+      "pid": 42067,
+      "parent": 41957,
+      "executable": "chrome-devtools-mcp"
+    },
+    {
+      "pid": 42082,
+      "parent": 42067,
+      "executable": "node"
+    },
+    {
+      "pid": 42105,
+      "parent": 41958,
+      "executable": "node"
+    }
+  ],
+  "verifiedAfterShutdownAt": "2026-10-23T23:24:57.673880+00:00",
+  "survivingOriginalDescendants": [],
+  "verificationPortsClosed": true,
+  "fixtureGitStatusEmpty": true
+}
