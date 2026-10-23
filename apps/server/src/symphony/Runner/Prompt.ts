@@ -7,7 +7,11 @@ import type {
   NormalizedIssue,
 } from "@neokod/contracts";
 
-import { extractAcceptanceCriteria, resolveAcceptedPermissions } from "./AcceptedGuidance.ts";
+import {
+  extractAcceptanceCriteria,
+  narrowAcceptedPermissions,
+  resolveAcceptedPermissions,
+} from "./AcceptedGuidance.ts";
 
 export { extractAcceptanceCriteria } from "./AcceptedGuidance.ts";
 
@@ -138,6 +142,8 @@ interface WorkflowContractView {
   readonly workflowInstructions?: string;
   readonly branch: string;
   readonly planOnly: boolean;
+  readonly editsAllowed: boolean;
+  readonly blockedReason?: string;
 }
 
 const sourceViewFor = (input: RunPromptInput): PromptSourceView => {
@@ -161,25 +167,47 @@ const sourceViewFor = (input: RunPromptInput): PromptSourceView => {
 };
 
 const contractViewFor = (input: RunPromptInput): WorkflowContractView => {
-  const branch =
-    input.branch ??
-    deriveBranchLabel(input.acceptedGuidance?.permission.autonomy ?? input.config.autonomy);
   const accepted = input.acceptedGuidance;
   if (accepted !== undefined) {
+    const narrowed = narrowAcceptedPermissions(
+      accepted.permission,
+      resolveAcceptedPermissions(input.config),
+    );
+    if (narrowed._tag === "unrepresentable") {
+      const branch = input.branch ?? deriveBranchLabel(accepted.permission.autonomy);
+      return {
+        autonomy: accepted.permission.autonomy,
+        approvalPolicy: accepted.permission.approvalPolicy,
+        threadSandbox: accepted.permission.threadSandbox,
+        validationRequired: accepted.workflow.validationRequired,
+        delivery: accepted.permission.delivery,
+        ...(accepted.workflow.instructions.length > 0
+          ? { workflowInstructions: accepted.workflow.instructions }
+          : {}),
+        branch,
+        planOnly: true,
+        editsAllowed: false,
+        blockedReason:
+          "The accepted brief forbids approval escalation, but the current workflow enables approval requests. Reconcile the workflow policy before continuing.",
+      };
+    }
+    const permission = narrowed.permission;
     return {
-      autonomy: accepted.permission.autonomy,
-      approvalPolicy: accepted.permission.approvalPolicy,
-      threadSandbox: accepted.permission.threadSandbox,
+      autonomy: permission.autonomy,
+      approvalPolicy: permission.approvalPolicy,
+      threadSandbox: permission.threadSandbox,
       validationRequired: accepted.workflow.validationRequired,
-      delivery: accepted.permission.delivery,
+      delivery: permission.delivery,
       ...(accepted.workflow.instructions.length > 0
         ? { workflowInstructions: accepted.workflow.instructions }
         : {}),
-      branch,
+      branch: input.branch ?? deriveBranchLabel(permission.autonomy),
       planOnly:
         input.planOnly === true ||
-        accepted.permission.autonomy === "prepare" ||
-        accepted.permission.autonomy === "observe",
+        permission.autonomy === "prepare" ||
+        permission.autonomy === "observe" ||
+        !permission.editsAllowed,
+      editsAllowed: permission.editsAllowed,
     };
   }
   const permission = resolveAcceptedPermissions(input.config);
@@ -192,11 +220,13 @@ const contractViewFor = (input: RunPromptInput): WorkflowContractView => {
     ...(input.workflowInstructions !== undefined
       ? { workflowInstructions: input.workflowInstructions }
       : {}),
-    branch,
+    branch: input.branch ?? deriveBranchLabel(permission.autonomy),
     planOnly:
       input.planOnly === true ||
-      input.config.autonomy === "prepare" ||
-      input.config.autonomy === "observe",
+      permission.autonomy === "prepare" ||
+      permission.autonomy === "observe" ||
+      !permission.editsAllowed,
+    editsAllowed: permission.editsAllowed,
   };
 };
 
@@ -222,7 +252,9 @@ const buildWorkflowContractSection = (view: WorkflowContractView): string => {
       : ["- No workflow validation commands are configured."]),
   ];
 
-  if (!view.planOnly) {
+  if (view.blockedReason !== undefined) {
+    lines.push("", `Execution is blocked: ${view.blockedReason} Do not modify any files.`);
+  } else if (!view.planOnly && view.editsAllowed) {
     lines.push(
       "",
       "Before finishing:",
@@ -297,9 +329,12 @@ export const buildRunPrompt = (input: RunPromptInput): string => {
     sections.push(`### WORKFLOW contract\n\n${buildWorkflowContractSection(contract)}`);
   }
 
-  const policyNote = contract.planOnly
-    ? "Work in plan mode: analyze the task and produce a concrete plan. Do NOT modify any files."
-    : "Work in execution mode: make the changes needed, subject to the configured approval policy.";
+  const policyNote =
+    contract.blockedReason !== undefined
+      ? `Execution is blocked: ${contract.blockedReason} Do not modify any files.`
+      : contract.planOnly
+        ? "Work in plan mode: analyze the task and produce a concrete plan. Do NOT modify any files."
+        : "Work in execution mode: make the changes needed, subject to the configured approval policy.";
 
   sections.push(`### Operating constraints\n\n${policyNote}`);
 

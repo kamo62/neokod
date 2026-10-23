@@ -318,18 +318,45 @@ const unionStrings = (left: readonly string[], right: readonly string[]): readon
   return union;
 };
 
+export type AcceptedPermissionNarrowing =
+  | { readonly _tag: "narrowed"; readonly permission: AcceptedPermissionScope }
+  | {
+      readonly _tag: "unrepresentable";
+      readonly reason: "approval_escalation_conflict";
+      readonly acceptedApprovalPolicy: AcceptedPermissionScope["approvalPolicy"];
+      readonly liveApprovalPolicy: AcceptedPermissionScope["approvalPolicy"];
+    };
+
 /**
  * The permission a continuation may use: the more restrictive of the accepted
  * scope and the live workflow scope. A later workflow edit can narrow an
- * attempt's authority; it can never widen it. Delivery gates and protected
- * paths stay present if either side requires them.
+ * attempt's authority; it can never widen it.
+ *
+ * Approval policy is not one broadness scale. `never` means the agent may not
+ * request approval at all; `on-request`/`untrusted` enable that request path.
+ * An accepted `never` therefore cannot be intersected with a live policy that
+ * enables approvals. That combination is refused explicitly rather than
+ * silently re-enabling escalation or silently disabling the live policy.
+ * A later live `never` does narrow an accepted approval-enabled policy.
  */
 export const narrowAcceptedPermissions = (
   accepted: AcceptedPermissionScope,
   live: AcceptedPermissionScope,
-): AcceptedPermissionScope => {
+): AcceptedPermissionNarrowing => {
+  if (accepted.approvalPolicy === "never" && live.approvalPolicy !== "never") {
+    return {
+      _tag: "unrepresentable",
+      reason: "approval_escalation_conflict",
+      acceptedApprovalPolicy: accepted.approvalPolicy,
+      liveApprovalPolicy: live.approvalPolicy,
+    };
+  }
+
   const autonomy = narrower(AUTONOMY_RANK, accepted.autonomy, live.autonomy);
-  const approvalPolicy = narrower(APPROVAL_RANK, accepted.approvalPolicy, live.approvalPolicy);
+  const approvalPolicy =
+    accepted.approvalPolicy === "never" || live.approvalPolicy === "never"
+      ? "never"
+      : narrower(APPROVAL_RANK, accepted.approvalPolicy, live.approvalPolicy);
   const threadSandbox = narrower(SANDBOX_RANK, accepted.threadSandbox, live.threadSandbox);
   const turnSandbox = narrower(
     TURN_SANDBOX_RANK,
@@ -342,45 +369,30 @@ export const narrowAcceptedPermissions = (
     turnSandboxFor(threadSandbox).type,
   );
   return {
-    autonomy,
-    approvalPolicy,
-    threadSandbox,
-    turnSandboxPolicy: turnSandboxPolicyFor(cappedTurnSandbox),
-    editsAllowed: accepted.editsAllowed && live.editsAllowed && threadSandbox !== "read-only",
-    approvalsEnabled: accepted.approvalsEnabled || live.approvalsEnabled,
-    protectedPaths: unionStrings(accepted.protectedPaths, live.protectedPaths),
-    delivery: {
-      approvalBeforePush: narrowDeliveryGate(
-        accepted.delivery.approvalBeforePush,
-        live.delivery.approvalBeforePush,
-      ),
-      approvalBeforePullRequest: narrowDeliveryGate(
-        accepted.delivery.approvalBeforePullRequest,
-        live.delivery.approvalBeforePullRequest,
-      ),
-      approvalBeforeMerge: narrowDeliveryGate(
-        accepted.delivery.approvalBeforeMerge,
-        live.delivery.approvalBeforeMerge,
-      ),
+    _tag: "narrowed",
+    permission: {
+      autonomy,
+      approvalPolicy,
+      threadSandbox,
+      turnSandboxPolicy: turnSandboxPolicyFor(cappedTurnSandbox),
+      editsAllowed: accepted.editsAllowed && live.editsAllowed && threadSandbox !== "read-only",
+      approvalsEnabled:
+        approvalPolicy !== "never" && accepted.approvalsEnabled && live.approvalsEnabled,
+      protectedPaths: unionStrings(accepted.protectedPaths, live.protectedPaths),
+      delivery: {
+        approvalBeforePush: narrowDeliveryGate(
+          accepted.delivery.approvalBeforePush,
+          live.delivery.approvalBeforePush,
+        ),
+        approvalBeforePullRequest: narrowDeliveryGate(
+          accepted.delivery.approvalBeforePullRequest,
+          live.delivery.approvalBeforePullRequest,
+        ),
+        approvalBeforeMerge: narrowDeliveryGate(
+          accepted.delivery.approvalBeforeMerge,
+          live.delivery.approvalBeforeMerge,
+        ),
+      },
     },
   };
-};
-
-/**
- * Repository write rule for persisted attempts: the first accepted snapshot is
- * frozen. A later update may not replace it, even when the incoming row was
- * built from fresh workflow text. Legacy rows without a snapshot may accept
- * their first one.
- */
-export const preserveAcceptedGuidance = <
-  A extends { readonly acceptedGuidance?: AcceptedGuidanceSnapshot },
->(
-  existing: A,
-  incoming: A,
-): A => {
-  const frozen = existing.acceptedGuidance;
-  if (frozen === undefined || incoming.acceptedGuidance === frozen) {
-    return incoming;
-  }
-  return Object.assign({}, incoming, { acceptedGuidance: frozen });
 };
