@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { ActivityIcon, ArrowLeftIcon, RefreshCwIcon, SquareIcon } from "lucide-react";
 
-import { RunAttemptId, type EvidenceBundle, type RunDetails } from "@neokod/contracts";
+import { RunAttemptId } from "@neokod/contracts";
 import { usePrimaryEnvironmentId } from "../../state/environments";
 import { useEnvironmentQuery } from "../../state/query";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -14,124 +14,9 @@ import { cn } from "../../lib/utils";
 import { PullRequestPanel } from "./PullRequestPanel";
 import { SymphonyApprovalActions } from "./SymphonyApprovalActions";
 import { SymphonyEmptyState } from "./SymphonyEmptyState";
+import { EvidencePanel, Timeline } from "./SymphonyWorkDetail";
 import { approvalRequestMode, attentionMode } from "./attention.logic";
 import { ACTIVE_RUN_STATUSES } from "./symphonyRuns.logic";
-
-function Timeline({ details }: { readonly details: RunDetails }) {
-  return (
-    <div className="rounded-2xl border bg-card">
-      {details.timeline.length === 0 ? (
-        <div className="px-4 py-6 text-center text-xs text-muted-foreground">
-          No events recorded yet.
-        </div>
-      ) : (
-        <ol className="divide-y divide-border/60">
-          {details.timeline.map((event) => (
-            <li key={event.sequence} className="flex items-start gap-3 px-4 py-2.5 sm:px-5">
-              <ActivityIcon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
-              <div className="min-w-0 flex-1 space-y-0.5">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-[12px] font-medium text-foreground">{event.eventType}</span>
-                  <span className="text-[10px] text-muted-foreground">
-                    {new Date(event.occurredAt).toLocaleTimeString()}
-                  </span>
-                </div>
-                {event.payload !== undefined && Object.keys(event.payload).length > 0 ? (
-                  <pre className="max-h-24 overflow-y-auto rounded-md bg-muted/50 p-2 text-[10px] leading-relaxed text-muted-foreground">
-                    {JSON.stringify(event.payload, null, 2)}
-                  </pre>
-                ) : null}
-              </div>
-            </li>
-          ))}
-        </ol>
-      )}
-    </div>
-  );
-}
-
-function EvidencePanel({ evidence }: { readonly evidence: EvidenceBundle }) {
-  const assessmentVariant =
-    evidence.overallAssessment === "ready_for_review"
-      ? "success"
-      : evidence.overallAssessment === "ready_with_warnings"
-        ? "warning"
-        : evidence.overallAssessment === "failed"
-          ? "error"
-          : "secondary";
-  return (
-    <div className="rounded-2xl border bg-card px-4 py-4">
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <h2 className="text-[12px] font-semibold text-foreground">Evidence</h2>
-        <Badge variant={assessmentVariant} size="sm">
-          {evidence.overallAssessment}
-        </Badge>
-      </div>
-
-      {evidence.implementationSummary !== undefined ? (
-        <p className="mb-3 whitespace-pre-wrap text-[12px] leading-relaxed text-foreground">
-          {evidence.implementationSummary}
-        </p>
-      ) : null}
-
-      {evidence.changedFiles.length > 0 ? (
-        <div className="mb-3">
-          <h3 className="mb-1.5 text-[11px] font-medium text-muted-foreground">Changed files</h3>
-          <table className="w-full text-[11px]">
-            <thead>
-              <tr className="border-b border-border/60 text-left text-muted-foreground">
-                <th className="py-1 pr-3 font-medium">Path</th>
-                <th className="py-1 pr-3 text-right font-medium">+</th>
-                <th className="py-1 text-right font-medium">-</th>
-              </tr>
-            </thead>
-            <tbody>
-              {evidence.changedFiles.map((file) => (
-                <tr key={file.path} className="border-b border-border/40 last:border-0">
-                  <td className="py-1 pr-3 font-mono text-foreground">{file.path}</td>
-                  <td className="py-1 pr-3 text-right text-emerald-600">{file.additions ?? 0}</td>
-                  <td className="py-1 text-right text-red-500">{file.deletions ?? 0}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : null}
-
-      {evidence.validationResults.length > 0 ? (
-        <div>
-          <h3 className="mb-1.5 text-[11px] font-medium text-muted-foreground">Validation</h3>
-          <ul className="space-y-1">
-            {evidence.validationResults.map((result) => (
-              <li key={result.command} className="flex items-center gap-2">
-                <Badge
-                  variant={
-                    result.status === "passed"
-                      ? "success"
-                      : result.status === "failed"
-                        ? "error"
-                        : "secondary"
-                  }
-                  size="sm"
-                >
-                  {result.status}
-                </Badge>
-                <code className="truncate font-mono text-[11px] text-muted-foreground">
-                  {result.command}
-                </code>
-                {result.durationMs !== undefined ? (
-                  <span className="ml-auto text-[10px] text-muted-foreground">
-                    {(result.durationMs / 1000).toFixed(1)}s
-                  </span>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-    </div>
-  );
-}
 
 export function SymphonyRunDetailView({ runId }: { readonly runId: string }) {
   const environmentId = usePrimaryEnvironmentId();
@@ -170,11 +55,11 @@ export function SymphonyRunDetailView({ runId }: { readonly runId: string }) {
             <Link
               to="/symphony/projects/$projectId"
               params={{ projectId: details.workItem.projectId }}
-              search={{ tab: "runs" }}
+              search={{ tab: "work" }}
               className="inline-flex items-center gap-1 text-xs text-muted-foreground underline"
             >
               <ArrowLeftIcon className="size-3.5" />
-              Runs
+              Work
             </Link>
           )}
           <h1 className="text-[15px] font-semibold tracking-[-0.01em] text-foreground">
