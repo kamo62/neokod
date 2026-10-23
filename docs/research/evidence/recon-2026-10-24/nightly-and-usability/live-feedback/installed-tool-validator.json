@@ -1,0 +1,15 @@
+{
+  "binary": "/opt/homebrew/lib/node_modules/@openai/codex/node_modules/@openai/codex-darwin-arm64/vendor/aarch64-apple-darwin/bin/codex",
+  "cliVersion": "0.163.0",
+  "observedBinaryStrings": [
+    {
+      "text": "Provide 2-3 mutually exclusive choices.",
+      "byteOffset": 191092156
+    },
+    {
+      "text": "request_user_input requires non-empty options for every question",
+      "byteOffset": 191092616
+    }
+  ],
+  "note": "Static installed-binary evidence; not a provider call or full tool-schema extraction"
+}

@@ -1,5 +1,7 @@
 import type {
+  AcceptedGuidanceSnapshot,
   EffectiveWorkflowConfig,
+  EvidenceBundle,
   NormalizedIssue,
   RunAttemptStatus,
   WorkItem,
@@ -9,10 +11,13 @@ import {
   ProviderInstanceId,
   RunAttemptId,
   SymphonyProjectId,
+  WorkflowId,
   WorkItemId,
 } from "@neokod/contracts";
 import { expect, it } from "@effect/vitest";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 
@@ -32,10 +37,11 @@ import {
 } from "../Persistence/Services/AttentionRepository.ts";
 import { EvidenceService } from "../Evidence/Service.ts";
 import { PullRequestCreationError, PullRequestService } from "../Evidence/PullRequest.ts";
+import { SymphonyPersistenceSqlError } from "../Persistence/Errors.ts";
 import { SymphonyModelReviewer } from "../Review/ModelReviewer.ts";
 import { ValidationRunner } from "../Validation/Runner.ts";
 import { ExecutionFinalizer, ExecutionFinalizerLive } from "./ExecutionFinalizer.ts";
-import type { EvidenceBundle } from "@neokod/contracts";
+import { freezeAcceptedGuidance } from "./AcceptedGuidance.ts";
 import type { PullRequestEvidence } from "@neokod/contracts";
 
 const makeConfig = (overrides: Partial<EffectiveWorkflowConfig> = {}): EffectiveWorkflowConfig => ({
@@ -86,7 +92,11 @@ const seedWorkItem = (id: string, ownerToken: string) =>
     return claimed.workItem;
   });
 
-const seedAttempt = (workItemId: string, attemptNumber = 1) =>
+const seedAttempt = (
+  workItemId: string,
+  attemptNumber = 1,
+  acceptedGuidance?: AcceptedGuidanceSnapshot,
+) =>
   Effect.gen(function* () {
     const runAttempts = yield* RunAttemptRepository;
     const id = RunAttemptId.make(`run-${workItemId}-${attemptNumber}`);
@@ -104,6 +114,7 @@ const seedAttempt = (workItemId: string, attemptNumber = 1) =>
       startedAt,
       finishedAt: null,
       error: null,
+      ...(acceptedGuidance !== undefined ? { acceptedGuidance } : {}),
     });
     return id;
   });
@@ -149,6 +160,19 @@ const makePullRequest = (): PullRequestEvidence => ({
   url: "https://github.com/o/r/pull/7",
   status: "open",
 });
+
+const makeAcceptedGuidanceFor = (config: EffectiveWorkflowConfig): AcceptedGuidanceSnapshot =>
+  freezeAcceptedGuidance({
+    acceptedAt: "2026-10-23T08:00:00.000Z",
+    workflowId: WorkflowId.make("wf-delivery-gate"),
+    workflowRevision: "2026-10-22T09:00:00.000Z",
+    workflowInstructions: "Follow the repository policy.",
+    workItem: { source: { kind: "manual" } },
+    issue: makeIssue("1"),
+    config,
+    workspacePath: "/ws/1",
+    baseBranch: "main",
+  });
 
 const fakeValidationRunner = (statuses: ReadonlyArray<string>) =>
   Layer.succeed(ValidationRunner, {
@@ -204,6 +228,97 @@ const layer = (
     ),
   );
 
+let gatedPrCreateCalls = 0;
+const countingPullRequestService = Layer.succeed(PullRequestService, {
+  create: () =>
+    Effect.sync(() => {
+      gatedPrCreateCalls += 1;
+      return makePullRequest();
+    }),
+  refresh: () => Effect.succeed(null),
+  listUnresolvedComments: () => Effect.succeed(null),
+});
+
+const gatedLayer = it.layer(
+  ExecutionFinalizerLive.pipe(
+    Layer.provideMerge(WorkItemRepositoryLive),
+    Layer.provideMerge(RunAttemptRepositoryLive),
+    Layer.provideMerge(RunEventRepositoryLive),
+    Layer.provideMerge(EvidenceRepositoryLive),
+    Layer.provideMerge(fakeValidationRunner(["passed"])),
+    Layer.provideMerge(fakeEvidenceService),
+    Layer.provideMerge(fakeModelReviewer()),
+    Layer.provideMerge(countingPullRequestService),
+    Layer.provideMerge(AttentionRepositoryLive),
+    Layer.provideMerge(SqlitePersistenceMemory),
+    Layer.provideMerge(NodeServices.layer),
+  ),
+);
+
+let staleValidationGate: Deferred.Deferred<void> | null = null;
+let staleValidationStarted: Deferred.Deferred<void> | null = null;
+const suspendedValidationRunner = Layer.succeed(ValidationRunner, {
+  runAll: () =>
+    Effect.gen(function* () {
+      if (staleValidationStarted !== null) {
+        yield* Deferred.succeed(staleValidationStarted, undefined);
+      }
+      if (staleValidationGate !== null) {
+        yield* Deferred.await(staleValidationGate);
+      }
+      return [{ command: "check", status: "passed" as const }];
+    }),
+});
+
+const stalePolicyLayer = it.layer(
+  ExecutionFinalizerLive.pipe(
+    Layer.provideMerge(WorkItemRepositoryLive),
+    Layer.provideMerge(RunAttemptRepositoryLive),
+    Layer.provideMerge(RunEventRepositoryLive),
+    Layer.provideMerge(EvidenceRepositoryLive),
+    Layer.provideMerge(suspendedValidationRunner),
+    Layer.provideMerge(fakeEvidenceService),
+    Layer.provideMerge(fakeModelReviewer()),
+    Layer.provideMerge(countingPullRequestService),
+    Layer.provideMerge(AttentionRepositoryLive),
+    Layer.provideMerge(SqlitePersistenceMemory),
+    Layer.provideMerge(NodeServices.layer),
+  ),
+);
+
+const failingAttemptReadRepositoryLayer = Layer.effect(
+  RunAttemptRepository,
+  Effect.gen(function* () {
+    const repository = yield* RunAttemptRepository;
+    return RunAttemptRepository.of({
+      ...repository,
+      getById: () =>
+        Effect.fail(
+          new SymphonyPersistenceSqlError({
+            operation: "ExecutionFinalizer.test.getById",
+            detail: "database unavailable",
+          }),
+        ),
+    });
+  }),
+).pipe(Layer.provide(RunAttemptRepositoryLive));
+
+const unreadableAttemptLayer = it.layer(
+  ExecutionFinalizerLive.pipe(
+    Layer.provideMerge(WorkItemRepositoryLive),
+    Layer.provideMerge(failingAttemptReadRepositoryLayer),
+    Layer.provideMerge(RunEventRepositoryLive),
+    Layer.provideMerge(EvidenceRepositoryLive),
+    Layer.provideMerge(fakeValidationRunner(["passed"])),
+    Layer.provideMerge(fakeEvidenceService),
+    Layer.provideMerge(fakeModelReviewer()),
+    Layer.provideMerge(countingPullRequestService),
+    Layer.provideMerge(AttentionRepositoryLive),
+    Layer.provideMerge(SqlitePersistenceMemory),
+    Layer.provideMerge(NodeServices.layer),
+  ),
+);
+
 layer(["passed"], makePullRequest())("ExecutionFinalizer review-ready path", (it) => {
   it.effect("persists evidence, opens the PR and lands ready_for_review", () =>
     Effect.gen(function* () {
@@ -250,6 +365,121 @@ layer(["passed"], makePullRequest())("ExecutionFinalizer review-ready path", (it
       expect(events.map((e) => e.eventType)).toContain("validation_started");
       expect(events.map((e) => e.eventType)).toContain("pull_request_opened");
       expect(events.map((e) => e.eventType)).toContain("evidence_assembled");
+    }),
+  );
+});
+
+gatedLayer("ExecutionFinalizer delivery gates", (it) => {
+  it.effect(
+    "refuses push-gated and PR-gated publication without a durable approval authority",
+    () =>
+      Effect.gen(function* () {
+        gatedPrCreateCalls = 0;
+        const finalizer = yield* ExecutionFinalizer;
+        const workItems = yield* WorkItemRepository;
+        const attempts = yield* RunAttemptRepository;
+        const runEvents = yield* RunEventRepository;
+        const attention = yield* AttentionRepository;
+
+        const gateCases = [
+          { id: "gate-push", config: makeConfig({ approvalsBeforePush: true }) },
+          { id: "gate-pr", config: makeConfig({ approvalsBeforePullRequest: true }) },
+        ];
+
+        for (const gateCase of gateCases) {
+          const workItem = yield* seedWorkItem(gateCase.id, "owner-gate");
+          const acceptedGuidance = makeAcceptedGuidanceFor(gateCase.config);
+          const runAttemptId = yield* seedAttempt(gateCase.id, 1, acceptedGuidance);
+          yield* workItems.transition(workItem.id, "running", {
+            ownerToken: "owner-gate",
+            generation: 1,
+            from: ["preparing"],
+          });
+
+          const outcome = yield* finalizer.finalize({
+            workItem,
+            issue: makeIssue(gateCase.id),
+            runAttemptId,
+            // The live workflow does not require the gate; the persisted accepted
+            // snapshot must still bound publication.
+            config: makeConfig(),
+            refreshPublicationPolicy: () =>
+              Effect.succeed({ status: "available" as const, config: makeConfig() }),
+            workspacePath: `/ws/${gateCase.id}`,
+            branch: `symphony/issue-${gateCase.id}`,
+            baseBranch: "main",
+            ownerToken: "owner-gate",
+            generation: 1,
+            bodyFileDir: "/tmp/neokod",
+          });
+
+          expect(outcome).toBe("delivery_refused");
+          const attempt = yield* attempts.getById(runAttemptId);
+          expect(attempt?.status).toBe("workflow_error");
+          expect(attempt?.error?.category).toBe("workflow_error");
+          const after = yield* workItems.getById(workItem.id);
+          expect(after?.lifecycle).toBe("failed");
+          const events = yield* runEvents.listForAttempt(runAttemptId);
+          expect(events.map((event) => event.eventType)).toContain("delivery_refused");
+        }
+
+        expect(gatedPrCreateCalls).toBe(0);
+        const openAttention = yield* attention.listOpen();
+        expect(openAttention.filter((item) => item.kind === "workflow_invalid")).toHaveLength(2);
+      }),
+  );
+});
+
+stalePolicyLayer("ExecutionFinalizer publication policy refresh", (it) => {
+  it.effect("refuses publication when the policy tightens during validation", () =>
+    Effect.gen(function* () {
+      gatedPrCreateCalls = 0;
+      const workItem = yield* seedWorkItem("stale-policy-1", "owner-stale");
+      const acceptedGuidance = makeAcceptedGuidanceFor(makeConfig());
+      const runAttemptId = yield* seedAttempt("stale-policy-1", 1, acceptedGuidance);
+      const workItems = yield* WorkItemRepository;
+      yield* workItems.transition(workItem.id, "running", {
+        ownerToken: "owner-stale",
+        generation: 1,
+        from: ["preparing"],
+      });
+
+      const validationGate = yield* Deferred.make<void>();
+      const validationStarted = yield* Deferred.make<void>();
+      staleValidationGate = validationGate;
+      staleValidationStarted = validationStarted;
+      let currentConfig = makeConfig();
+      const finalizer = yield* ExecutionFinalizer;
+
+      const fiber = yield* Effect.forkScoped(
+        finalizer.finalize({
+          workItem,
+          issue: makeIssue("stale-policy-1"),
+          runAttemptId,
+          config: makeConfig(),
+          refreshPublicationPolicy: () =>
+            Effect.succeed({ status: "available" as const, config: currentConfig }),
+          workspacePath: "/ws/stale-policy-1",
+          branch: "symphony/issue-stale-policy-1",
+          baseBranch: "main",
+          ownerToken: "owner-stale",
+          generation: 1,
+          bodyFileDir: "/tmp/neokod",
+        }),
+      );
+
+      yield* Deferred.await(validationStarted);
+      // Tighten publication approval while validation is suspended.
+      currentConfig = makeConfig({ approvalsBeforePush: true });
+      yield* Deferred.succeed(validationGate, undefined);
+      const outcome = yield* Fiber.join(fiber);
+      staleValidationGate = null;
+      staleValidationStarted = null;
+
+      expect(outcome).toBe("delivery_refused");
+      expect(gatedPrCreateCalls).toBe(0);
+      const after = yield* workItems.getById(workItem.id);
+      expect(after?.lifecycle).toBe("failed");
     }),
   );
 });
@@ -316,6 +546,72 @@ layer(["passed"], makePullRequest(), {
       const runEvents = yield* RunEventRepository;
       const events = yield* runEvents.listForAttempt(runAttemptId);
       expect(events.map((event) => event.eventType)).toContain("model_review_completed");
+    }),
+  );
+});
+
+gatedLayer("ExecutionFinalizer missing attempt", (it) => {
+  it.effect("refuses publication without pushing or opening a PR", () =>
+    Effect.gen(function* () {
+      gatedPrCreateCalls = 0;
+      const workItem = yield* seedWorkItem("missing-attempt", "owner-missing");
+      const finalizer = yield* ExecutionFinalizer;
+      const workItems = yield* WorkItemRepository;
+      yield* workItems.transition(workItem.id, "running", {
+        ownerToken: "owner-missing",
+        generation: 1,
+        from: ["preparing"],
+      });
+
+      const outcome = yield* finalizer.finalize({
+        workItem,
+        issue: makeIssue("missing-attempt"),
+        runAttemptId: RunAttemptId.make("run-missing-attempt"),
+        config: makeConfig(),
+        workspacePath: "/ws/missing-attempt",
+        branch: "symphony/missing-attempt",
+        baseBranch: "main",
+        ownerToken: "owner-missing",
+        generation: 1,
+        bodyFileDir: "/tmp/neokod",
+      });
+
+      expect(outcome).toBe("delivery_refused");
+      expect(gatedPrCreateCalls).toBe(0);
+      expect((yield* workItems.getById(workItem.id))?.lifecycle).toBe("failed");
+    }),
+  );
+});
+
+unreadableAttemptLayer("ExecutionFinalizer unreadable attempt", (it) => {
+  it.effect("holds publication when the attempt read fails", () =>
+    Effect.gen(function* () {
+      gatedPrCreateCalls = 0;
+      const workItem = yield* seedWorkItem("unreadable-attempt", "owner-unreadable");
+      const finalizer = yield* ExecutionFinalizer;
+      const workItems = yield* WorkItemRepository;
+      yield* workItems.transition(workItem.id, "running", {
+        ownerToken: "owner-unreadable",
+        generation: 1,
+        from: ["preparing"],
+      });
+
+      const outcome = yield* finalizer.finalize({
+        workItem,
+        issue: makeIssue("unreadable-attempt"),
+        runAttemptId: RunAttemptId.make("run-unreadable-attempt"),
+        config: makeConfig(),
+        workspacePath: "/ws/unreadable-attempt",
+        branch: "symphony/unreadable-attempt",
+        baseBranch: "main",
+        ownerToken: "owner-unreadable",
+        generation: 1,
+        bodyFileDir: "/tmp/neokod",
+      });
+
+      expect(outcome).toBe("delivery_refused");
+      expect(gatedPrCreateCalls).toBe(0);
+      expect((yield* workItems.getById(workItem.id))?.lifecycle).toBe("failed");
     }),
   );
 });

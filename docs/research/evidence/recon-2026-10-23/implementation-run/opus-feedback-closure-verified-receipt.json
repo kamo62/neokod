@@ -1,0 +1,29 @@
+{
+  "source": {
+    "head": "c3e5fd420e24410e4a44fdec69994d15ed8e4b4e",
+    "status": ""
+  },
+  "route": "native first-party Claude",
+  "requestedModel": "claude-opus-5-5",
+  "effort": "high",
+  "modelUsage": {
+    "claude-opus-5-5": {
+      "inputTokens": 46,
+      "outputTokens": 11635,
+      "cacheReadInputTokens": 841024,
+      "cacheCreationInputTokens": 64790,
+      "webSearchRequests": 0,
+      "costUSD": 0.9194088000000001,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 5143,
+      "canonicalModel": "claude-opus-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "exit": {
+    "exitCode": 0,
+    "head": "c3e5fd420e24410e4a44fdec69994d15ed8e4b4e"
+  }
+}

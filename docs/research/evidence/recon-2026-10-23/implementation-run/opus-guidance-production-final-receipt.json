@@ -1,0 +1,25 @@
+{
+  "source": {
+    "head": "11f10b287467946bca4f0aeec1966782d4852587",
+    "status": ""
+  },
+  "modelUsage": {
+    "claude-opus-5-5": {
+      "inputTokens": 64,
+      "outputTokens": 23037,
+      "cacheReadInputTokens": 2548224,
+      "cacheCreationInputTokens": 126668,
+      "webSearchRequests": 0,
+      "costUSD": 1.9839848000000002,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 14025,
+      "canonicalModel": "claude-opus-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "session_id": "090bbebf-eca6-4f13-abce-53e1095cdc82",
+  "is_error": false,
+  "evidence": "native direct Claude source review; not live acceptance"
+}

@@ -9,6 +9,7 @@ import {
   TrimmedNonEmptyString,
 } from "./baseSchemas.ts";
 import { ProviderInstanceRef } from "./providerInstance.ts";
+import { UserInputQuestion } from "./providerRuntime.ts";
 
 /**
  * Symphony Mode contracts.
@@ -264,6 +265,124 @@ export const RunErrorSchema = Schema.Struct({
 });
 export type RunError = typeof RunErrorSchema.Type;
 
+/**
+ * Positive, server-owned Stop closure for one exact attempt. It is produced
+ * only after confirmed process closure; absence is unknown/legacy.
+ */
+export const SymphonyStopClosureSchema = Schema.Struct({
+  state: Schema.Literal("confirmed"),
+  runAttemptId: RunAttemptId,
+  observedAt: IsoDateTime,
+  source: Schema.Literal("recovery.stop_confirmed"),
+});
+export type SymphonyStopClosure = typeof SymphonyStopClosureSchema.Type;
+
+export const TrackerKindSchema = Schema.Literals([
+  "github",
+  "jira",
+  "linear",
+  "gitlab",
+  "asana",
+  "azure_boards",
+  "github_projects",
+]);
+export type TrackerKind = typeof TrackerKindSchema.Type;
+
+export const AutonomyLevelSchema = Schema.Literals(["observe", "prepare", "execute", "deliver"]);
+export type AutonomyLevel = typeof AutonomyLevelSchema.Type;
+
+/**
+ * A tracker kind plus the real manual work source. Saved source provenance must
+ * not relabel a manual item as whichever tracker the workflow happens to use.
+ */
+export const AcceptedSourceKindSchema = Schema.Union([TrackerKindSchema, Schema.Literal("manual")]);
+export type AcceptedSourceKind = typeof AcceptedSourceKindSchema.Type;
+
+/** Operator text that was deliberately absent versus deliberately empty. */
+export const AcceptedInstructionTextSchema = Schema.Union([
+  Schema.Struct({ state: Schema.Literal("absent") }),
+  Schema.Struct({ state: Schema.Literal("present"), text: Schema.String }),
+]);
+export type AcceptedInstructionText = typeof AcceptedInstructionTextSchema.Type;
+
+export const AcceptedDeliveryScopeSchema = Schema.Struct({
+  /** null records "the workflow did not state a value"; it is not coerced to false. */
+  approvalBeforePush: Schema.NullOr(Schema.Boolean),
+  approvalBeforePullRequest: Schema.NullOr(Schema.Boolean),
+  approvalBeforeMerge: Schema.NullOr(Schema.Boolean),
+});
+export type AcceptedDeliveryScope = typeof AcceptedDeliveryScopeSchema.Type;
+
+export const AcceptedPermissionScopeSchema = Schema.Struct({
+  autonomy: AutonomyLevelSchema,
+  approvalPolicy: Schema.Literals(["untrusted", "on-request", "never"]),
+  threadSandbox: Schema.Literals(["read-only", "workspace-write", "danger-full-access"]),
+  turnSandboxPolicy: Schema.Union([
+    Schema.Struct({ type: Schema.Literal("readOnly") }),
+    Schema.Struct({ type: Schema.Literal("workspaceWrite") }),
+    Schema.Struct({ type: Schema.Literal("dangerFullAccess") }),
+  ]),
+  editsAllowed: Schema.Boolean,
+  approvalsEnabled: Schema.Boolean,
+  protectedPaths: Schema.Array(Schema.String),
+  delivery: AcceptedDeliveryScopeSchema,
+});
+export type AcceptedPermissionScope = typeof AcceptedPermissionScopeSchema.Type;
+
+export const AcceptedWorkflowGuidanceSchema = Schema.Struct({
+  id: WorkflowId,
+  path: Schema.String,
+  /** Persisted workflow `updatedAt` at acceptance; the existing revision authority. */
+  revision: IsoDateTime,
+  digest: Schema.String,
+  /** Parsed agent-facing body only. Front matter is never accepted. */
+  instructions: Schema.String,
+  validationRequired: Schema.Array(Schema.String),
+});
+
+export const AcceptedSourceSnapshotSchema = Schema.Struct({
+  trackerId: Schema.String,
+  kind: AcceptedSourceKindSchema,
+  externalId: Schema.optional(Schema.String),
+  externalUrl: Schema.optional(Schema.String),
+  identifier: Schema.String,
+  title: Schema.String,
+  description: Schema.NullOr(Schema.String),
+  acceptanceCriteria: Schema.Array(Schema.String),
+  labels: Schema.Array(Schema.String),
+  /** Tracker `updatedAt`; null means the tracker did not report one. */
+  revision: Schema.NullOr(IsoDateTime),
+  digest: Schema.String,
+});
+
+export const AcceptedGuidanceTextSchema = Schema.Struct({
+  batch: AcceptedInstructionTextSchema,
+  story: AcceptedInstructionTextSchema,
+  digest: Schema.String,
+});
+
+export const AcceptedTargetSchema = Schema.Struct({
+  repositoryId: Schema.optional(Schema.String),
+  repositoryPath: Schema.String,
+  workflowPath: Schema.String,
+  workspacePath: Schema.optional(Schema.String),
+  baseBranch: Schema.optional(Schema.String),
+  provider: ProviderInstanceRef,
+  model: Schema.optional(Schema.String),
+});
+
+export const AcceptedGuidanceSnapshotSchema = Schema.Struct({
+  schemaVersion: Schema.Literal(1),
+  acceptedAt: IsoDateTime,
+  digest: Schema.String,
+  workflow: AcceptedWorkflowGuidanceSchema,
+  source: AcceptedSourceSnapshotSchema,
+  guidance: AcceptedGuidanceTextSchema,
+  target: AcceptedTargetSchema,
+  permission: AcceptedPermissionScopeSchema,
+});
+export type AcceptedGuidanceSnapshot = typeof AcceptedGuidanceSnapshotSchema.Type;
+
 export const RunEventSchema = Schema.Struct({
   sequence: RunEventSequence,
   runAttemptId: RunAttemptId,
@@ -288,6 +407,17 @@ export const RunAttemptSchema = Schema.Struct({
   tokenUsage: Schema.optional(TokenUsageSchema),
   sessionId: Schema.optional(TrimmedNonEmptyString),
   threadId: Schema.optional(TrimmedNonEmptyString),
+  /**
+   * Frozen at admission. Undefined means either a legacy attempt recorded
+   * before the field existed, or an attempt refused before acceptance; absence
+   * is not an accepted brief and must never be rendered as one.
+   */
+  acceptedGuidance: Schema.optional(AcceptedGuidanceSnapshotSchema),
+  /**
+   * Server-owned confirmed Stop closure. Absent means unknown or legacy; never
+   * derive it from a cancelled status, PID match or timer.
+   */
+  stopClosure: Schema.optional(SymphonyStopClosureSchema),
 });
 export type RunAttempt = typeof RunAttemptSchema.Type;
 
@@ -482,6 +612,8 @@ export const WorkItemSchema = Schema.Struct({
   blocked: Schema.optionalKey(Schema.Boolean),
   eligibilityReasons: Schema.Array(TrimmedNonEmptyString),
   evidence: Schema.NullOr(EvidenceBundleSchema),
+  /** Server-owned confirmed Stop closure for the exact attempt, when observed. */
+  stopClosure: Schema.optional(SymphonyStopClosureSchema),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
   /** When the claim was taken (REVIEW P1 #10: orphan claims are detectable). */
@@ -579,6 +711,8 @@ export type ApprovalAction = typeof ApprovalActionSchema.Type;
 
 export const ApprovalRequestStateSchema = Schema.Literals([
   "pending",
+  "delivering",
+  "answered",
   "approved",
   "rejected",
   "expired",
@@ -601,6 +735,117 @@ export type ApprovalRequestAction = typeof ApprovalRequestActionSchema.Type;
 /** An approval is decided (`approved`/`rejected`); a question is answered. */
 export const ApprovalRequestKindSchema = Schema.Literals(["approval", "user_input"]);
 export type ApprovalRequestKind = typeof ApprovalRequestKindSchema.Type;
+
+/**
+ * The question contract version stored in `ApprovalQuestionPayloadSchema`.
+ *
+ * Version 1 is the provider-neutral shape shared with ordinary provider
+ * questions (`UserInputQuestion`) plus the provider's own `isSecret` marker.
+ * Any future change to that shape must bump the version instead of silently
+ * reinterpreting rows written by an older build.
+ */
+export const ApprovalQuestionSchemaVersion = 1 as const;
+
+/**
+ * One durable Symphony question. It is the shared `UserInputQuestion` shape,
+ * so the thread question interaction and the Symphony surface agree on ids,
+ * options and multi-select, with the provider's secret flag preserved.
+ */
+export const ApprovalQuestionSchema = Schema.Struct({
+  ...UserInputQuestion.fields,
+  /**
+   * Codex option descriptions are not guaranteed to be non-empty. Keep them as
+   * strings so a blank description is preserved evidence instead of making the
+   * whole durable row undecodable.
+   */
+  options: Schema.Array(
+    Schema.Struct({
+      label: TrimmedNonEmptyString,
+      description: Schema.String,
+    }),
+  ),
+  /** Provider flagged this answer as secret; history stores a redaction only. */
+  sensitive: Schema.optional(Schema.Boolean),
+});
+export type ApprovalQuestion = typeof ApprovalQuestionSchema.Type;
+
+/**
+ * The durable question payload for a user-input request.
+ *
+ * Structured questions are versioned. Rows written before questions were
+ * persisted fall back to their flattened prompt text (`legacy_text`), and a
+ * request whose provider shape could not be preserved is explicitly
+ * `unsupported` rather than guessed at.
+ */
+export const ApprovalQuestionPayloadSchema = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("structured"),
+    version: Schema.Literal(ApprovalQuestionSchemaVersion),
+    questions: Schema.Array(ApprovalQuestionSchema),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("legacy_text"),
+    text: TrimmedNonEmptyString,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("unsupported"),
+    providerMethod: Schema.String,
+    detail: Schema.optional(Schema.String),
+  }),
+]);
+export type ApprovalQuestionPayload = typeof ApprovalQuestionPayloadSchema.Type;
+
+/** A single-provider answer value: one label/custom text, or several for multi-select. */
+export const ApprovalAnswerValueSchema = Schema.Union([
+  TrimmedNonEmptyString,
+  Schema.Array(TrimmedNonEmptyString).check(Schema.isMinLength(1)),
+]);
+export type ApprovalAnswerValue = typeof ApprovalAnswerValueSchema.Type;
+
+/** One answer in an RPC submission, keyed by its provider question id. */
+export const ApprovalAnswerInputSchema = Schema.Struct({
+  questionId: TrimmedNonEmptyString,
+  answer: ApprovalAnswerValueSchema,
+});
+export type ApprovalAnswerInput = typeof ApprovalAnswerInputSchema.Type;
+
+/** Stored answer content. `redacted` replaces the value for a secret question. */
+export const ApprovalAnswerEntrySchema = Schema.Struct({
+  questionId: TrimmedNonEmptyString,
+  answer: ApprovalAnswerValueSchema,
+  redacted: Schema.optional(Schema.Boolean),
+});
+export type ApprovalAnswerEntry = typeof ApprovalAnswerEntrySchema.Type;
+
+/**
+ * Durable answer history.
+ *
+ * `delivery` is `unknown` because writing a response to the provider stream is
+ * not provider acknowledgement: the UI must not present durable history as
+ * proof that the agent received it.
+ */
+export const ApprovalAnswerRecordSchema = Schema.Struct({
+  answers: Schema.Array(ApprovalAnswerEntrySchema),
+  /** Free text for a legacy request whose question ids were never persisted. */
+  legacyText: Schema.optional(TrimmedNonEmptyString),
+  delivery: Schema.Literal("unknown"),
+  actor: Schema.Literal("local_operator"),
+  recordedAt: IsoDateTime,
+});
+export type ApprovalAnswerRecord = typeof ApprovalAnswerRecordSchema.Type;
+
+/**
+ * An approval/rejection note. The Codex approval response carries only a
+ * decision, so a note is saved to history and is explicitly not delivered to
+ * the agent.
+ */
+export const ApprovalDecisionNoteSchema = Schema.Struct({
+  text: TrimmedNonEmptyString,
+  delivery: Schema.Literal("history_only"),
+  actor: Schema.Literal("local_operator"),
+  recordedAt: IsoDateTime,
+});
+export type ApprovalDecisionNote = typeof ApprovalDecisionNoteSchema.Type;
 
 export const ApprovalRequestSchema = Schema.Struct({
   id: SymphonyApprovalRequestId,
@@ -629,11 +874,32 @@ export const ApprovalRequestSchema = Schema.Struct({
   createdAt: IsoDateTime,
   decidedAt: Schema.NullOr(IsoDateTime),
   /**
-   * How the request closed. The durable column records the same value as
-   * `state` on every close, including `interrupted` (the run died while the
-   * request was pending), so an interrupted row stays decodable.
+   * The preserved question shape for a user-input request. Official rows carry
+   * a versioned structured payload; older rows decode as `legacy_text` so
+   * their flattened prompt stays readable without invented choices.
    */
-  decision: Schema.optional(Schema.Literals(["approved", "rejected", "expired", "interrupted"])),
+  questionPayload: Schema.optional(ApprovalQuestionPayloadSchema),
+  /** What the operator submitted, for answered questions only. */
+  answer: Schema.optional(ApprovalAnswerRecordSchema),
+  /** History-only note attached to an approval or rejection. */
+  decisionNote: Schema.optional(ApprovalDecisionNoteSchema),
+  /**
+   * Present when stored answer/note JSON could not be decoded. The row and its
+   * question stay readable; no answer or note content is invented.
+   */
+  historyUnavailable: Schema.optional(Schema.String),
+  /**
+   * How the request closed. The durable column records the same value as
+   * `state` on normal closes, including `interrupted` (the run died while the
+   * request was pending). For a staged delivery, `decision` records the local
+   * staged submission (`answered`/`approved`/`rejected`) even while `state` is
+   * `delivering`, and startup reconciliation preserves that decision when it
+   * changes the state to `interrupted`: delivery to the provider remains
+   * unknown.
+   */
+  decision: Schema.optional(
+    Schema.Literals(["delivering", "answered", "approved", "rejected", "expired", "interrupted"]),
+  ),
 });
 export type ApprovalRequest = typeof ApprovalRequestSchema.Type;
 
@@ -646,20 +912,6 @@ export const WorkflowDefinitionSchema = Schema.Struct({
   promptTemplate: Schema.String,
 });
 export type WorkflowDefinition = typeof WorkflowDefinitionSchema.Type;
-
-export const TrackerKindSchema = Schema.Literals([
-  "github",
-  "jira",
-  "linear",
-  "gitlab",
-  "asana",
-  "azure_boards",
-  "github_projects",
-]);
-export type TrackerKind = typeof TrackerKindSchema.Type;
-
-export const AutonomyLevelSchema = Schema.Literals(["observe", "prepare", "execute", "deliver"]);
-export type AutonomyLevel = typeof AutonomyLevelSchema.Type;
 
 export const SymphonyTrackerScopeSchema = Schema.Union([
   Schema.Struct({
@@ -1203,6 +1455,50 @@ export const SymphonySetLocalPriorityInput = Schema.Struct({
 export const SymphonyCancelRunInput = Schema.Struct({
   runAttemptId: RunAttemptId,
 });
+
+/**
+ * Honest Stop acknowledgement.
+ *
+ * `held` means ownership was deliberately kept; a caller must not present the
+ * run as stopped or released. `evidence` is the closure evidence string from
+ * the shared process helper; contracts do not import runtime helper enums.
+ */
+export const SymphonyStopOutcomeSchema = Schema.Union([
+  Schema.Struct({
+    status: Schema.Literal("confirmed"),
+    runAttemptId: RunAttemptId,
+    evidence: Schema.String,
+    released: Schema.Boolean,
+  }),
+  Schema.Struct({
+    status: Schema.Literal("held"),
+    runAttemptId: RunAttemptId,
+    reason: Schema.String,
+    detail: Schema.optional(Schema.String),
+  }),
+]);
+export type SymphonyStopOutcome = typeof SymphonyStopOutcomeSchema.Type;
+
+/**
+ * `outcome` is optional for compatibility with older servers. Its absence means
+ * unknown, never confirmed. `ok` is not stop proof.
+ */
+export const SymphonyStopResultSchema = Schema.Struct({
+  ok: Schema.Boolean,
+  outcome: Schema.optional(SymphonyStopOutcomeSchema),
+});
+export type SymphonyStopResult = typeof SymphonyStopResultSchema.Type;
+
+/**
+ * Stop-all keeps the legacy `ok` shape and adds confirmed/held counts only when
+ * the server actually observed them. Held runs are not counted as stopped.
+ */
+export const SymphonyStopAllResultSchema = Schema.Struct({
+  ok: Schema.Boolean,
+  confirmed: Schema.optional(NonNegativeInt),
+  held: Schema.optional(NonNegativeInt),
+});
+export type SymphonyStopAllResult = typeof SymphonyStopAllResultSchema.Type;
 export const SymphonyStopAllRunsInput = Schema.Struct({
   confirm: Schema.Literal("stop-all-runs"),
 });
@@ -1212,14 +1508,26 @@ export const SymphonyResumeAutonomousInput = Schema.Struct({
 export const SymphonyApproveInput = Schema.Struct({
   requestId: TrimmedNonEmptyString,
   scope: ApprovalScopeSchema,
+  /** Saved to history only; Codex approval responses carry no note. */
+  note: Schema.optional(TrimmedNonEmptyString),
+  /** Optional exact run/attempt check; rejects a stale record id. */
+  runAttemptId: Schema.optional(RunAttemptId),
 });
 export const SymphonyRejectInput = Schema.Struct({
   requestId: TrimmedNonEmptyString,
+  /** Backward-compatible alias for `note`. */
   reason: Schema.optional(Schema.String),
+  /** Saved to history only; Codex approval responses carry no note. */
+  note: Schema.optional(TrimmedNonEmptyString),
+  runAttemptId: Schema.optional(RunAttemptId),
 });
 export const SymphonyRespondToUserInputInput = Schema.Struct({
   requestId: TrimmedNonEmptyString,
-  text: Schema.String,
+  /** Structured answers, one per provider question id. */
+  answers: Schema.optional(Schema.Array(ApprovalAnswerInputSchema)),
+  /** Legacy free text, accepted only for a legacy-text request. */
+  text: Schema.optional(Schema.String),
+  runAttemptId: Schema.optional(RunAttemptId),
 });
 export const SymphonyResolveAttentionInput = Schema.Struct({
   attentionItemId: AttentionItemId,

@@ -1,0 +1,52 @@
+{
+  "implementer": "deepseek/deepseek-flash",
+  "catalogue": "DeepSeek V4.1 Flash1017",
+  "route": "OpenCode2 ACP",
+  "sourceGate": "not live proof",
+  "lanes": {
+    "feedback": {
+      "head": "41a49b8255705d9debebfe6212fb766b0939011f",
+      "reviews": "native Sol and first-party Opus ACCEPT",
+      "reportedChecks": {
+        "runtimeApprovalWs": 81,
+        "contracts": 26,
+        "attention": 14,
+        "publicationRegressionSuite": 26,
+        "serverNoEmit": 0,
+        "webNoEmit": 0
+      }
+    },
+    "recovery": {
+      "head": "4c9587615",
+      "reportedChecks": {
+        "focused7files": 161,
+        "serverNoEmit": 0
+      },
+      "review": "Stop correction03939b278 source accepted by both native final guidance reviews; integrated"
+    },
+    "guidance": {
+      "head": "6e439d91b2423eff97eb4a41ec070515ca7a0c5a",
+      "reportedChecks": {
+        "focused9files": 203,
+        "postCommit4files": 149,
+        "serverNoEmit": 0
+      },
+      "review": "native Sol and onboard first-party Opus ACCEPT69a712335 and bounded platform correction6e439d91b",
+      "postCorrectionChecks": {
+        "focused4files": 163,
+        "serverNoEmit": 0,
+        "sharedNoEmit": 0
+      }
+    },
+    "ui": {
+      "head": "daf6cfb55748f9d4f006a38421b258ed80054e86",
+      "reviews": "native Sol and first-party Opus ACCEPT",
+      "reportedChecks": {
+        "focused6files": 106,
+        "webNoEmit": 0
+      },
+      "chrome": "matching source renderer/backend; synthetic fixture only"
+    }
+  },
+  "forbiddenActionsPerformed": []
+}

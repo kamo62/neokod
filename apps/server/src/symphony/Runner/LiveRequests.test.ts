@@ -44,10 +44,42 @@ describe("LiveRequests", () => {
         workItemId,
         runAttemptId,
         prompt: "Which branch?",
+        questionIds: ["q1"],
       });
-      yield* service.respondToUserInput(runAttemptId, "req-2", "main");
-      const text = yield* Deferred.await(deferred);
-      expect(text).toBe("main");
+      yield* service.respondToUserInput(runAttemptId, "req-2", { q1: "main" });
+      const answers = yield* Deferred.await(deferred);
+      expect(answers).toEqual({ q1: "main" });
+    }),
+  );
+
+  it.effect("refuses an answer map that does not match the question ids exactly", () =>
+    Effect.gen(function* () {
+      const service = yield* makeLiveRequests;
+      const deferred = yield* service.registerUserInput({
+        requestId: "req-2-mismatch",
+        workItemId,
+        runAttemptId,
+        prompt: "Which branch?",
+        questionIds: ["q1", "q2"],
+      });
+      const missing = yield* Effect.result(
+        service.respondToUserInput(runAttemptId, "req-2-mismatch", { q1: "main" }),
+      );
+      expect(missing._tag).toBe("Failure");
+      const extra = yield* Effect.result(
+        service.respondToUserInput(runAttemptId, "req-2-mismatch", {
+          q1: "main",
+          q2: "why",
+          q3: "not asked",
+        }),
+      );
+      expect(extra._tag).toBe("Failure");
+      expect(yield* Deferred.isDone(deferred)).toBe(false);
+      yield* service.respondToUserInput(runAttemptId, "req-2-mismatch", {
+        q1: "main",
+        q2: "why",
+      });
+      expect(yield* Deferred.await(deferred)).toEqual({ q1: "main", q2: "why" });
     }),
   );
 
@@ -294,6 +326,62 @@ describe("LiveRequests", () => {
         service.respondToApproval(runAttemptId, "req-boundary-2a", "approved"),
       );
       expect(late._tag).toBe("Failure");
+    }),
+  );
+
+  it.effect("refuses a duplicate registration without replacing the live Deferred", () =>
+    Effect.gen(function* () {
+      const service = yield* makeLiveRequests;
+      const first = yield* service.registerUserInput({
+        requestId: "req-duplicate",
+        workItemId,
+        runAttemptId,
+        prompt: "Which branch?",
+        questionIds: ["q1"],
+      });
+      const duplicate = yield* Effect.result(
+        service.registerUserInput({
+          requestId: "req-duplicate",
+          workItemId,
+          runAttemptId,
+          prompt: "Which branch?",
+          questionIds: ["q1"],
+        }),
+      );
+      expect(duplicate._tag).toBe("Failure");
+      // The original Deferred is still the one the answer resolves.
+      yield* service.respondToUserInput(runAttemptId, "req-duplicate", { q1: "main" });
+      expect(yield* Deferred.await(first)).toEqual({ q1: "main" });
+    }),
+  );
+
+  it.effect("withdraws only the exact registration identity, never a replacement", () =>
+    Effect.gen(function* () {
+      const service = yield* makeLiveRequests;
+      const first = yield* service.registerUserInput({
+        requestId: "req-identity",
+        workItemId,
+        runAttemptId,
+        prompt: "Which branch?",
+        questionIds: ["q1"],
+      });
+      const other = yield* Deferred.make<{ readonly q1: string }>();
+      expect(
+        yield* service.withdrawPending(
+          runAttemptId,
+          "req-identity",
+          other as Deferred.Deferred<unknown>,
+        ),
+      ).toBe(false);
+      expect(yield* service.listPending(runAttemptId)).toHaveLength(1);
+      expect(
+        yield* service.withdrawPending(
+          runAttemptId,
+          "req-identity",
+          first as Deferred.Deferred<unknown>,
+        ),
+      ).toBe(true);
+      expect(yield* service.listPending(runAttemptId)).toHaveLength(0);
     }),
   );
 

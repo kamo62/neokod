@@ -4,6 +4,7 @@ import type {
   ApprovalRequestKind,
   EffectiveWorkflowConfig,
   EvidenceBundle,
+  IsoDateTime,
   NormalizedIssue,
   PullRequestEvidence,
   QueueItem,
@@ -42,6 +43,7 @@ import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import { approvalRequestKind } from "../../Domain/Approvals.ts";
 import { nowIso } from "../../Domain/Time.ts";
+import { HostProcessPlatform } from "@neokod/shared/hostProcess";
 import { SymphonyPersistenceSqlError } from "../../Persistence/Errors.ts";
 import type { SymphonyPersistenceError } from "../../Persistence/Errors.ts";
 import { SymphonyProjectRepository } from "../../Persistence/Services/SymphonyProjectRepository.ts";
@@ -50,8 +52,16 @@ import { WorkItemRepository } from "../../Persistence/Services/WorkItemRepositor
 import { OrchestratorStateRepository } from "../../Persistence/Services/OrchestratorStateRepository.ts";
 import { RunAttemptRepository } from "../../Persistence/Services/RunAttemptRepository.ts";
 import { RunEventRepository } from "../../Persistence/Services/RunEventRepository.ts";
-import { ApprovalService } from "../../Runner/ApprovalService.ts";
-import { RunDispatcher } from "../../Runner/Dispatcher.ts";
+import {
+  ApprovalService,
+  type ApprovalReconciliationResult,
+} from "../../Runner/ApprovalService.ts";
+import {
+  describeSymphonyProvider,
+  isSupportedSymphonyProvider,
+  RunDispatcher,
+  symphonyAdmissionPlatformRefusal,
+} from "../../Runner/Dispatcher.ts";
 import { EvidenceRepository } from "../../Persistence/Services/EvidenceRepository.ts";
 import { PullRequestService } from "../../Evidence/PullRequest.ts";
 import { changeRequestRepositoryKey } from "../../../sourceControl/ChangeRequestUrl.ts";
@@ -270,15 +280,54 @@ const refreshIssueSnapshot = (
     };
   });
 
+/**
+ * A refreshed issue may only be used with the stored source it was originally
+ * discovered under. Kind and external id are necessary but not sufficient;
+ * the canonical URL carries the tracker scope (for example the repository).
+ * Manual sources skip tracker comparison entirely.
+ */
+export const trackerSourceMismatch = (
+  item: WorkItem,
+  issue: NormalizedIssue,
+  config: EffectiveWorkflowConfig,
+): string | null => {
+  const source = item.source;
+  if (source.kind === "manual") {
+    return null;
+  }
+  if (item.trackerIssueId === undefined || item.trackerIssueId.length === 0) {
+    // No tracker round-trip: the synthetic issue is not a refreshed tracker
+    // source, so there is no scope to combine.
+    return null;
+  }
+  if (source.kind !== config.trackerKind) {
+    return `tracker kind changed from ${source.kind} to ${config.trackerKind}; explicit rebind required`;
+  }
+  if (issue.id !== source.externalId) {
+    return `tracker external id changed from ${source.externalId} to ${issue.id}; explicit rebind required`;
+  }
+  if (source.externalUrl.length === 0) {
+    return "tracker source scope cannot be established from an empty stored URL; explicit rebind required";
+  }
+  if (issue.url === null || issue.url.length === 0) {
+    return "refreshed tracker issue has no canonical URL; source scope cannot be verified";
+  }
+  if (issue.url !== source.externalUrl) {
+    return "tracker source scope changed; explicit rebind required";
+  }
+  return null;
+};
+
 interface OrchestratorRuntimeState {
   readonly lastPollAt: string | null;
   readonly trackerHealth: ReadonlyArray<TrackerHealth>;
 }
-
 interface PreparedDispatch {
   readonly item: WorkItem;
   readonly issue: NormalizedIssue;
   readonly config: EffectiveWorkflowConfig;
+  readonly workflowId: WorkflowId;
+  readonly workflowRevision: IsoDateTime;
   readonly reviewFeedback?: ReviewFeedbackContext;
   readonly workflowInstructions?: string;
 }
@@ -1100,6 +1149,43 @@ const makeOrchestrator = Effect.gen(function* () {
         ),
       ...(Option.isSome(maybeOwnership) ? { ownership: maybeOwnership.value } : {}),
     }).pipe(Effect.catch(() => Effect.void));
+
+    // Uncertain staged approval deliveries: a restart cannot prove the local
+    // provider response was consumed, so close remaining `delivering` rows as
+    // interrupted without replay, and preserve their delivery-unknown content.
+    // This runs inside authoritative startup recovery before any worker can
+    // answer a current request.
+    const reconciliation = yield* (
+      approvals.reconcileUncertainDeliveries?.() ??
+      Effect.succeed<ApprovalReconciliationResult>({
+        reconciled: 0,
+        failedIds: [],
+        unavailable: "approval reconciliation is not available in this stack",
+      })
+    ).pipe(
+      Effect.catch(() =>
+        Effect.succeed<ApprovalReconciliationResult>({
+          reconciled: 0,
+          failedIds: [],
+          unavailable: "approval reconciliation failed",
+        }),
+      ),
+    );
+    if (reconciliation.unavailable !== undefined) {
+      yield* Effect.logWarning("symphony.approval.reconcile_unavailable", {
+        detail: reconciliation.unavailable,
+      });
+    }
+    if (reconciliation.failedIds.length > 0) {
+      yield* Effect.logWarning("symphony.approval.reconcile_partial", {
+        reconciled: reconciliation.reconciled,
+        failedIds: reconciliation.failedIds,
+      });
+    } else if (reconciliation.reconciled > 0) {
+      yield* Effect.logWarning("symphony.approval.reconciled", {
+        reconciled: reconciliation.reconciled,
+      });
+    }
   });
 
   /** Renew the lease. A refused renewal (another token owns the row) demotes this process.
@@ -1347,9 +1433,27 @@ const makeOrchestrator = Effect.gen(function* () {
       const attentionItems = requests
         .filter((request) => request.state === "pending")
         .map(approvalToAttentionItem);
+      // Exact authoritative Stop closure for this attempt only. The full
+      // timeline is already read here; a cancelled status or missing pid is
+      // never treated as closure.
+      const stopConfirmed = [...timeline]
+        .reverse()
+        .find((event) => event.eventType === "stop_confirmed" && event.runAttemptId === attempt.id);
+      const runAttemptWithClosure =
+        stopConfirmed === undefined
+          ? attempt
+          : {
+              ...attempt,
+              stopClosure: {
+                state: "confirmed" as const,
+                runAttemptId: attempt.id,
+                observedAt: stopConfirmed.occurredAt,
+                source: "recovery.stop_confirmed" as const,
+              },
+            };
       return {
         workItem: evidenceWorkItem,
-        runAttempt: attempt,
+        runAttempt: runAttemptWithClosure,
         timeline,
         attentionItems,
         approvalRequests: requests,
@@ -1564,7 +1668,26 @@ const makeOrchestrator = Effect.gen(function* () {
     orchestratorState.setGlobalPaused(paused).pipe(Effect.catch(() => Effect.void));
 
   const stopAllRuns: SymphonyOrchestratorShape["stopAllRuns"] = () =>
-    dispatcher.stopAllRuns().pipe(Effect.catch(() => Effect.succeed(0)));
+    dispatcher.stopAllRuns().pipe(
+      Effect.flatMap((result) =>
+        Effect.gen(function* () {
+          if (result.held > 0) {
+            yield* notifications
+              .publish({
+                kind: "attention_raised",
+                title: "Some runs could not be confirmed stopped",
+                message: `${result.confirmed} run(s) stopped; ${result.held} run(s) remain held because process closure was not confirmed. Reconcile them before restarting.`,
+                createdAt: yield* nowIso,
+              })
+              .pipe(Effect.catch(() => Effect.void));
+          }
+          // The public count reports only confirmed cancellations. Held runs
+          // are surfaced separately and keep their ownership.
+          return result.confirmed;
+        }),
+      ),
+      Effect.catch(() => Effect.succeed(0)),
+    );
 
   const excludeWorkItem: SymphonyOrchestratorShape["excludeWorkItem"] = (workItemId, exclude) =>
     workItems
@@ -1631,6 +1754,11 @@ const makeOrchestrator = Effect.gen(function* () {
     // between ticks.
     if (!(yield* Ref.get(holdsLockRef))) {
       return refused("not_leader");
+    }
+    const platformRefusal = symphonyAdmissionPlatformRefusal(yield* HostProcessPlatform);
+    if (platformRefusal !== null) {
+      // Shared platform capability gate, applied before acknowledging a start.
+      return refused("not_dispatchable", platformRefusal);
     }
     const item = yield* workItems.getById(WorkItemId.make(workItemId));
     if (item === null) {
@@ -1700,6 +1828,12 @@ const makeOrchestrator = Effect.gen(function* () {
     if (workflow === undefined || config === null || config === undefined) {
       return refused("no_workflow");
     }
+    if (!isSupportedSymphonyProvider(config.agentProvider)) {
+      return refused(
+        "ineligible",
+        `unsupported Symphony executor provider ${describeSymphonyProvider(config.agentProvider)}; this server only runs codex_default/codex`,
+      );
+    }
     if (config.autonomy === "observe") {
       return refused("observe_only");
     }
@@ -1730,9 +1864,29 @@ const makeOrchestrator = Effect.gen(function* () {
       return refused("concurrency_cap", "workflow");
     }
 
+    const hasTrackerIssueForSource =
+      item.trackerIssueId !== undefined && item.trackerIssueId.length > 0;
+    const preRefreshSourceMismatch =
+      hasTrackerIssueForSource &&
+      item.source.kind !== "manual" &&
+      item.source.kind !== config.trackerKind
+        ? `tracker kind changed from ${item.source.kind} to ${config.trackerKind}; explicit rebind required`
+        : null;
+    if (preRefreshSourceMismatch !== null) {
+      return refused("ineligible", preRefreshSourceMismatch);
+    }
+
     const issue = yield* refreshIssueSnapshot(item, config, registry, enablement);
     if (issue === null) {
       return refused("tracker_refresh_failed");
+    }
+    const sourceMismatch = trackerSourceMismatch(item, issue, config);
+    if (sourceMismatch !== null) {
+      yield* Effect.logWarning("symphony.dispatch.refused_source_scope", {
+        workItemId: String(item.id),
+        reason: sourceMismatch,
+      });
+      return refused("ineligible", sourceMismatch);
     }
     // Re-check eligibility on the fresh issue: the stored reasons are from the last poll.
     // Items without a tracker id use a synthetic snapshot, and review continuations may sit in a
@@ -1778,6 +1932,8 @@ const makeOrchestrator = Effect.gen(function* () {
       item,
       issue,
       config,
+      workflowId: workflow.id,
+      workflowRevision: workflow.updatedAt,
       ...(workflowInstructions.length > 0 ? { workflowInstructions } : {}),
       ...(reviewFeedback !== undefined ? { reviewFeedback } : {}),
     };
@@ -1814,6 +1970,17 @@ const makeOrchestrator = Effect.gen(function* () {
           workItem: prepared.item,
           issue: prepared.issue,
           config: prepared.config,
+          workflowId: prepared.workflowId,
+          workflowRevision: prepared.workflowRevision,
+          loadCurrentWorkflowPolicy: (workflowId) =>
+            workflows.getById(workflowId).pipe(
+              Effect.map((record) =>
+                record === null || record.status === "invalid" || record.status === "draft"
+                  ? null
+                  : record.effectiveConfig,
+              ),
+              Effect.catch(() => Effect.succeed(null)),
+            ),
           ...(prepared.workflowInstructions !== undefined
             ? { workflowInstructions: prepared.workflowInstructions }
             : {}),
@@ -1886,25 +2053,77 @@ const makeOrchestrator = Effect.gen(function* () {
 
   const cancelRun: SymphonyOrchestratorShape["cancelRun"] = (runAttemptId) =>
     Effect.gen(function* () {
-      yield* dispatcher
-        .cancelRun(RunAttemptId.make(runAttemptId))
-        .pipe(Effect.catch(() => Effect.void));
-      yield* auditRepository
-        .record({
-          actor: "symphony",
-          eventType: "run_cancelled",
-          runAttemptId,
-        })
-        .pipe(Effect.catch(() => Effect.void));
-      yield* notifications
-        .publish({
-          kind: "run_failed",
-          title: "Run cancelled",
-          message: `Run ${runAttemptId} was cancelled.`,
-          runAttemptId,
-          createdAt: yield* nowIso,
-        })
-        .pipe(Effect.catch(() => Effect.void));
+      const attemptId = RunAttemptId.make(runAttemptId);
+      const before = yield* runAttempts
+        .getById(attemptId)
+        .pipe(Effect.catch(() => Effect.succeed(null)));
+      const priorEvents = yield* runEvents
+        .listForAttempt(attemptId)
+        .pipe(Effect.catch(() => Effect.succeed([])));
+      const alreadyUnconfirmed = priorEvents.some(
+        (event) => event.eventType === "stop_unconfirmed",
+      );
+      const outcome = yield* dispatcher
+        .cancelRun(attemptId)
+        .pipe(Effect.catch(() => Effect.succeed(null)));
+      if (outcome === null) {
+        return {
+          status: "held" as const,
+          runAttemptId: attemptId,
+          reason: "stop_request_failed",
+        };
+      }
+
+      if (outcome.status === "confirmed") {
+        // A repeat confirmed Stop is idempotent: do not republish history.
+        if (before?.status !== "user_cancelled") {
+          yield* auditRepository
+            .record({
+              actor: "symphony",
+              eventType: "run_cancelled",
+              runAttemptId,
+              payload: { evidence: outcome.evidence, released: outcome.released },
+            })
+            .pipe(Effect.catch(() => Effect.void));
+          yield* notifications
+            .publish({
+              kind: "run_failed",
+              title: "Run cancelled",
+              message: `Run ${runAttemptId} was cancelled after its process ownership was confirmed closed.`,
+              runAttemptId,
+              createdAt: yield* nowIso,
+            })
+            .pipe(Effect.catch(() => Effect.void));
+        }
+        return outcome;
+      }
+
+      // Held: never report a cancellation ownership does not support, and do
+      // not repeat the same unconfirmed audit/notification on idempotent
+      // retries.
+      if (!alreadyUnconfirmed) {
+        yield* auditRepository
+          .record({
+            actor: "symphony",
+            eventType: "run_stop_held",
+            runAttemptId,
+            payload: {
+              reason: outcome.reason,
+              ...(outcome.detail === undefined ? {} : { detail: outcome.detail }),
+            },
+          })
+          .pipe(Effect.catch(() => Effect.void));
+        yield* notifications
+          .publish({
+            kind: "attention_raised",
+            title: "Run stop unconfirmed",
+            message: `Run ${runAttemptId} is still holding its claim: ${outcome.reason}. Reconcile the process ownership before restarting it.`,
+            runAttemptId,
+            createdAt: yield* nowIso,
+          })
+          .pipe(Effect.catch(() => Effect.void));
+      }
+      return outcome;
     });
 
   /**

@@ -12,6 +12,7 @@ import type {
   SymphonyProjectId,
   SymphonyProjectSourceControl,
   SymphonyOverview,
+  SymphonyStopOutcome,
   TrackerHealth,
   WorkflowRecord,
 } from "@neokod/contracts";
@@ -129,7 +130,14 @@ export interface SymphonyOrchestratorShape {
   readonly dispatchWorkItem: (
     workItemId: string,
   ) => Effect.Effect<SymphonyDispatchResult, SymphonyPersistenceError>;
-  readonly cancelRun: (runAttemptId: string) => Effect.Effect<void, never, Scope.Scope>;
+  /**
+   * Stop one run. Returns the dispatcher's honest confirmed/held outcome so
+   * the RPC boundary can report an unconfirmed Stop instead of claiming it
+   * was cancelled.
+   */
+  readonly cancelRun: (
+    runAttemptId: string,
+  ) => Effect.Effect<SymphonyStopOutcome, never, Scope.Scope>;
 
   // Review lifecycle (Phase 5, plan 14): review actions with their own
   // lifecycle transitions and confirmations.

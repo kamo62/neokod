@@ -4,7 +4,7 @@ import * as Layer from "effect/Layer";
 import * as Scope from "effect/Scope";
 import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
 
-import { makeCodexAgentRuntime } from "./AgentRuntime.ts";
+import { makeCodexAgentRuntime, type AgentRuntimeDeps } from "./AgentRuntime.ts";
 import { approvalServiceRequestCallbacks } from "./AgentRequestCallbacks.ts";
 import { ApprovalService } from "./ApprovalService.ts";
 import { LiveRequests } from "./LiveRequests.ts";
@@ -34,7 +34,9 @@ const makeAgentRuntimeFactory = Effect.gen(function* () {
   const enablement = yield* TrackerEnablement;
   const make = (
     config: EffectiveWorkflowConfig,
-    options?: { readonly onChildSpawned?: (pid: number) => Effect.Effect<void> },
+    options?: {
+      readonly onChildSpawned?: NonNullable<AgentRuntimeDeps["onChildSpawned"]>;
+    },
   ) =>
     // Secret names from the configured tracker adapter (SPEC 15.3). An
     // adapter that cannot be resolved yields null, which makes the runtime

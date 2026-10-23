@@ -82,7 +82,7 @@ export function SymphonyGlobalControls({
           }),
         );
       } else if (action === "stop") {
-        setStopResult(stopAllMessage(result.value.ok));
+        setStopResult(stopAllMessage(result.value));
       }
       setReconciling(true);
       overviewQuery.refresh();

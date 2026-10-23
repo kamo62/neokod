@@ -1,12 +1,23 @@
 import type {
+  AcceptedPermissionScope,
   EffectiveWorkflowConfig,
+  IsoDateTime,
   NormalizedIssue,
   WorkItem,
   WorkItemId,
 } from "@neokod/contracts";
-import { RunAttemptId } from "@neokod/contracts";
+import { RunAttemptId, WorkflowId } from "@neokod/contracts";
+import {
+  confirmOwnedProcessClosure,
+  isGroupSignalingSupported,
+  type ProcessClosureDeps,
+  type ProcessClosureEvidence,
+  type ProcessClosureResult,
+  type ProcessGroupIdentity,
+} from "@neokod/shared/processGroup";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
@@ -16,16 +27,30 @@ import * as Scope from "effect/Scope";
 
 import { ServerConfig } from "../../config.ts";
 import { nowIso } from "../Domain/Time.ts";
+import { HostProcessPlatform } from "@neokod/shared/hostProcess";
 import { WORKFLOW_DEFAULTS } from "../Workflow/Config.ts";
 import { RunEventRepository } from "../Persistence/Services/RunEventRepository.ts";
 import { RunAttemptRepository } from "../Persistence/Services/RunAttemptRepository.ts";
-import { WorkItemRepository } from "../Persistence/Services/WorkItemRepository.ts";
+import {
+  WorkItemRepository,
+  type ClaimFence,
+  type ClaimOwnership,
+} from "../Persistence/Services/WorkItemRepository.ts";
 import {
   WorkspaceManager,
   WorkspaceOutsideRootError,
   type SymphonyWorkspace,
 } from "../Workspaces/Manager.ts";
-import type { AgentRuntimeService } from "./AgentRuntime.ts";
+import {
+  AgentRuntimeChildOwnershipError,
+  assertAcceptedTarget,
+  type AgentRuntimeService,
+} from "./AgentRuntime.ts";
+import {
+  freezeAcceptedGuidance,
+  narrowAcceptedPermissions,
+  resolveAcceptedPermissions,
+} from "./AcceptedGuidance.ts";
 import { ExecutionFinalizer } from "./ExecutionFinalizer.ts";
 import { LiveRequests } from "./LiveRequests.ts";
 import type { ReviewFeedbackContext } from "./Prompt.ts";
@@ -59,12 +84,64 @@ export class RunDispatchError extends Error {
   }
 }
 
+/**
+ * The production Symphony runner is the local Codex app-server. A configured
+ * provider pin that names a different driver or a different Codex instance is
+ * not executed by this factory; admission refuses it before any claim.
+ */
+export const isSupportedSymphonyProvider = (
+  provider: EffectiveWorkflowConfig["agentProvider"],
+): boolean =>
+  String(provider.instanceId) === "codex_default" && String(provider.driver) === "codex";
+
+export const describeSymphonyProvider = (
+  provider: EffectiveWorkflowConfig["agentProvider"],
+): string => `${String(provider.driver)}/${String(provider.instanceId)}`;
+
+/**
+ * Honest Stop acknowledgement. `held` means ownership was deliberately kept:
+ * the caller must not report the run as cancelled or release its workspace.
+ */
+export type StopOutcome =
+  | {
+      readonly status: "confirmed";
+      readonly runAttemptId: RunAttemptId;
+      readonly evidence: string;
+      readonly released: boolean;
+      /** Generation produced by the exact confirmed release, when observed. */
+      readonly releasedGeneration?: number;
+    }
+  | {
+      readonly status: "held";
+      readonly runAttemptId: RunAttemptId;
+      readonly reason: string;
+      readonly detail?: string;
+    };
+
+export interface StopAllRunsResult {
+  /** Count of runs whose closure was positively confirmed and released. */
+  readonly confirmed: number;
+  /** Count of runs left held with unconfirmed ownership. */
+  readonly held: number;
+}
+
 export interface RunDispatcherService {
   /** Claim + prepare + run one work item. Returns the created run attempt id. */
   readonly dispatchWorkItem: (input: {
     readonly workItem: WorkItem;
     readonly issue: NormalizedIssue;
     readonly config: EffectiveWorkflowConfig;
+    /** Workflow record id and persisted revision read by the orchestrator for this dispatch. */
+    readonly workflowId: WorkflowId;
+    readonly workflowRevision: IsoDateTime;
+    /**
+     * Read the accepted workflow's current effective policy before a
+     * continuation turn or publication. Missing/invalid policy must return
+     * null; the dispatcher refuses instead of reusing admission-time config.
+     */
+    readonly loadCurrentWorkflowPolicy?: (
+      workflowId: WorkflowId,
+    ) => Effect.Effect<EffectiveWorkflowConfig | null>;
     /** Agent-facing Markdown body from WORKFLOW.md. Raw front matter remains
      * host-only and is never included in the model prompt. */
     readonly workflowInstructions?: string;
@@ -75,13 +152,13 @@ export interface RunDispatcherService {
     readonly reviewFeedback?: ReviewFeedbackContext;
   }) => Effect.Effect<RunAttemptId, RunDispatchError, Scope.Scope>;
 
-  readonly cancelRun: (runAttemptId: RunAttemptId) => Effect.Effect<void, RunDispatchError>;
+  readonly cancelRun: (runAttemptId: RunAttemptId) => Effect.Effect<StopOutcome, RunDispatchError>;
 
   /** True while a live agent is registered for the run (reconciliation input). */
   readonly isAgentActive: (runAttemptId: RunAttemptId) => Effect.Effect<boolean>;
 
-  /** Cancel every live run and return how many were interrupted (FR-134). */
-  readonly stopAllRuns: () => Effect.Effect<number, RunDispatchError>;
+  /** Stop every live run, separating confirmed closures from held ownership. */
+  readonly stopAllRuns: () => Effect.Effect<StopAllRunsResult, RunDispatchError>;
 }
 
 export class RunDispatcher extends Context.Service<RunDispatcher, RunDispatcherService>()(
@@ -100,10 +177,145 @@ export class AgentRuntimeFactory extends Context.Service<
   {
     readonly make: (
       config: EffectiveWorkflowConfig,
-      options?: { readonly onChildSpawned?: (pid: number) => Effect.Effect<void> },
+      options?: {
+        onChildSpawned?(
+          pid: number,
+          identity?: ProcessGroupIdentity,
+        ): Effect.Effect<void, AgentRuntimeChildOwnershipError>;
+      },
     ) => Effect.Effect<AgentRuntimeService, never, Scope.Scope>;
   }
 >()("neokod/symphony/Runner/Dispatcher/AgentRuntimeFactory") {}
+
+/**
+ * Process-identity readers/signallers used to resolve a confirmed Stop. The
+ * production default reads the live POSIX process table and terminates a
+ * validated owned group; tests inject fake readers/signallers so checks never
+ * signal a real process. The seam is optional so existing layers keep working.
+ */
+export class RunDispatcherProcessClosure extends Context.Service<
+  RunDispatcherProcessClosure,
+  ProcessClosureDeps
+>()("neokod/symphony/Runner/Dispatcher/RunDispatcherProcessClosure") {}
+
+/** How long a Stop waits for the interrupted dispatch fiber to exit. */
+const STOP_FIBER_EXIT_TIMEOUT = Duration.seconds(5);
+
+/**
+ * Exact attempt-to-claim binding recorded before any provider spawn. This is
+ * the only positive association between an attempt and a claim generation;
+ * timestamps are not identity.
+ */
+export interface AttemptClaimBinding {
+  readonly runAttemptId: RunAttemptId;
+  readonly workItemId: string;
+  readonly ownerToken: string;
+  readonly generation: number;
+}
+
+export const CLAIM_BINDING_EVENT = "issue_claimed";
+
+/**
+ * Read the exact durable claim binding for one attempt. The latest well-formed
+ * `issue_claimed` event wins; a missing or malformed binding is unknown, never
+ * inferred from attempt timing or the current row.
+ */
+export const readAttemptClaimBinding = (
+  runEvents: RunEventRepository["Service"],
+  runAttemptId: RunAttemptId,
+): Effect.Effect<AttemptClaimBinding | null> =>
+  runEvents.listForAttempt(runAttemptId).pipe(
+    Effect.map((events) => {
+      for (let index = events.length - 1; index >= 0; index -= 1) {
+        const event = events[index];
+        if (event === undefined || event.eventType !== CLAIM_BINDING_EVENT) continue;
+        const payload = event.payload;
+        if (payload === undefined) continue;
+        const workItemId = payload.workItemId;
+        const ownerToken = payload.ownerToken;
+        const generation = payload.generation;
+        if (
+          typeof workItemId === "string" &&
+          typeof ownerToken === "string" &&
+          ownerToken.length > 0 &&
+          typeof generation === "number" &&
+          Number.isInteger(generation)
+        ) {
+          return {
+            runAttemptId,
+            workItemId,
+            ownerToken,
+            generation,
+          } satisfies AttemptClaimBinding;
+        }
+      }
+      return null;
+    }),
+    Effect.catch(() => Effect.succeed(null)),
+  );
+
+/** Exact binding match against the current atomic claim ownership row. */
+export const claimBindingMatches = (
+  binding: AttemptClaimBinding | null,
+  ownership: ClaimOwnership | null,
+  workItemId: WorkItemId,
+): binding is AttemptClaimBinding =>
+  binding !== null &&
+  ownership !== null &&
+  ownership.ownerToken !== null &&
+  binding.runAttemptId !== undefined &&
+  binding.workItemId === String(workItemId) &&
+  binding.ownerToken === ownership.ownerToken &&
+  binding.generation === ownership.generation;
+
+export interface StopConfirmation {
+  readonly evidence: string;
+  readonly generation: number | null;
+}
+
+export const readStopConfirmation = (
+  runEvents: RunEventRepository["Service"],
+  runAttemptId: RunAttemptId,
+): Effect.Effect<StopConfirmation | null> =>
+  runEvents.listForAttempt(runAttemptId).pipe(
+    Effect.map((events) => {
+      for (let index = events.length - 1; index >= 0; index -= 1) {
+        const event = events[index];
+        if (event === undefined || event.eventType !== "stop_confirmed") continue;
+        const payload = event.payload;
+        const evidence =
+          payload !== undefined && typeof payload.closure === "string"
+            ? payload.closure
+            : "confirmed";
+        const generation =
+          payload !== undefined &&
+          typeof payload.generation === "number" &&
+          Number.isInteger(payload.generation)
+            ? payload.generation
+            : null;
+        return { evidence, generation } satisfies StopConfirmation;
+      }
+      return null;
+    }),
+    Effect.catch(() => Effect.succeed(null)),
+  );
+
+export const OWNERSHIP_FAILURE_EVENT = "ownership_record_failed";
+
+export const hasOwnershipFailureEvent = (
+  runEvents: RunEventRepository["Service"],
+  runAttemptId: RunAttemptId,
+): Effect.Effect<boolean> =>
+  runEvents.listForAttempt(runAttemptId).pipe(
+    Effect.map((events) => events.some((event) => event.eventType === OWNERSHIP_FAILURE_EVENT)),
+    Effect.catch(() => Effect.succeed(false)),
+  );
+
+/** Shared platform capability gate; used by admission and startup/dispatch. */
+export const symphonyAdmissionPlatformRefusal = (platform: NodeJS.Platform): string | null =>
+  isGroupSignalingSupported(platform)
+    ? null
+    : `Symphony execution is unavailable on ${platform}: process-group closure cannot be proven, so work is not admitted. Normal Code threads are unaffected.`;
 
 export const makeRunDispatcher = Effect.gen(function* () {
   const crypto = yield* Crypto.Crypto;
@@ -114,6 +326,10 @@ export const makeRunDispatcher = Effect.gen(function* () {
   const factory = yield* AgentRuntimeFactory;
   const liveRequests = yield* LiveRequests;
   const finalizer = yield* ExecutionFinalizer;
+  const maybeProcessClosure = yield* Effect.serviceOption(RunDispatcherProcessClosure);
+  const processClosure: ProcessClosureDeps = Option.isSome(maybeProcessClosure)
+    ? maybeProcessClosure.value
+    : {};
 
   // Live agents per run attempt plus the dispatch fiber, so cancellation can
   // interrupt the active turn AND the fiber driving it (plan 8.3.1; REVIEW P0
@@ -124,6 +340,103 @@ export const makeRunDispatcher = Effect.gen(function* () {
       { readonly agent: AgentRuntimeService; readonly fiber: Fiber.Fiber<unknown, unknown> }
     >
   >(new Map());
+
+  // Attempts with a Stop in progress. The marker is written before the turn
+  // and fiber are interrupted, so a failure path that is already unwinding
+  // cannot turn the Stop into a retry. It is removed when the Stop settles.
+  const stoppingAttempts = yield* Ref.make<ReadonlySet<string>>(new Set());
+  const startingRuns = yield* Ref.make<ReadonlySet<string>>(new Set());
+  const ownershipFailures = yield* Ref.make<ReadonlySet<string>>(new Set());
+  const spawnedAttempts = yield* Ref.make<ReadonlySet<string>>(new Set());
+  // Positive process-local proof that this dispatcher admitted the attempt.
+  // An empty spawn set after a restart is not proof that no child spawned.
+  const locallyAdmittedAttempts = yield* Ref.make<ReadonlySet<string>>(new Set());
+  const isStopping = (runAttemptId: RunAttemptId) =>
+    Ref.get(stoppingAttempts).pipe(Effect.map((ids) => ids.has(String(runAttemptId))));
+  const knownNoSpawnFor = (runAttemptId: RunAttemptId): Effect.Effect<boolean> =>
+    Effect.gen(function* () {
+      const key = String(runAttemptId);
+      const admitted = (yield* Ref.get(locallyAdmittedAttempts)).has(key);
+      const spawned = (yield* Ref.get(spawnedAttempts)).has(key);
+      const localFailure = (yield* Ref.get(ownershipFailures)).has(key);
+      const durableFailure = yield* hasOwnershipFailureEvent(runEvents, runAttemptId);
+      return admitted && !spawned && !localFailure && !durableFailure;
+    });
+
+  // Source lifecycles the repository's confirmed-Stop CAS accepts. Kept
+  // aligned with the historical `cancelled` transition sources.
+  const STOP_SOURCE_LIFECYCLES: ReadonlySet<string> = new Set([
+    "draft",
+    "ineligible",
+    "queued",
+    "preparing",
+    "blocked",
+    "running",
+    "testing",
+    "waiting_for_approval",
+    "retry_scheduled",
+  ]);
+  const ACTIVE_LIFECYCLES: ReadonlySet<string> = new Set(["preparing", "running", "testing"]);
+
+  const ownershipMatches = (a: ClaimOwnership, b: ClaimOwnership): boolean =>
+    a.lifecycle === b.lifecycle &&
+    (a.claimedAt ?? null) === (b.claimedAt ?? null) &&
+    (a.ownerToken ?? null) === (b.ownerToken ?? null) &&
+    a.generation === b.generation &&
+    (a.ownerPid ?? null) === (b.ownerPid ?? null) &&
+    (a.ownerPgid ?? null) === (b.ownerPgid ?? null) &&
+    (a.ownerBirthToken ?? null) === (b.ownerBirthToken ?? null);
+
+  const toFence = (ownership: ClaimOwnership): ClaimFence | null =>
+    ownership.ownerToken === null
+      ? null
+      : {
+          ownerToken: ownership.ownerToken,
+          generation: ownership.generation,
+          ownerPid: ownership.ownerPid,
+          ownerPgid: ownership.ownerPgid,
+          ownerBirthToken: ownership.ownerBirthToken,
+        };
+
+  const readOwnership = (workItemId: WorkItemId) =>
+    workItems.getClaimOwnership(workItemId).pipe(Effect.catch(() => Effect.succeed(null)));
+
+  /**
+   * Resolve closure from one atomic ownership row. `interrupt()` is a request
+   * acknowledgement, not proof the child process or its group exited.
+   */
+  const resolveStopClosure = (
+    ownership: ClaimOwnership | null,
+    options?: { readonly knownNoSpawn?: boolean },
+  ): Effect.Effect<
+    | ProcessClosureResult
+    | {
+        readonly status: "held";
+        readonly reason: "claim_unreadable" | "identity_missing_for_bound_attempt";
+        readonly detail?: string;
+      }
+  > =>
+    ownership === null
+      ? Effect.succeed({ status: "held", reason: "claim_unreadable" } as const)
+      : ownership.ownerPid === null
+        ? options?.knownNoSpawn === true
+          ? Effect.succeed({ status: "closed", evidence: "no_owner_recorded" } as const)
+          : Effect.succeed({
+              status: "held",
+              reason: "identity_missing_for_bound_attempt",
+              detail:
+                "the attempt is bound to this claim but no child identity was persisted; a lost ownership write is not proof that no child spawned",
+            } as const)
+        : confirmOwnedProcessClosure(
+            {
+              ownerPid: ownership.ownerPid,
+              ...(ownership.ownerPgid === null ? {} : { ownerPgid: ownership.ownerPgid }),
+              ...(ownership.ownerBirthToken === null
+                ? {}
+                : { ownerBirthToken: ownership.ownerBirthToken }),
+            },
+            processClosure,
+          );
 
   const makeRunAttemptId = () =>
     crypto.randomUUIDv4.pipe(
@@ -194,6 +507,11 @@ export const makeRunDispatcher = Effect.gen(function* () {
     maxAttempts: number,
   ) =>
     Effect.gen(function* () {
+      // A Stop owns this attempt from the moment its marker is set. A failure
+      // unwinding concurrently must not mark it failed or schedule a retry.
+      if (yield* isStopping(runAttemptId)) {
+        return;
+      }
       const attempt = yield* runAttempts
         .getById(runAttemptId)
         .pipe(Effect.catch(() => Effect.succeed(null)));
@@ -212,6 +530,66 @@ export const makeRunDispatcher = Effect.gen(function* () {
             error,
           })
           .pipe(Effect.catch(() => Effect.void));
+      }
+      // Re-read the marker after the status write: the transition below is the
+      // point of no return for a retry.
+      if (yield* isStopping(runAttemptId)) {
+        return;
+      }
+      // A failure is not process closure. Only the exact claim that owns this
+      // attempt, with positively closed or never-recorded ownership, may retry.
+      const currentOwnership = yield* readOwnership(workItemId);
+      if (
+        currentOwnership === null ||
+        currentOwnership.ownerToken !== ownerToken ||
+        currentOwnership.generation !== generation
+      ) {
+        return; // a replacement claim owns the item; never touch it
+      }
+      const ownershipUnverified =
+        (yield* Ref.get(ownershipFailures)).has(String(runAttemptId)) ||
+        (yield* hasOwnershipFailureEvent(runEvents, runAttemptId));
+      if (ownershipUnverified) {
+        yield* runEvents
+          .appendOnce(runAttemptId, "failure_hold", {
+            workItemId: String(workItemId),
+            reason: "ownership_unverified",
+            ownerPid: currentOwnership.ownerPid,
+            generation,
+            category: error.category,
+          })
+          .pipe(Effect.catch(() => Effect.succeed(false)));
+        return;
+      }
+      const binding = yield* readAttemptClaimBinding(runEvents, runAttemptId);
+      if (!claimBindingMatches(binding, currentOwnership, workItemId)) {
+        yield* runEvents
+          .appendOnce(runAttemptId, "failure_hold", {
+            workItemId: String(workItemId),
+            reason: "claim_binding_unverified",
+            ownerPid: currentOwnership.ownerPid,
+            generation: currentOwnership.generation,
+            category: error.category,
+          })
+          .pipe(Effect.catch(() => Effect.succeed(false)));
+        return;
+      }
+      const knownNoSpawn = yield* knownNoSpawnFor(runAttemptId);
+      const ownership = yield* resolveStopClosure(currentOwnership, {
+        knownNoSpawn,
+      });
+      if (ownership.status === "held") {
+        yield* runEvents
+          .appendOnce(runAttemptId, "failure_hold", {
+            workItemId: String(workItemId),
+            reason: ownership.reason,
+            ...(ownership.detail === undefined ? {} : { detail: ownership.detail }),
+            ownerPid: currentOwnership.ownerPid,
+            generation,
+            category: error.category,
+          })
+          .pipe(Effect.catch(() => Effect.succeed(false)));
+        return;
       }
       const retryable = retryableFromAttempt(attempt, error.category, maxAttempts);
       if (retryable) {
@@ -276,10 +654,36 @@ export const makeRunDispatcher = Effect.gen(function* () {
                 Effect.catch(() => Effect.succeed(false)),
               );
       if (runAttemptId !== null && created) {
+        // Exact binding for this attempt even though no provider child exists;
+        // the failure release still uses the same claim authority. If the
+        // binding cannot be written no child exists, so fail closed terminal
+        // rather than leaving the item in `preparing` forever.
+        const earlyBindingRecorded = yield* runEvents
+          .append(runAttemptId, CLAIM_BINDING_EVENT, {
+            workItemId: String(input.workItemId),
+            ownerToken: input.ownerToken,
+            generation: input.generation,
+          })
+          .pipe(
+            Effect.as(true),
+            Effect.catch(() => Effect.succeed(false)),
+          );
+        if (!earlyBindingRecorded) {
+          yield* workItems
+            .transition(input.workItemId, "failed", {
+              ownerToken: input.ownerToken,
+              generation: input.generation,
+            })
+            .pipe(Effect.catch(() => Effect.void));
+          return;
+        }
         yield* appendEvent(runAttemptId, "dispatch_failed_early", {
           stage: input.stage,
           message: input.error.message,
         });
+        // This process created the attempt and wrote the exact binding before
+        // any workspace/provider work, so it has positive no-spawn evidence.
+        yield* Ref.update(locallyAdmittedAttempts, (ids) => new Set(ids).add(String(runAttemptId)));
         yield* markFailed(
           runAttemptId,
           input.workItemId,
@@ -302,7 +706,32 @@ export const makeRunDispatcher = Effect.gen(function* () {
 
   const dispatchWorkItem: RunDispatcherService["dispatchWorkItem"] = (input) =>
     Effect.gen(function* () {
-      const { workItem, issue, config, reviewFeedback, workflowInstructions } = input;
+      const {
+        workItem,
+        issue,
+        config,
+        reviewFeedback,
+        workflowId,
+        workflowRevision,
+        workflowInstructions,
+      } = input;
+      // Honest admission gate: without supported POSIX group semantics there
+      // is no way to prove closure for a spawned child. Refuse before claiming
+      // so old unknown ownership is never cleared and new work is not admitted
+      // into a guaranteed-unconfirmable state.
+      const platformRefusal = symphonyAdmissionPlatformRefusal(
+        processClosure.platform ?? (yield* HostProcessPlatform),
+      );
+      if (platformRefusal !== null) {
+        return yield* Effect.fail(new RunDispatchError(platformRefusal));
+      }
+      if (!isSupportedSymphonyProvider(config.agentProvider)) {
+        return yield* Effect.fail(
+          new RunDispatchError(
+            `Unsupported Symphony executor provider ${describeSymphonyProvider(config.agentProvider)}: this server only runs the supported codex_default/codex contract. Work was not admitted.`,
+          ),
+        );
+      }
       const maxAttempts = config.maxAttempts ?? 5;
       const ownerToken = yield* crypto.randomUUIDv4.pipe(
         Effect.mapError(() => new RunDispatchError("failed to generate owner token")),
@@ -313,6 +742,7 @@ export const makeRunDispatcher = Effect.gen(function* () {
         .claim(workItem.id, ownerToken)
         .pipe(Effect.mapError((cause) => new RunDispatchError(cause.message)));
       const workItemId: WorkItemId = claimed.workItem.id;
+      yield* Ref.update(startingRuns, (ids) => new Set(ids).add(String(workItemId)));
 
       // 2. Workspace: deterministic worktree under the configured root.
       const workspace: SymphonyWorkspace = yield* workspaces
@@ -351,6 +781,20 @@ export const makeRunDispatcher = Effect.gen(function* () {
         latestAttempt !== null &&
         (latestAttempt.status === "failed" || latestAttempt.status === "interrupted") &&
         (yield* workspaces.hasCommittedHandoff(workspace));
+      const acceptedGuidance = freezeAcceptedGuidance({
+        acceptedAt: startedAt,
+        workflowId,
+        workflowRevision,
+        workflowInstructions: workflowInstructions ?? "",
+        workItem: {
+          source: workItem.source,
+          ...(workItem.repositoryId !== undefined ? { repositoryId: workItem.repositoryId } : {}),
+        },
+        issue,
+        config,
+        workspacePath: workspace.path,
+        baseBranch: workspace.baseBranch,
+      });
       yield* runAttempts
         .create({
           id: runAttemptId,
@@ -363,6 +807,7 @@ export const makeRunDispatcher = Effect.gen(function* () {
           startedAt,
           finishedAt: null,
           error: null,
+          acceptedGuidance,
         })
         .pipe(
           Effect.mapError((cause) => new RunDispatchError(cause.message)),
@@ -375,7 +820,45 @@ export const makeRunDispatcher = Effect.gen(function* () {
               .pipe(Effect.catch(() => Effect.void)),
           ),
         );
-      yield* appendEvent(runAttemptId, "issue_claimed", { workItemId: String(workItemId) });
+      // REQUIRED exact attempt/claim binding, written before any provider
+      // spawn. If this cannot be persisted, the run must not start: a missing
+      // binding is permanently unverifiable for recovery.
+      yield* runEvents
+        .append(runAttemptId, CLAIM_BINDING_EVENT, {
+          workItemId: String(workItemId),
+          ownerToken,
+          generation: claimed.generation,
+        })
+        .pipe(
+          Effect.mapError(
+            (cause) => new RunDispatchError(`failed to record claim binding: ${cause.message}`),
+          ),
+          Effect.tapError(() =>
+            Effect.gen(function* () {
+              yield* runAttempts
+                .updateStatus(runAttemptId, "failed", {
+                  finishedAt: yield* nowIso,
+                  error: {
+                    category: "workflow_error",
+                    message: "claim binding could not be persisted; provider was never spawned",
+                  },
+                })
+                .pipe(Effect.catch(() => Effect.void));
+              // No child exists yet: this is the one failure that may safely
+              // close the claim without process closure evidence.
+              yield* workItems
+                .transition(workItemId, "failed", { ownerToken, generation: claimed.generation })
+                .pipe(Effect.catch(() => Effect.void));
+            }),
+          ),
+        );
+      yield* Ref.update(locallyAdmittedAttempts, (ids) => new Set(ids).add(String(runAttemptId)));
+      yield* Ref.update(startingRuns, (ids) => {
+        const next = new Set(ids);
+        next.delete(String(workItemId));
+        next.add(String(runAttemptId));
+        return next;
+      });
       yield* appendEvent(runAttemptId, "workspace_created", {
         path: workspace.path,
         branch: workspace.branch,
@@ -396,17 +879,46 @@ export const makeRunDispatcher = Effect.gen(function* () {
       // The agent child is spawned lazily inside the first turn. Record its pid on the claim as soon as
       // it exists so recovery can find a surviving orphan after a crash. The claim stores no pid before that.
       const agent = yield* factory.make(config, {
-        onChildSpawned: (pid) =>
-          workItems.setClaimOwnerPid(workItemId, ownerToken, claimed.generation, pid).pipe(
-            Effect.asVoid,
-            Effect.catch((cause) =>
-              Effect.logWarning("failed to record the agent child pid on the claim", {
+        onChildSpawned: (pid, identity) =>
+          Effect.gen(function* () {
+            yield* Ref.update(spawnedAttempts, (ids) => new Set(ids).add(String(runAttemptId)));
+            const recorded = yield* workItems
+              .setClaimOwnerProcessIdentity(workItemId, ownerToken, claimed.generation, {
+                pid,
+                ...(identity === undefined
+                  ? {}
+                  : { pgid: identity.pgid, birthToken: identity.birthToken }),
+              })
+              .pipe(Effect.catch(() => Effect.succeed(false)));
+            if (recorded) return;
+            // A child positively spawned but its identity is not durable. Keep
+            // that fact restart-visible and in-process so no failure path can
+            // treat the null persisted pid as "no child" and retry.
+            yield* Ref.update(ownershipFailures, (ids) => new Set(ids).add(String(runAttemptId)));
+            yield* runEvents
+              .appendOnce(runAttemptId, OWNERSHIP_FAILURE_EVENT, {
                 workItemId: String(workItemId),
                 pid,
-                cause,
-              }),
-            ),
-          ),
+                pgid: identity?.pgid ?? null,
+                generation: claimed.generation,
+                reason: "ownership_persist_failed",
+              })
+              .pipe(
+                Effect.catch((cause) =>
+                  Effect.logError("symphony.agent.ownership_unverified_persist_failed", {
+                    runAttemptId: String(runAttemptId),
+                    workItemId: String(workItemId),
+                    pid,
+                    cause,
+                  }),
+                ),
+              );
+            return yield* Effect.fail(
+              new AgentRuntimeChildOwnershipError(
+                `claim ${String(workItemId)} generation ${claimed.generation} could not persist ownership for child pid ${pid}`,
+              ),
+            );
+          }),
       });
       // PR body files land under the server's symphony logs dir when
       // available; otherwise the system temp dir (REVIEW P0: the body file
@@ -416,7 +928,104 @@ export const makeRunDispatcher = Effect.gen(function* () {
         ? `${maybeConfig.value.symphonyLogsDir}/pr-bodies`
         : require("node:os").tmpdir();
 
+      interface CurrentPolicy {
+        readonly config: EffectiveWorkflowConfig;
+        readonly permission: AcceptedPermissionScope;
+      }
+
+      const refusePolicy = (stage: string, message: string): Effect.Effect<null> =>
+        Effect.gen(function* () {
+          yield* appendEvent(runAttemptId, "policy_refresh_failed", { stage, message });
+          yield* markFailed(
+            runAttemptId,
+            workItemId,
+            ownerToken,
+            claimed.generation,
+            { category: "workflow_error", message },
+            maxAttempts,
+          );
+          return null;
+        });
+
+      // The accepted brief stays immutable. Before a continuation turn or
+      // publication, reread the accepted workflow's current policy. A missing,
+      // invalid, retargeted or conflicting policy refuses before the
+      // provider/publication; the admission-time config is never silently
+      // reused.
+      const currentPolicyFor = (stage: string): Effect.Effect<CurrentPolicy | null> =>
+        Effect.gen(function* () {
+          const load = input.loadCurrentWorkflowPolicy;
+          const current =
+            load === undefined
+              ? null
+              : yield* load(acceptedGuidance.workflow.id).pipe(
+                  Effect.catch(() => Effect.succeed(null)),
+                );
+          if (current === null) {
+            return yield* refusePolicy(
+              stage,
+              `Current workflow policy is unavailable before ${stage}; refusing rather than reusing admission-time configuration.`,
+            );
+          }
+          const narrowing = narrowAcceptedPermissions(
+            acceptedGuidance.permission,
+            resolveAcceptedPermissions(current),
+          );
+          if (narrowing._tag === "unrepresentable") {
+            return yield* refusePolicy(
+              stage,
+              `Current workflow policy conflicts with the accepted permission before ${stage}: ` +
+                `${narrowing.reason} (accepted ${narrowing.acceptedApprovalPolicy}, live ${narrowing.liveApprovalPolicy}).`,
+            );
+          }
+          const targetCheck = yield* Effect.result(
+            assertAcceptedTarget(acceptedGuidance, {
+              config: current,
+              workspacePath: workspace.path,
+              branch: workspace.branch,
+              baseBranch: workspace.baseBranch,
+            }),
+          );
+          if (targetCheck._tag === "Failure") {
+            return yield* refusePolicy(
+              stage,
+              `target_changed before ${stage}: ${targetCheck.failure.message}`,
+            );
+          }
+          return { config: current, permission: narrowing.permission };
+        });
+
+      const publicationPolicyFor = (): Effect.Effect<CurrentPolicy | null> =>
+        Effect.gen(function* () {
+          const current = yield* currentPolicyFor("publication");
+          if (current === null) {
+            return null;
+          }
+          if (
+            current.permission.autonomy === "prepare" ||
+            current.permission.autonomy === "observe"
+          ) {
+            return yield* refusePolicy(
+              "publication",
+              `Narrowed autonomy ${current.permission.autonomy} forbids publication; current workflow config cannot upgrade an accepted prepare/observe run.`,
+            );
+          }
+          return current;
+        });
+
+      const refreshPublicationPolicy = () =>
+        publicationPolicyFor().pipe(
+          Effect.map((policy) =>
+            policy === null
+              ? ({ status: "refused" } as const)
+              : ({ status: "available", config: policy.config } as const),
+          ),
+        );
+
       const runDispatch = Effect.gen(function* () {
+        if (yield* isStopping(runAttemptId)) {
+          return runAttemptId;
+        }
         // 4. Prepare mode: produce a plan only; sandbox is read-only so no code
         //    can be modified, satisfying "no code modified without approval".
         if (policy.threadSandbox === "read-only") {
@@ -429,8 +1038,10 @@ export const makeRunDispatcher = Effect.gen(function* () {
               config,
               workspacePath: workspace.path,
               branch: workspace.branch,
+              baseBranch: workspace.baseBranch,
               runAttemptId,
               workItemId,
+              acceptedGuidance,
               ...(workflowInstructions !== undefined ? { workflowInstructions } : {}),
               ...(reviewFeedback !== undefined ? { reviewFeedback } : {}),
             })
@@ -472,6 +1083,36 @@ export const makeRunDispatcher = Effect.gen(function* () {
           })
           .pipe(Effect.catch(() => Effect.void));
         if (resumeCommittedHandoff) {
+          // The resumed attempt must still own the same claim and process
+          // before validation or PR creation. A replacement/cancelled claim
+          // must never be finalised under stale resumption context.
+          const resumeOwnership = yield* readOwnership(workItemId);
+          const resumeBinding = yield* readAttemptClaimBinding(runEvents, runAttemptId);
+          if (
+            resumeOwnership === null ||
+            !claimBindingMatches(resumeBinding, resumeOwnership, workItemId)
+          ) {
+            yield* appendEvent(runAttemptId, "execution_hold", {
+              workItemId: String(workItemId),
+              reason: "claim_binding_unverified",
+            });
+            return runAttemptId;
+          }
+          const resumeClosure = yield* resolveStopClosure(resumeOwnership, {
+            knownNoSpawn: yield* knownNoSpawnFor(runAttemptId),
+          });
+          if (resumeClosure.status === "held") {
+            yield* runEvents
+              .appendOnce(runAttemptId, "execution_hold", {
+                workItemId: String(workItemId),
+                reason: resumeClosure.reason,
+                ...(resumeClosure.detail === undefined ? {} : { detail: resumeClosure.detail }),
+                ownerPid: resumeOwnership.ownerPid,
+                generation: claimed.generation,
+              })
+              .pipe(Effect.catch(() => Effect.succeed(false)));
+            return runAttemptId;
+          }
           yield* runAttempts
             .updateStatus(runAttemptId, "streaming_turn")
             .pipe(Effect.catch(() => Effect.void));
@@ -479,12 +1120,17 @@ export const makeRunDispatcher = Effect.gen(function* () {
             branch: workspace.branch,
             previousAttemptId: String(latestAttempt.id),
           });
+          const publicationPolicy = yield* publicationPolicyFor();
+          if (publicationPolicy === null) {
+            return runAttemptId;
+          }
           yield* finalizer
             .finalize({
               workItem,
               issue,
               runAttemptId,
-              config,
+              config: publicationPolicy.config,
+              refreshPublicationPolicy,
               workspacePath: workspace.path,
               branch: workspace.branch,
               baseBranch: workspace.baseBranch,
@@ -516,8 +1162,10 @@ export const makeRunDispatcher = Effect.gen(function* () {
             config,
             workspacePath: workspace.path,
             branch: workspace.branch,
+            baseBranch: workspace.baseBranch,
             runAttemptId,
             workItemId,
+            acceptedGuidance,
             ...(reviewFeedback !== undefined ? { reviewFeedback } : {}),
           })
           .pipe(Effect.mapError((cause) => new RunDispatchError(cause.message)));
@@ -526,14 +1174,20 @@ export const makeRunDispatcher = Effect.gen(function* () {
             .updateStatus(runAttemptId, "streaming_turn")
             .pipe(Effect.catch(() => Effect.void));
           yield* appendEvent(runAttemptId, "continuation_turn", { turn });
+          const continuationPolicy = yield* currentPolicyFor(`continuation turn ${turn}`);
+          if (continuationPolicy === null) {
+            return runAttemptId;
+          }
           result = yield* agent
             .runTurn({
               issue,
-              config,
+              config: continuationPolicy.config,
               workspacePath: workspace.path,
               branch: workspace.branch,
+              baseBranch: workspace.baseBranch,
               runAttemptId,
               workItemId,
+              acceptedGuidance,
               continuation: true,
             })
             .pipe(Effect.mapError((cause) => new RunDispatchError(cause.message)));
@@ -552,12 +1206,17 @@ export const makeRunDispatcher = Effect.gen(function* () {
           }
           // Execute/deliver exit (plan 10, WS-L): validate, assemble
           // evidence, create the PR, and land the item in a stopping state.
+          const publicationPolicy = yield* publicationPolicyFor();
+          if (publicationPolicy === null) {
+            return runAttemptId;
+          }
           yield* finalizer
             .finalize({
               workItem,
               issue,
               runAttemptId,
-              config,
+              config: publicationPolicy.config,
+              refreshPublicationPolicy,
               workspacePath: workspace.path,
               branch: workspace.branch,
               baseBranch: workspace.baseBranch,
@@ -616,13 +1275,87 @@ export const makeRunDispatcher = Effect.gen(function* () {
                 next.delete(String(runAttemptId));
                 return next;
               });
+              yield* Ref.update(startingRuns, (ids) => {
+                const next = new Set(ids);
+                next.delete(String(runAttemptId));
+                next.delete(String(workItemId));
+                return next;
+              });
               yield* liveRequests
                 .settleRun(runAttemptId, "run finished")
                 .pipe(Effect.catch(() => Effect.void));
+              // A Stop owns the attempt's terminal status and the claim's
+              // release. The fallback `interrupted` write and the unconditional
+              // release below are only for runs that ended on their own; running
+              // them under a Stop was how an unconfirmed stop became a retry.
+              if (yield* isStopping(runAttemptId)) {
+                return;
+              }
               const attempt = yield* runAttempts
                 .getById(runAttemptId)
                 .pipe(Effect.catch(() => Effect.succeed(null)));
               const alreadyTerminal = attempt !== null && TERMINAL_STATUSES.has(attempt.status);
+              const currentOwnership = yield* readOwnership(workItemId);
+              const itemHeld =
+                currentOwnership !== null && ACTIVE_LIFECYCLES.has(currentOwnership.lifecycle);
+              // Nothing to release or retry once the attempt has settled and
+              // the item has left the active lifecycles.
+              if (alreadyTerminal && !itemHeld) {
+                return;
+              }
+              const ownershipUnverified =
+                (yield* Ref.get(ownershipFailures)).has(String(runAttemptId)) ||
+                (yield* hasOwnershipFailureEvent(runEvents, runAttemptId));
+              if (ownershipUnverified) {
+                yield* runEvents
+                  .appendOnce(runAttemptId, "execution_hold", {
+                    workItemId: String(workItemId),
+                    reason: "ownership_unverified",
+                    ownerPid: currentOwnership?.ownerPid ?? null,
+                    generation: claimed.generation,
+                  })
+                  .pipe(Effect.catch(() => Effect.succeed(false)));
+                return;
+              }
+              const binding = yield* readAttemptClaimBinding(runEvents, runAttemptId);
+              if (
+                currentOwnership === null ||
+                currentOwnership.ownerToken !== ownerToken ||
+                currentOwnership.generation !== claimed.generation ||
+                !claimBindingMatches(binding, currentOwnership, workItemId)
+              ) {
+                // A replacement claim owns the item, or this attempt has no
+                // exact durable binding: this fiber's stale cleanup must not
+                // release or retry it.
+                yield* appendEvent(runAttemptId, "execution_hold", {
+                  workItemId: String(workItemId),
+                  reason: "claim_binding_unverified",
+                });
+                return;
+              }
+              const cleanupFence = toFence(currentOwnership);
+              if (cleanupFence === null) {
+                return;
+              }
+              // The runtime child is scoped to the outer dispatch scope, so
+              // this fiber ending is not proof that the process or its group
+              // exited. Preserve unknown ownership instead of queueing it.
+              const knownNoSpawn = yield* knownNoSpawnFor(runAttemptId);
+              const ownership = yield* resolveStopClosure(currentOwnership, {
+                knownNoSpawn,
+              });
+              if (ownership.status === "held") {
+                yield* runEvents
+                  .appendOnce(runAttemptId, "execution_hold", {
+                    workItemId: String(workItemId),
+                    reason: ownership.reason,
+                    ...(ownership.detail === undefined ? {} : { detail: ownership.detail }),
+                    ownerPid: currentOwnership.ownerPid,
+                    generation: claimed.generation,
+                  })
+                  .pipe(Effect.catch(() => Effect.succeed(false)));
+                return;
+              }
               if (!alreadyTerminal) {
                 yield* runAttempts
                   .updateStatus(runAttemptId, "interrupted", {
@@ -636,7 +1369,7 @@ export const makeRunDispatcher = Effect.gen(function* () {
                 yield* appendEvent(runAttemptId, "interrupted", {});
               }
               yield* workItems
-                .releaseClaim(workItemId, "queued")
+                .releaseClaim(workItemId, "queued", cleanupFence)
                 .pipe(Effect.catch(() => Effect.void));
             }),
           ),
@@ -645,67 +1378,261 @@ export const makeRunDispatcher = Effect.gen(function* () {
       yield* Ref.update(activeAgents, (map) =>
         new Map(map).set(String(runAttemptId), { agent, fiber }),
       );
+      yield* Ref.update(startingRuns, (ids) => {
+        const next = new Set(ids);
+        next.delete(String(runAttemptId));
+        next.delete(String(workItemId));
+        return next;
+      });
       // Join the fiber; interruption (cancelRun) surfaces as an Exit, which
       // we fold back to the run id so the caller sees a settled dispatch.
       return yield* Fiber.join(fiber).pipe(Effect.catch(() => Effect.succeed(runAttemptId)));
     });
 
-  const cancelAttempt = (runAttemptId: RunAttemptId, eventPayload: Record<string, unknown>) =>
+  const cancelAttempt = (
+    runAttemptId: RunAttemptId,
+    eventPayload: Record<string, unknown>,
+  ): Effect.Effect<StopOutcome> =>
     Effect.gen(function* () {
-      const attempt = yield* runAttempts
-        .getById(runAttemptId)
-        .pipe(Effect.catch(() => Effect.succeed(null)));
-      // 1. Persist the cancellation BEFORE interrupting anything. Every failure path then sees a
-      //    terminal attempt (markFailed returns early, the ensuring block skips its `interrupted`
-      //    write) and the item is already `cancelled` when the ensuring block releases the claim.
+      const key = String(runAttemptId);
+      const clearMarker = Ref.update(stoppingAttempts, (ids) => {
+        const next = new Set(ids);
+        next.delete(key);
+        return next;
+      });
+      // The marker blocks a concurrently unwinding failure from scheduling a
+      // retry. It is NOT a one-shot guard: a repeated Stop re-checks closure
+      // and never silently returns while a Stop is genuinely pending.
+      yield* Ref.update(stoppingAttempts, (ids) => new Set(ids).add(key));
+      const held = (reason: string, detail?: string): StopOutcome => ({
+        status: "held",
+        runAttemptId,
+        reason,
+        ...(detail === undefined ? {} : { detail }),
+      });
+      const settleUnconfirmed = (
+        reason: string,
+        detail: string | undefined,
+        ownership: ClaimOwnership | null,
+      ) =>
+        Effect.gen(function* () {
+          yield* appendEvent(runAttemptId, "stop_unconfirmed", {
+            ...eventPayload,
+            workItemId: attemptWorkItemId,
+            reason,
+            ...(detail === undefined ? {} : { detail }),
+            ownerPid: ownership?.ownerPid ?? null,
+            generation: ownership?.generation ?? null,
+          });
+          yield* liveRequests
+            .settleRun(runAttemptId, "stop unconfirmed")
+            .pipe(Effect.catch(() => Effect.void));
+          return held(reason, detail);
+        });
+
+      const attemptProbe = yield* Effect.result(runAttempts.getById(runAttemptId));
+      if (attemptProbe._tag === "Failure") {
+        return held("attempt_unreadable");
+      }
+      const attempt = attemptProbe.success;
+      if (attempt === null) {
+        yield* clearMarker;
+        return held("attempt_not_found");
+      }
+      const attemptWorkItemId = String(attempt.workItemId);
+      // Exact attempt fence: a Stop for a historical attempt must never
+      // target the replacement attempt's claim or process.
+      const latestProbe = yield* Effect.result(runAttempts.latestForWorkItem(attempt.workItemId));
+      if (latestProbe._tag === "Failure") {
+        return held("attempt_unreadable");
+      }
+      const latest = latestProbe.success;
+      if (latest === null || latest.id !== runAttemptId) {
+        yield* clearMarker;
+        return held("stale_attempt");
+      }
+      if (
+        TERMINAL_STATUSES.has(attempt.status) &&
+        attempt.status !== "user_cancelled" &&
+        attempt.status !== "tracker_cancelled"
+      ) {
+        yield* clearMarker;
+        return held("attempt_terminal", `attempt is already ${attempt.status}`);
+      }
+
+      // One atomic read of fence + identity. Nothing below may pair a fence
+      // with a different row's identity.
+      const ownershipProbe = yield* Effect.result(workItems.getClaimOwnership(attempt.workItemId));
+      if (ownershipProbe._tag === "Failure" || ownershipProbe.success === null) {
+        return held("claim_unreadable");
+      }
+      const ownershipBefore = ownershipProbe.success;
+
+      // Durable Stop acceptance must succeed before any interruption. A failed
+      // write is not accepted and must never be acknowledged as a stop.
+      const intentRecorded = yield* runEvents
+        .append(runAttemptId, "stop_requested", {
+          ...eventPayload,
+          workItemId: attemptWorkItemId,
+          ownerPid: ownershipBefore.ownerPid,
+          generation: ownershipBefore.generation,
+        })
+        .pipe(
+          Effect.as(true),
+          Effect.catch(() => Effect.succeed(false)),
+        );
+      if (!intentRecorded) {
+        return held("stop_intent_unpersisted");
+      }
+
+      if ((yield* Ref.get(startingRuns)).has(key)) {
+        // The dispatch is still preparing/registering. Hold until it is
+        // registered; the durable intent keeps a later tick from retrying.
+        return held("dispatch_not_registered");
+      }
+
+      if (ownershipBefore.ownerToken === null) {
+        yield* clearMarker;
+        // No live claim. Only exact durable stop confirmation may back an
+        // idempotent confirmed response; legacy cancellation alone is unknown.
+        if (attempt.status === "user_cancelled") {
+          const confirmation = yield* readStopConfirmation(runEvents, runAttemptId);
+          if (confirmation !== null) {
+            return {
+              status: "confirmed",
+              runAttemptId,
+              evidence: confirmation.evidence,
+              released: false,
+              ...(confirmation.generation === null
+                ? {}
+                : { releasedGeneration: confirmation.generation }),
+            };
+          }
+        }
+        return held("stop_not_confirmed");
+      }
+      const fenceBefore = toFence(ownershipBefore);
+      if (fenceBefore === null) {
+        return held("claim_unreadable");
+      }
+      // Positive association is the exact durable binding for this attempt,
+      // not timestamp order: a replacement claim can share the same
+      // millisecond as the previous attempt.
+      const binding = yield* readAttemptClaimBinding(runEvents, runAttemptId);
+      if (!claimBindingMatches(binding, ownershipBefore, attempt.workItemId)) {
+        return yield* settleUnconfirmed(
+          "claim_binding_unverified",
+          "this attempt has no exact issue_claimed binding for the current claim generation",
+          ownershipBefore,
+        );
+      }
+
+      // Stop the live run before deciding closure: interrupting the fiber is
+      // what ends our tracking, and closure must be observed after that point.
+      const registered = (yield* Ref.get(activeAgents)).get(key);
+      let trackedExit = true;
+      if (registered !== undefined) {
+        registered.fiber.interruptUnsafe();
+        yield* registered.agent.interrupt().pipe(Effect.catch(() => Effect.void));
+        const exited = yield* Fiber.await(registered.fiber).pipe(
+          Effect.timeoutOption(STOP_FIBER_EXIT_TIMEOUT),
+          Effect.catch(() => Effect.succeed(Option.none())),
+        );
+        trackedExit = Option.isSome(exited);
+      }
+
+      // Re-read the same row after tracking settles. The earlier snapshot is
+      // not closure evidence: a lazy spawn can record a pid and a replacement
+      // claim can take the row.
+      const ownershipAfter = yield* readOwnership(attempt.workItemId);
+      const claimStoppable =
+        ownershipAfter !== null && STOP_SOURCE_LIFECYCLES.has(ownershipAfter.lifecycle);
+      const closure: ProcessClosureResult | { status: "held"; reason: string; detail?: string } =
+        !trackedExit
+          ? { status: "held", reason: "dispatch_not_exited" }
+          : ownershipAfter === null || !ownershipMatches(ownershipBefore, ownershipAfter)
+            ? { status: "held", reason: "claim_changed" }
+            : !claimStoppable
+              ? { status: "held", reason: "claim_not_stoppable" }
+              : yield* resolveStopClosure(ownershipAfter, {
+                  knownNoSpawn: yield* knownNoSpawnFor(runAttemptId),
+                });
+
+      if (closure.status === "held") {
+        // Unconfirmed closure: retain the claim, lease and lifecycle. The
+        // marker stays set so no failure path can turn this into a retry.
+        return yield* settleUnconfirmed(
+          closure.reason,
+          closure.detail,
+          ownershipAfter ?? ownershipBefore,
+        );
+      }
+
+      // Positive closure: release only the exact captured claim identity.
+      const released = yield* workItems
+        .releaseConfirmedStop(attempt.workItemId, fenceBefore)
+        .pipe(Effect.catch(() => Effect.succeed(false)));
+      if (!released) {
+        return yield* settleUnconfirmed("claim_changed", undefined, ownershipAfter);
+      }
+
       yield* runAttempts
         .updateStatus(runAttemptId, "user_cancelled", { finishedAt: yield* nowIso })
         .pipe(Effect.catch(() => Effect.void));
-      yield* appendEvent(runAttemptId, "user_cancelled", eventPayload);
-      if (attempt !== null) {
-        const latest = yield* runAttempts
-          .latestForWorkItem(attempt.workItemId)
-          .pipe(Effect.catch(() => Effect.succeed(null)));
-        if (latest !== null && latest.id === runAttemptId) {
-          // Unfenced (the canceller is not the claim owner) and bounded by the legality table.
-          yield* workItems
-            .transition(attempt.workItemId, "cancelled")
-            .pipe(Effect.catch(() => Effect.void));
-        }
+      const settled = yield* runAttempts
+        .getById(runAttemptId)
+        .pipe(Effect.catch(() => Effect.succeed(null)));
+      const releasedGeneration = fenceBefore.generation + 1;
+      yield* appendEvent(runAttemptId, "stop_confirmed", {
+        ...eventPayload,
+        workItemId: attemptWorkItemId,
+        closure: closure.evidence,
+        released,
+        generation: releasedGeneration,
+      });
+      if (settled?.status === "user_cancelled") {
+        yield* appendEvent(runAttemptId, "user_cancelled", eventPayload);
       }
-      // 2. Then stop the live run.
-      const registered = (yield* Ref.get(activeAgents)).get(String(runAttemptId));
-      if (registered !== undefined) {
-        // Interrupt the dispatch fiber FIRST (fix-lane item 6): awaiting
-        // agent.interrupt() before the fiber interrupt gave markFailed a
-        // window to land retry_scheduled mid-cancel. Use the raw interrupt
-        // (no await): awaiting an interrupted fiber surfaces its pure
-        // interruption cause as an error.
-        registered.fiber.interruptUnsafe();
-        yield* registered.agent.interrupt().pipe(Effect.catch(() => Effect.void));
-      }
+      yield* clearMarker;
       yield* liveRequests
         .settleRun(runAttemptId, "user cancelled")
         .pipe(Effect.catch(() => Effect.void));
+      return {
+        status: "confirmed",
+        runAttemptId,
+        evidence: closure.evidence,
+        released,
+        releasedGeneration,
+      };
     });
 
   const cancelRun: RunDispatcherService["cancelRun"] = (runAttemptId) =>
     cancelAttempt(runAttemptId, {});
 
   const isAgentActive: RunDispatcherService["isAgentActive"] = (runAttemptId) =>
-    Ref.get(activeAgents).pipe(Effect.map((map) => map.has(String(runAttemptId))));
+    Effect.gen(function* () {
+      const key = String(runAttemptId);
+      const active = (yield* Ref.get(activeAgents)).has(key);
+      if (active) return true;
+      // A Stop whose closure is still unconfirmed keeps the run alive for
+      // scheduling purposes: reconciliation must not treat the interrupted
+      // fiber's removal from activeAgents as process closure.
+      return (yield* Ref.get(stoppingAttempts)).has(key);
+    });
 
   const stopAllRuns: RunDispatcherService["stopAllRuns"] = () =>
     Effect.gen(function* () {
       const map = yield* Ref.get(activeAgents);
-      let stopped = 0;
+      let confirmed = 0;
+      let held = 0;
       for (const [attemptId] of map) {
-        // cancelAttempt fires interruptUnsafe without awaiting; awaiting an
-        // interrupted fiber surfaces its interruption cause as an error.
-        yield* cancelAttempt(RunAttemptId.make(attemptId), { reason: "stop_all_runs" });
-        stopped += 1;
+        const outcome = yield* cancelAttempt(RunAttemptId.make(attemptId), {
+          reason: "stop_all_runs",
+        });
+        if (outcome.status === "confirmed") confirmed += 1;
+        else held += 1;
       }
-      return stopped;
+      return { confirmed, held };
     });
 
   return { dispatchWorkItem, cancelRun, isAgentActive, stopAllRuns };

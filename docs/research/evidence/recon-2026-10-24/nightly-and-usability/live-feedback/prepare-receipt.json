@@ -1,0 +1,87 @@
+{
+  "schemaVersion": 1,
+  "fixture": "neokod.live-proof.request_user_input",
+  "status": "prepared-not-executed",
+  "evidenceKind": "source-preparation",
+  "fakeProviderUsed": false,
+  "testkitUsed": false,
+  "applicationSourceEdits": false,
+  "applicationServerStarted": false,
+  "installedAppRuntimeUsed": false,
+  "playwrightUsed": false,
+  "startedAt": "2026-10-23T22:24:06.917Z",
+  "fixtureScript": {
+    "path": "/private/tmp/neokod-nightly-audit-2026-10-24/live-proof/neokod-live-proof.mts",
+    "sha256": "ae5713079978cf6ef385c52f87b92bed255e18390ec31917a68b7363b1f084f5"
+  },
+  "assertions": {
+    "node24": true,
+    "codexBinaryPresent": true,
+    "sourceClean": true,
+    "sourceMarkerPresent": true,
+    "sourceMarkerAccepted": true,
+    "featureDefaultDisabled": true,
+    "featureWrapperProbeEnabled": true,
+    "configSchemaValid": true,
+    "acceptedGuidanceSchemaValid": true,
+    "importResolutionOk": true
+  },
+  "blockers": [],
+  "stages": [
+    {
+      "at": "2026-10-23T22:24:06.919Z",
+      "name": "prepare-start"
+    }
+  ],
+  "source": {
+    "worktree": "/Users/kamogelo/.codex/worktrees/neokod-core-execution/t3code",
+    "baseline": "85a4acfe5a35e04467758be7b95bde2e3491aadf",
+    "head": "85a4acfe5a35e04467758be7b95bde2e3491aadf",
+    "tree": "5f991f7d70adbcdb26b7a2cd4db6bd3aff8b437a",
+    "clean": true,
+    "dirtyPaths": [],
+    "marker": {
+      "present": true,
+      "digest": "308f88691851224e8374383734bc532087590990853c257fffd6c1c219b5432d",
+      "head": "85a4acfe5a35e04467758be7b95bde2e3491aadf",
+      "accepted": true,
+      "pin": {
+        "model": "gpt-6.1-sol",
+        "providerInstanceId": "codex_default",
+        "providerDriver": "codex",
+        "autonomy": "prepare"
+      }
+    }
+  },
+  "runtime": {
+    "nodeVersion": "24.22.1",
+    "nodeExecPath": "/private/tmp/neokod-core-symphony-2026-10-21/node-v24.22.1-darwin-arm64/bin/node",
+    "platform": "darwin",
+    "arch": "arm64",
+    "codexBinary": "/opt/homebrew/bin/codex",
+    "codexVersion": "codex-cli 0.163.0",
+    "featureDefault": {
+      "state": "under development",
+      "enabled": false
+    },
+    "featureEffectiveProbe": {
+      "state": "under development",
+      "enabled": true
+    },
+    "wrapperFlags": ["--enable", "default_mode_request_user_input"],
+    "isolatedCodexHome": false,
+    "installedCliConfigModified": false,
+    "installedCliFeaturesModified": false,
+    "importResolution": {
+      "ok": true,
+      "tempNodeModules": "/tmp/neokod-nightly-audit-2026-10-24/live-proof/node_modules",
+      "productionNodeModules": "/Users/kamogelo/.codex/worktrees/neokod-core-execution/t3code/apps/server/node_modules"
+    }
+  },
+  "executable": true,
+  "awaitingSourceMarker": false,
+  "scriptReady": true,
+  "executeCommand": "/tmp/neokod-nightly-audit-2026-10-24/live-proof/run-live-proof.sh --execute",
+  "completedAt": "2026-10-23T22:24:07.662Z",
+  "durationMs": 745
+}

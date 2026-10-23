@@ -1,0 +1,144 @@
+{
+  "schemaVersion": 1,
+  "fixture": "neokod.live-proof.request_user_input",
+  "status": "blocked",
+  "evidenceKind": "live-provider",
+  "fakeProviderUsed": false,
+  "testkitUsed": false,
+  "applicationSourceEdits": false,
+  "applicationServerStarted": false,
+  "installedAppRuntimeUsed": false,
+  "playwrightUsed": false,
+  "startedAt": "2026-10-23T20:29:04.396Z",
+  "fixtureScript": {
+    "path": "/private/tmp/neokod-implementation-2026-10-23/live-proof/neokod-live-proof.mts",
+    "sha256": "5cce21d3eac891ec0a11dce28a7f9d5bde8e7368b06e3460b1b7d81dc94bc427"
+  },
+  "assertions": {},
+  "blockers": [
+    {
+      "code": "TIMEOUT",
+      "phase": "runtime",
+      "detail": "the bounded runtime program timed out"
+    }
+  ],
+  "stages": [
+    {
+      "at": "2026-10-23T20:29:04.397Z",
+      "name": "preflight-start"
+    },
+    {
+      "at": "2026-10-23T20:29:04.463Z",
+      "name": "run-claimed",
+      "runId": "live-202610232029044-a7c81cba"
+    },
+    {
+      "at": "2026-10-23T20:29:04.511Z",
+      "name": "auth-isolated"
+    },
+    {
+      "at": "2026-10-23T20:29:06.500Z",
+      "name": "model-selected",
+      "modelId": "gpt-6.1-sol"
+    }
+  ],
+  "source": {
+    "worktree": "/Users/kamogelo/.codex/worktrees/neokod-feedback/t3code",
+    "baseline": "0ebac2fb4bd2c9be16bd29bf32c6b89b615cccbc",
+    "head": "41a49b8255705d9debebfe6212fb766b0939011f",
+    "tree": "3e615b229257753f26d0514c85d1476e76c8db6c",
+    "clean": true,
+    "dirtyPaths": [],
+    "marker": {
+      "present": true,
+      "digest": "d114238612819b52ee17295f47712007ac2516e2ec5a5773f4b7a02ee4b9d895",
+      "head": "41a49b8255705d9debebfe6212fb766b0939011f",
+      "accepted": true,
+      "pin": {
+        "model": null,
+        "providerInstanceId": "codex_default",
+        "providerDriver": "codex",
+        "autonomy": "prepare"
+      }
+    }
+  },
+  "runId": "live-202610232029044-a7c81cba",
+  "runDir": "/tmp/neokod-implementation-2026-10-23/live-proof/runs/live-202610232029044-a7c81cba",
+  "runtime": {
+    "wrapperFlags": ["--enable", "default_mode_request_user_input"],
+    "wrapperSha256": "53ced04aa5ec2f60d19cfa2be0286ac47fdf0f5a6bc5730f25459a09a82e1431",
+    "isolatedCodexHome": true,
+    "authCopied": true,
+    "authMode": "0600",
+    "authDeleted": true,
+    "nodeVersion": "24.22.1",
+    "nodeExecPath": "/private/tmp/neokod-core-symphony-2026-10-21/node-v24.22.1-darwin-arm64/bin/node",
+    "platform": "darwin",
+    "arch": "arm64",
+    "codexBinary": "/opt/homebrew/bin/codex",
+    "codexVersion": "codex-cli 0.163.0",
+    "featureDefault": {
+      "state": "under development",
+      "enabled": false
+    },
+    "featureEffective": {
+      "state": "under development",
+      "enabled": true
+    },
+    "installedCliConfigModified": false,
+    "installedCliFeaturesModified": false,
+    "accountStatus": "authenticated"
+  },
+  "model": {
+    "id": "gpt-6.1-sol",
+    "displayName": "GPT-6.1-Sol",
+    "priority": 1,
+    "defaultReasoningLevel": "low",
+    "catalogCount": 9,
+    "candidateCount": 7,
+    "selectionRule": "lowest-priority-listed-candidate",
+    "pinnedBy": null,
+    "catalogSource": "codex debug models (isolated CODEX_HOME)",
+    "capturedAt": "2026-10-23T20:29:06.500Z"
+  },
+  "config": {
+    "autonomy": "prepare",
+    "approvalPolicy": "untrusted",
+    "threadSandbox": "read-only",
+    "turnSandboxPolicy": "readOnly",
+    "promptPolicy": "no shell, files, network tools, subagents, or non-question tools",
+    "provider": {
+      "instanceId": "codex_default",
+      "driver": "codex"
+    },
+    "model": "gpt-6.1-sol",
+    "acceptedTargetAligned": true,
+    "acceptedGuidanceDigest": "b43fce3a72145815abbda0ca71f09bb6a612e7043c8c709803df53db35c77052",
+    "turn1TimeoutMs": 90000,
+    "turn2TimeoutMs": 30000,
+    "requestWaitMs": 45000,
+    "overallTimeoutMs": 165000
+  },
+  "ids": {
+    "runAttemptId": "ra-live-202610232029044-a7c81cba",
+    "workItemId": "wi-live-202610232029044-a7c81cba",
+    "projectId": "project-live-202610232029044-a7c81cba",
+    "providerPid": 87373,
+    "providerGroup": {
+      "pgid": 87373,
+      "platform": "darwin",
+      "birthTokenCaptured": true
+    }
+  },
+  "cleanup": {
+    "agentRuntime": {
+      "status": "terminated",
+      "pid": 87373,
+      "pgid": 87373,
+      "label": "agent-runtime"
+    },
+    "isolatedHomeRemoved": true
+  },
+  "completedAt": "2026-10-23T20:29:19.649Z",
+  "durationMs": 15253
+}

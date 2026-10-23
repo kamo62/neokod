@@ -70,7 +70,14 @@ export interface FakeCodexPeer {
   readonly sendRequest: (method: string, params?: unknown) => Effect.Effect<number>;
   readonly sendCommandApproval: (params?: Partial<CommandApprovalParams>) => Effect.Effect<number>;
   readonly sendUserInputRequest: (
-    questions: ReadonlyArray<{ id: string; question: string }>,
+    questions: ReadonlyArray<{
+      readonly id: string;
+      readonly question: string;
+      readonly header?: string;
+      readonly options?: ReadonlyArray<{ readonly label: string; readonly description: string }>;
+      readonly multiSelect?: boolean;
+      readonly isSecret?: boolean;
+    }>,
   ) => Effect.Effect<number>;
   readonly completeTurn: (
     status: "completed" | "failed" | "interrupted",
@@ -274,7 +281,14 @@ export const makeFakeCodexPeer = (
             threadId,
             turnId,
             itemId: "item-2",
-            questions: questions.map((q) => ({ header: q.id, id: q.id, question: q.question })),
+            questions: questions.map((q) => ({
+              header: q.header ?? q.id,
+              id: q.id,
+              question: q.question,
+              ...(q.options !== undefined ? { options: q.options } : {}),
+              ...(q.multiSelect !== undefined ? { multiSelect: q.multiSelect } : {}),
+              ...(q.isSecret !== undefined ? { isSecret: q.isSecret } : {}),
+            })),
           });
         }),
       completeTurn: (status, turnOptions) =>
@@ -323,6 +337,8 @@ export const makeFakeCodexRuntime = (input: {
   readonly liveRequests: LiveRequestsService;
   readonly recordRequest?: AgentRuntimeDeps["recordRequest"];
   readonly requestTimedOut?: AgentRuntimeDeps["requestTimedOut"];
+  readonly requestSettled?: AgentRuntimeDeps["requestSettled"];
+  readonly onChildSpawned?: AgentRuntimeDeps["onChildSpawned"];
   readonly secretEnvironmentNames?: ReadonlyArray<string>;
 }): Effect.Effect<AgentRuntimeService, never, Scope.Scope> =>
   makeCodexAgentRuntime({
@@ -332,6 +348,8 @@ export const makeFakeCodexRuntime = (input: {
     liveRequests: input.liveRequests,
     ...(input.recordRequest !== undefined ? { recordRequest: input.recordRequest } : {}),
     ...(input.requestTimedOut !== undefined ? { requestTimedOut: input.requestTimedOut } : {}),
+    ...(input.requestSettled !== undefined ? { requestSettled: input.requestSettled } : {}),
+    ...(input.onChildSpawned !== undefined ? { onChildSpawned: input.onChildSpawned } : {}),
     ...(input.secretEnvironmentNames !== undefined
       ? { secretEnvironmentNames: input.secretEnvironmentNames }
       : {}),

@@ -1,0 +1,12 @@
+{
+  "head": "69a712335fa96d9f746a325a27dc186f6a5e3b3d",
+  "status": "",
+  "exit": {
+    "exitCode": 0,
+    "head": "69a712335fa96d9f746a325a27dc186f6a5e3b3d"
+  },
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "route": "native first-party Claude",
+  "verdict": "ACCEPT"
+}

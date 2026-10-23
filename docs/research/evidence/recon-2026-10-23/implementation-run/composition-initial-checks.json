@@ -1,0 +1,76 @@
+{
+  "head": "4f1b5f5bca75b081e664ed8f8fea13f95f22a806",
+  "time": "2026-10-23T22:10:34.020542+00:00",
+  "results": [
+    {
+      "name": "server-focused",
+      "cwd": "/Users/kamogelo/.codex/worktrees/neokod-core-execution/t3code/apps/server",
+      "command": [
+        "vp",
+        "test",
+        "run",
+        "src/symphony/Runner/AgentRuntime.test.ts",
+        "src/symphony/Runner/ApprovalService.test.ts",
+        "src/symphony/Runner/LiveRequests.test.ts",
+        "src/symphony/Runner/Policy.test.ts",
+        "src/symphony/Runner/AcceptedGuidance.test.ts",
+        "src/symphony/Runner/Prompt.test.ts",
+        "src/symphony/Runner/Dispatcher.test.ts",
+        "src/symphony/Runner/ExecutionFinalizer.test.ts",
+        "src/symphony/Orchestrator/Recovery.test.ts",
+        "src/symphony/Orchestrator/Reconciler.test.ts",
+        "src/symphony/HandoffService.test.ts",
+        "src/symphony/Orchestrator/Layers/SymphonyOrchestratorLive.test.ts",
+        "src/symphony/Persistence/Layers/ApprovalRepository.test.ts",
+        "src/symphony/Persistence/Layers/RunAttemptRepository.test.ts",
+        "src/symphony/Persistence/Layers/WorkItemRepository.test.ts",
+        "src/ws-symphony.test.ts",
+        "src/persistence/Migrations.test.ts",
+        "src/persistence/Migrations/045_SymphonyApprovalQuestionsAndAnswers.test.ts",
+        "src/persistence/Migrations/046_RunAttemptAcceptedGuidance.test.ts",
+        "src/persistence/Migrations/047_WorkItemProcessIdentity.test.ts"
+      ],
+      "exitCode": 0
+    },
+    {
+      "name": "web-focused",
+      "cwd": "/Users/kamogelo/.codex/worktrees/neokod-core-execution/t3code/apps/web",
+      "command": [
+        "vp",
+        "test",
+        "run",
+        "src/symphonyWork.logic.test.ts",
+        "src/components/symphony/symphonyWorkRefusal.logic.test.ts",
+        "src/components/symphony/symphonyProjectTabs.test.ts",
+        "src/components/symphony/globalControls.logic.test.ts",
+        "src/components/symphony/attention.logic.test.ts"
+      ],
+      "exitCode": 0
+    },
+    {
+      "name": "shared-contract-focused",
+      "cwd": "/Users/kamogelo/.codex/worktrees/neokod-core-execution/t3code",
+      "command": [
+        "vp",
+        "test",
+        "run",
+        "packages/shared/src/processGroup.test.ts",
+        "packages/contracts/src/symphony.test.ts"
+      ],
+      "exitCode": 0
+    },
+    {
+      "name": "vp-check",
+      "cwd": "/Users/kamogelo/.codex/worktrees/neokod-core-execution/t3code",
+      "command": ["vp", "check"],
+      "exitCode": 1
+    },
+    {
+      "name": "typecheck",
+      "cwd": "/Users/kamogelo/.codex/worktrees/neokod-core-execution/t3code",
+      "command": ["vp", "run", "typecheck"],
+      "exitCode": 0
+    }
+  ],
+  "noBuildInstallPackageDeploy": true
+}

@@ -1,0 +1,252 @@
+{
+  "schemaVersion": 1,
+  "fixture": "neokod.live-proof.request_user_input",
+  "status": "failed",
+  "evidenceKind": "live-provider",
+  "fakeProviderUsed": false,
+  "testkitUsed": false,
+  "applicationSourceEdits": false,
+  "applicationServerStarted": false,
+  "installedAppRuntimeUsed": false,
+  "playwrightUsed": false,
+  "startedAt": "2026-10-23T21:38:55.306Z",
+  "fixtureScript": {
+    "path": "/private/tmp/neokod-implementation-2026-10-23/live-proof/neokod-live-proof.mts",
+    "sha256": "1eba7a15e160d3371d453fe23b4cfd1bb0c5cec2c2ed59623e7c1adf69ea3601"
+  },
+  "assertions": {
+    "sourceClean": true,
+    "sourceMarkerAccepted": true,
+    "featureDefaultDisabled": true,
+    "featureEnabledByWrapper": true,
+    "providerSpawned": true,
+    "requestUserInputObserved": false,
+    "twoQuestions": false,
+    "customQuestionNoOptions": false,
+    "answersSubmitted": false,
+    "answersExactPerQuestion": false,
+    "answerDeliveryUnknown": false,
+    "answerStateAnswered": false,
+    "unrelatedStageHoldLivePending": true,
+    "turn1Completed": true,
+    "turn1ContinuedAfterAnswer": false,
+    "turn2Completed": true,
+    "sameThread": true,
+    "noResume": true,
+    "userInputConsumedAfterTurn1": true,
+    "reloadedAnswered": false,
+    "reloadedDecisionAnswered": false,
+    "reloadedDeliveryUnknown": false,
+    "reloadedAnswersExact": false,
+    "reloadedStageHoldPending": true,
+    "reloadedPendingListsOnlyHold": true
+  },
+  "blockers": [
+    {
+      "code": "REQUEST_USER_INPUT_NOT_OBSERVED",
+      "phase": "provider",
+      "detail": "the provider did not issue a request_user_input request"
+    },
+    {
+      "code": "ANSWER_ROW_MISSING",
+      "phase": "persistence",
+      "detail": "the answered row was not reloaded"
+    },
+    {
+      "code": "INTERNAL_ERROR",
+      "phase": "fixture",
+      "detail": "Cannot read properties of undefined (reading 'sessionId')"
+    }
+  ],
+  "stages": [
+    {
+      "at": "2026-10-23T21:38:55.308Z",
+      "name": "preflight-start"
+    },
+    {
+      "at": "2026-10-23T21:38:55.378Z",
+      "name": "run-claimed",
+      "runId": "live-202610232138553-c490d56f"
+    },
+    {
+      "at": "2026-10-23T21:38:55.416Z",
+      "name": "auth-isolated"
+    },
+    {
+      "at": "2026-10-23T21:38:57.610Z",
+      "name": "model-selected",
+      "modelId": "gpt-6.1-sol"
+    },
+    {
+      "at": "2026-10-23T21:39:10.839Z",
+      "name": "runtime-exit",
+      "outcome": "success",
+      "elapsedMs": 13153
+    }
+  ],
+  "source": {
+    "worktree": "/Users/kamogelo/.codex/worktrees/neokod-feedback/t3code",
+    "baseline": "0ebac2fb4bd2c9be16bd29bf32c6b89b615cccbc",
+    "head": "41a49b8255705d9debebfe6212fb766b0939011f",
+    "tree": "3e615b229257753f26d0514c85d1476e76c8db6c",
+    "clean": true,
+    "dirtyPaths": [],
+    "marker": {
+      "present": true,
+      "digest": "d114238612819b52ee17295f47712007ac2516e2ec5a5773f4b7a02ee4b9d895",
+      "head": "41a49b8255705d9debebfe6212fb766b0939011f",
+      "accepted": true,
+      "pin": {
+        "model": null,
+        "providerInstanceId": "codex_default",
+        "providerDriver": "codex",
+        "autonomy": "prepare"
+      }
+    }
+  },
+  "runId": "live-202610232138553-c490d56f",
+  "runDir": "/tmp/neokod-implementation-2026-10-23/live-proof/runs/live-202610232138553-c490d56f",
+  "runtime": {
+    "wrapperFlags": ["--enable", "default_mode_request_user_input"],
+    "wrapperSha256": "53ced04aa5ec2f60d19cfa2be0286ac47fdf0f5a6bc5730f25459a09a82e1431",
+    "isolatedCodexHome": true,
+    "authCopied": true,
+    "authMode": "0600",
+    "authDeleted": true,
+    "nodeVersion": "24.22.1",
+    "nodeExecPath": "/private/tmp/neokod-core-symphony-2026-10-21/node-v24.22.1-darwin-arm64/bin/node",
+    "platform": "darwin",
+    "arch": "arm64",
+    "codexBinary": "/opt/homebrew/bin/codex",
+    "codexVersion": "codex-cli 0.163.0",
+    "featureDefault": {
+      "state": "under development",
+      "enabled": false
+    },
+    "featureEffective": {
+      "state": "under development",
+      "enabled": true
+    },
+    "installedCliConfigModified": false,
+    "installedCliFeaturesModified": false,
+    "accountStatus": "authenticated"
+  },
+  "model": {
+    "id": "gpt-6.1-sol",
+    "displayName": "GPT-6.1-Sol",
+    "priority": 1,
+    "defaultReasoningLevel": "low",
+    "catalogCount": 9,
+    "candidateCount": 7,
+    "selectionRule": "lowest-priority-listed-candidate",
+    "pinnedBy": null,
+    "catalogSource": "codex debug models (isolated CODEX_HOME)",
+    "capturedAt": "2026-10-23T21:38:57.610Z"
+  },
+  "config": {
+    "autonomy": "prepare",
+    "approvalPolicy": "untrusted",
+    "threadSandbox": "read-only",
+    "turnSandboxPolicy": "readOnly",
+    "promptPolicy": "no shell, files, network tools, subagents, or non-question tools",
+    "provider": {
+      "instanceId": "codex_default",
+      "driver": "codex"
+    },
+    "model": "gpt-6.1-sol",
+    "acceptedTargetAligned": true,
+    "acceptedGuidanceDigest": "f0fba06136798ec4fd996b1c2a2aa39cfbc92c27c18d6b76ea30f7b23f7c02da",
+    "turn1TimeoutMs": 90000,
+    "turn2TimeoutMs": 30000,
+    "requestWaitMs": 45000,
+    "overallTimeoutMs": 165000
+  },
+  "ids": {
+    "runAttemptId": "ra-live-202610232138553-c490d56f",
+    "workItemId": "wi-live-202610232138553-c490d56f",
+    "projectId": "project-live-202610232138553-c490d56f",
+    "providerPid": 92012,
+    "providerGroup": {
+      "pgid": 92012,
+      "platform": "darwin",
+      "birthTokenCaptured": true
+    },
+    "threadId": "01a16ab3-e959-7d70-8b9a-678f29ef8cb4",
+    "turnIds": ["01a16ab3-e9d2-7202-a210-a00d9d0a7994", "01a16ab4-12a3-75c3-acda-a5e6d3d256bf"],
+    "providerRequestId": null,
+    "durableRequestId": null,
+    "questionIds": [],
+    "stageHoldRequestId": "fixture-stage-hold-cf96a8c4-fe2e-45d9-8333-64e6df63447e",
+    "stageHoldDurableId": "sym-b11d7a5e-3fb6-43e1-a64f-e4717cb007cd"
+  },
+  "cleanup": {
+    "agentRuntime": {
+      "status": "terminated",
+      "pid": 92012,
+      "pgid": 92012,
+      "label": "agent-runtime"
+    },
+    "isolatedHomeRemoved": true
+  },
+  "questionPayload": {
+    "kind": "absent",
+    "questionCount": 0
+  },
+  "answerSubmission": {
+    "method": "ApprovalService.respondToUserInput",
+    "submittedAt": null,
+    "duringTurn": null,
+    "values": [],
+    "error": null
+  },
+  "turns": {
+    "first": {
+      "turnId": "01a16ab3-e9d2-7202-a210-a00d9d0a7994",
+      "completed": true,
+      "completedTag": "completed",
+      "completedAt": "2026-10-23T21:39:08.577Z",
+      "error": null,
+      "requestObservedDuringTurn": false
+    },
+    "second": {
+      "turnId": "01a16ab4-12a3-75c3-acda-a5e6d3d256bf",
+      "completed": true,
+      "completedTag": "completed",
+      "error": null,
+      "continuation": true
+    },
+    "sameThread": true,
+    "resumeUsed": false,
+    "turn1CompletedAfterAnswer": false,
+    "livePendingAfterTurn1": [
+      {
+        "requestId": "fixture-stage-hold-cf96a8c4-fe2e-45d9-8333-64e6df63447e",
+        "kind": "approval",
+        "action": "push"
+      }
+    ],
+    "livePendingAfterTurn2": [
+      {
+        "requestId": "fixture-stage-hold-cf96a8c4-fe2e-45d9-8333-64e6df63447e",
+        "kind": "approval",
+        "action": "push"
+      }
+    ]
+  },
+  "persistence": {
+    "reloaded": true,
+    "rowCount": 1,
+    "question": null,
+    "stageHold": {
+      "state": "pending",
+      "decision": null,
+      "delivery": "not-applicable",
+      "answer": null,
+      "decidedAt": null,
+      "createdAt": "2026-10-23T21:38:57.728Z"
+    },
+    "listPendingIds": ["fixture-stage-hold-cf96a8c4-fe2e-45d9-8333-64e6df63447e"]
+  },
+  "completedAt": "2026-10-23T21:39:11.131Z",
+  "durationMs": 15825
+}

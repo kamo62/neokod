@@ -1,0 +1,791 @@
+{
+  "capturedAt": "2026-10-23T23:22:54.085207+00:00",
+  "source": "85a4acfe5a35e04467758be7b95bde2e3491aadf",
+  "applicationSource": "14df4db593a0cde408fc3294f481bca9cd3f183c",
+  "kind": "Chrome native actions plus read-only disposable SQLite evidence",
+  "rows": [
+    {
+      "threadId": "bfd2de18-8c0d-4dd0-9a35-7694a0a571a7",
+      "session": {
+        "status": "ready",
+        "provider_name": "codex",
+        "provider_instance_id": "codex",
+        "active_turn_id": null,
+        "last_error": null
+      },
+      "messages": [
+        {
+          "role": "user",
+          "text": "Disposable Neokod normal-Code usability test. Do not use tools, files, shell, network, or subagents. Reply exactly: CODEX_UI_1017_OK",
+          "is_streaming": 0,
+          "turn_id": null
+        },
+        {
+          "role": "assistant",
+          "text": "CODEX_UI_1017_OK",
+          "is_streaming": 0,
+          "turn_id": "01a16b05-9ed9-7791-a3cc-6ab2cf8e26fa"
+        },
+        {
+          "role": "user",
+          "text": "Same-thread follow-up. Without tools, repeat your previous exact reply, then append |FOLLOWUP_OK.",
+          "is_streaming": 0,
+          "turn_id": null
+        },
+        {
+          "role": "assistant",
+          "text": "CODEX_UI_1017_OK|FOLLOWUP_OK",
+          "is_streaming": 0,
+          "turn_id": "01a16b05-e91f-7662-a598-3310a445d04a"
+        },
+        {
+          "role": "user",
+          "text": "Bounded feedback usability test, no coding. Use request_user_input exactly once with two public questions: id colour, header Colour, options Amber/Blue; id label, header Label, options Paper/Stone. Accept a custom Other answer for label. Do not use shell, files, network or subagents. After both answers reply with the exact colour and label and finish.",
+          "is_streaming": 0,
+          "turn_id": null
+        },
+        {
+          "role": "assistant",
+          "text": "Amber | Browser custom label 1017",
+          "is_streaming": 0,
+          "turn_id": "01a16b08-fc0d-70b2-bed2-6aaa7aea8c5c"
+        },
+        {
+          "role": "user",
+          "text": "Bounded native delegation test: use native spawn_agent to launch exactly two workers together. Worker A replies NATIVE_A_1017; worker B replies NATIVE_B_1017. Wait for both, report real child IDs and exact results, close only these completed workers. Only spawn/wait/close tools are authorised; no shell, files, network, research or edits by parent or workers. If these native tools are unavailable, say so honestly and finish.",
+          "is_streaming": 0,
+          "turn_id": null
+        },
+        {
+          "role": "assistant",
+          "text": "NATIVE_A_1017",
+          "is_streaming": 0,
+          "turn_id": "01a16b0d-6170-7872-80c3-8988ee4be1b7"
+        },
+        {
+          "role": "assistant",
+          "text": "NATIVE_B_1017",
+          "is_streaming": 0,
+          "turn_id": "01a16b0d-7175-7572-ae95-c6e5feebf38c"
+        },
+        {
+          "role": "assistant",
+          "text": "- `/root/native_a_1017`: NATIVE_A_1017\n- `/root/native_b_1017`: NATIVE_B_1017\n\nBoth completed. No native close tool is available, so I could not close them.",
+          "is_streaming": 0,
+          "turn_id": "01a16b0d-4b1a-7592-8fd8-a9d71cf809af"
+        },
+        {
+          "role": "user",
+          "text": "Disposable interruption test. Do not use any tools. Write numbered lines 1 to 2000, each containing the words STOP_CHECK_1017. I will interrupt generation using the application Stop button.",
+          "is_streaming": 0,
+          "turn_id": null
+        },
+        {
+          "role": "user",
+          "text": "Post-cancellation usability check. No tools of any kind. Reply exactly POST_STOP_1017_OK and finish.",
+          "is_streaming": 0,
+          "turn_id": null
+        },
+        {
+          "role": "assistant",
+          "text": "POST_STOP_1017_OK",
+          "is_streaming": 0,
+          "turn_id": "01a16b0f-84f3-7a50-91d4-bc16240eacfa"
+        }
+      ],
+      "runtimeItems": [
+        {
+          "runtime_item_id": "cadcc618-06f4-4a9d-8d28-877f57efea51",
+          "turn_id": null,
+          "kind": "approval",
+          "effective_state": "completed",
+          "provider_state": "completed",
+          "synthetic_state": null,
+          "terminal_source": "provider",
+          "may_still_be_running": 0,
+          "started_at": "2026-10-23T23:12:16.721Z",
+          "completed_at": "2026-10-23T23:12:16.721Z"
+        },
+        {
+          "runtime_item_id": "msg_072abf1ef22f175e016adbe8e53bd0819180d715fd84acccf7",
+          "turn_id": "01a16b05-9ed9-7791-a3cc-6ab2cf8e26fa",
+          "kind": "assistant-message",
+          "effective_state": "completed",
+          "provider_state": "completed",
+          "synthetic_state": null,
+          "terminal_source": "provider",
+          "may_still_be_running": 0,
+          "started_at": "2026-10-23T23:08:21.712Z",
+          "completed_at": "2026-10-23T23:08:21.774Z"
+        },
+        {
+          "runtime_item_id": "msg_072abf1ef22f175e016adbe8f1bef4819186117dd2d6d5b928",
+          "turn_id": "01a16b05-e91f-7662-a598-3310a445d04a",
+          "kind": "assistant-message",
+          "effective_state": "completed",
+          "provider_state": "completed",
+          "synthetic_state": null,
+          "terminal_source": "provider",
+          "may_still_be_running": 0,
+          "started_at": "2026-10-23T23:08:34.048Z",
+          "completed_at": "2026-10-23T23:08:34.134Z"
+        },
+        {
+          "runtime_item_id": "36ac6892-0d17-44f5-92c3-354298e48fab",
+          "turn_id": "01a16b08-fc0d-70b2-bed2-6aaa7aea8c5c",
+          "kind": "user-input",
+          "effective_state": "completed",
+          "provider_state": "completed",
+          "synthetic_state": null,
+          "terminal_source": "provider",
+          "may_still_be_running": 0,
+          "started_at": "2026-10-23T23:11:57.601Z",
+          "completed_at": "2026-10-23T23:12:16.707Z"
+        },
+        {
+          "runtime_item_id": "msg_072abf1ef22f175e016adbe9d921308191afe8e242f13b4ba0",
+          "turn_id": "01a16b08-fc0d-70b2-bed2-6aaa7aea8c5c",
+          "kind": "assistant-message",
+          "effective_state": "completed",
+          "provider_state": "completed",
+          "synthetic_state": null,
+          "terminal_source": "provider",
+          "may_still_be_running": 0,
+          "started_at": "2026-10-23T23:12:25.379Z",
+          "completed_at": "2026-10-23T23:12:25.442Z"
+        },
+        {
+          "runtime_item_id": "msg_072abf1ef22f175e016adbeae588ac8191b9e17db1d3e8b5cf",
+          "turn_id": "01a16b0d-4b1a-7592-8fd8-a9d71cf809af",
+          "kind": "assistant-message",
+          "effective_state": "completed",
+          "provider_state": "completed",
+          "synthetic_state": null,
+          "terminal_source": "provider",
+          "may_still_be_running": 0,
+          "started_at": "2026-10-23T23:16:53.712Z",
+          "completed_at": "2026-10-23T23:16:54.282Z"
+        },
+        {
+          "runtime_item_id": "msg_066acd523ebf0897016adbeade32908191bc454eb301380d1a",
+          "turn_id": "01a16b0d-6170-7872-80c3-8988ee4be1b7",
+          "kind": "assistant-message",
+          "effective_state": "completed",
+          "provider_state": "completed",
+          "synthetic_state": null,
+          "terminal_source": "provider",
+          "may_still_be_running": 0,
+          "started_at": "2026-10-23T23:16:46.459Z",
+          "completed_at": "2026-10-23T23:16:46.467Z"
+        },
+        {
+          "runtime_item_id": "msg_04bead37c434ca57016adbeae237088191842d966896c1174d",
+          "turn_id": "01a16b0d-7175-7572-ae95-c6e5feebf38c",
+          "kind": "assistant-message",
+          "effective_state": "completed",
+          "provider_state": "completed",
+          "synthetic_state": null,
+          "terminal_source": "provider",
+          "may_still_be_running": 0,
+          "started_at": "2026-10-23T23:16:50.391Z",
+          "completed_at": "2026-10-23T23:16:50.835Z"
+        }
+      ],
+      "activities": [
+        {
+          "kind": "user-input.requested",
+          "summary": "User input requested",
+          "payload_json": "{\"requestId\":\"36ac6892-0d17-44f5-92c3-354298e48fab\",\"questions\":[{\"id\":\"colour\",\"header\":\"Colour\",\"question\":\"Which colour?\",\"options\":[{\"label\":\"Amber\",\"description\":\"Choose Amber.\"},{\"label\":\"Blue\",\"description\":\"Choose Blue.\"}],\"multiSelect\":false},{\"id\":\"label\",\"header\":\"Label\",\"question\":\"Which label? You can also enter a custom Other answer.\",\"options\":[{\"label\":\"Paper\",\"description\":\"Choose Paper.\"},{\"label\":\"Stone\",\"description\":\"Choose Stone.\"}],\"multiSelect\":false}]}",
+          "created_at": "2026-10-23T23:11:57.601Z"
+        },
+        {
+          "kind": "user-input.resolved",
+          "summary": "User input submitted",
+          "payload_json": "{\"requestId\":\"36ac6892-0d17-44f5-92c3-354298e48fab\",\"answers\":{\"colour\":\"Amber\",\"label\":\"Browser custom label 1017\"}}",
+          "created_at": "2026-10-23T23:12:16.707Z"
+        },
+        {
+          "kind": "approval.resolved",
+          "summary": "Approval resolved",
+          "payload_json": "{\"requestType\":\"unknown\"}",
+          "created_at": "2026-10-23T23:12:16.721Z"
+        }
+      ],
+      "interruptions": [
+        {
+          "event_type": "thread.turn-interrupt-requested",
+          "payload_json": "{\"threadId\":\"bfd2de18-8c0d-4dd0-9a35-7694a0a571a7\",\"turnId\":\"01a16b0f-4166-7193-b3d9-1bf9d67ff9b6\",\"createdAt\":\"2026-10-23T23:18:47.233Z\"}",
+          "occurred_at": "2026-10-23T23:18:47.233Z"
+        }
+      ]
+    },
+    {
+      "threadId": "ec5e3352-34a7-47cc-8ca0-0f1de54e61ca",
+      "session": {
+        "status": "ready",
+        "provider_name": "claudeAgent",
+        "provider_instance_id": "claudeAgent",
+        "active_turn_id": null,
+        "last_error": null
+      },
+      "messages": [
+        {
+          "role": "user",
+          "text": "Disposable Neokod normal-Code usability test. Do not use tools, files, shell, network, or subagents. Reply exactly: CLAUDE_UI_1017_OK",
+          "is_streaming": 0,
+          "turn_id": null
+        },
+        {
+          "role": "assistant",
+          "text": "CLAUDE_UI_1017_OK",
+          "is_streaming": 0,
+          "turn_id": "8d521e57-8201-4b12-b109-564e1becd615"
+        },
+        {
+          "role": "user",
+          "text": "Same-thread follow-up. Without tools, repeat your previous exact reply, then append |FOLLOWUP_OK.",
+          "is_streaming": 0,
+          "turn_id": null
+        },
+        {
+          "role": "assistant",
+          "text": "CLAUDE_UI_1017_OK|FOLLOWUP_OK",
+          "is_streaming": 0,
+          "turn_id": "4759d94e-bb5e-4854-a3a6-5479f8898e0b"
+        },
+        {
+          "role": "user",
+          "text": "Bounded native-subagent usability test. If your native Agent/subagent tool exists, launch exactly two workers in parallel, one returning only NATIVE_A_1017 and one returning only NATIVE_B_1017; collect both results and report the real child identifiers. This explicitly permits only native spawn/wait/close tools for this test. Neither parent nor children may use files, shell, network, editing, research or other tools. Do not simulate delegation. If native delegation is unavailable, state that honestly and finish.",
+          "is_streaming": 0,
+          "turn_id": null
+        },
+        {
+          "role": "assistant",
+          "text": "NATIVE_A_1017",
+          "is_streaming": 0,
+          "turn_id": "208009f7-b900-488d-b584-8050cc29e56a"
+        },
+        {
+          "role": "assistant",
+          "text": "Two native workers (fast-worker type) are running in parallel. I'll report their results when both completion notifications come in.",
+          "is_streaming": 0,
+          "turn_id": "208009f7-b900-488d-b584-8050cc29e56a"
+        },
+        {
+          "role": "assistant",
+          "text": "Both workers ran natively as `fast-worker` subagents, launched together in one call.\n\n| Worker | Result | Tool uses | Duration |\n|---|---|---|---|\n| Worker A | `NATIVE_A_1017` | 0 | 1657 ms |\n| Worker B | `NATIVE_B_1017` | 0 | 1583 ms |\n\nI can't give you the child identifiers. The Agent tool labels each worker's ID as internal metadata and tells me not to repeat it in replies, so I'm following that. To confirm these were real runs and not simulated, each worker sent its own completion notification with a distinct task ID and a token count of 22,536.\n\nNeither worker used any tools. My only tool call was the one Agent call that launched both. Both workers finished on their own, so there was nothing left to close.",
+          "is_streaming": 0,
+          "turn_id": "5039103d-53e1-46e5-9329-abf2cca46787"
+        }
+      ],
+      "runtimeItems": [
+        {
+          "runtime_item_id": "toolu_018MypEA1BcGhnhUTXYYwHLP",
+          "turn_id": "208009f7-b900-488d-b584-8050cc29e56a",
+          "kind": "tool",
+          "effective_state": "completed",
+          "provider_state": "completed",
+          "synthetic_state": null,
+          "terminal_source": "provider",
+          "may_still_be_running": 0,
+          "started_at": "2026-10-23T23:12:35.603Z",
+          "completed_at": "2026-10-23T23:12:37.036Z"
+        },
+        {
+          "runtime_item_id": "toolu_01CkmPjGFAQAahf559MqF6Uq",
+          "turn_id": "208009f7-b900-488d-b584-8050cc29e56a",
+          "kind": "tool",
+          "effective_state": "completed",
+          "provider_state": "completed",
+          "synthetic_state": null,
+          "terminal_source": "provider",
+          "may_still_be_running": 0,
+          "started_at": "2026-10-23T23:12:37.022Z",
+          "completed_at": "2026-10-23T23:12:38.195Z"
+        },
+        {
+          "runtime_item_id": "ee2d6f2f-1b0d-4b4b-b528-052338005948",
+          "turn_id": "208009f7-b900-488d-b584-8050cc29e56a",
+          "kind": "assistant-message",
+          "effective_state": "completed",
+          "provider_state": "completed",
+          "synthetic_state": null,
+          "terminal_source": "provider",
+          "may_still_be_running": 0,
+          "started_at": "2026-10-23T23:12:38.622Z",
+          "completed_at": "2026-10-23T23:12:38.622Z"
+        },
+        {
+          "runtime_item_id": "a1578101aaa4a1ca1",
+          "turn_id": "208009f7-b900-488d-b584-8050cc29e56a",
+          "kind": "delegated-task",
+          "effective_state": "completed",
+          "provider_state": "completed",
+          "synthetic_state": null,
+          "terminal_source": "provider",
+          "may_still_be_running": 0,
+          "started_at": "2026-10-23T23:12:37.021Z",
+          "completed_at": "2026-10-23T23:12:38.667Z"
+        },
+        {
+          "runtime_item_id": "a46ebfe645e58c11c",
+          "turn_id": "208009f7-b900-488d-b584-8050cc29e56a",
+          "kind": "delegated-task",
+          "effective_state": "completed",
+          "provider_state": "completed",
+          "synthetic_state": null,
+          "terminal_source": "provider",
+          "may_still_be_running": 0,
+          "started_at": "2026-10-23T23:12:38.185Z",
+          "completed_at": "2026-10-23T23:12:39.762Z"
+        },
+        {
+          "runtime_item_id": "1d173678-d460-466d-9da6-bc76d8815c30",
+          "turn_id": "208009f7-b900-488d-b584-8050cc29e56a",
+          "kind": "assistant-message",
+          "effective_state": "completed",
+          "provider_state": "completed",
+          "synthetic_state": null,
+          "terminal_source": "provider",
+          "may_still_be_running": 0,
+          "started_at": "2026-10-23T23:12:40.187Z",
+          "completed_at": "2026-10-23T23:12:40.248Z"
+        },
+        {
+          "runtime_item_id": "995007a0-c257-4626-8768-64319be0e51d",
+          "turn_id": "4759d94e-bb5e-4854-a3a6-5479f8898e0b",
+          "kind": "assistant-message",
+          "effective_state": "completed",
+          "provider_state": "completed",
+          "synthetic_state": null,
+          "terminal_source": "provider",
+          "may_still_be_running": 0,
+          "started_at": "2026-10-23T23:10:04.260Z",
+          "completed_at": "2026-10-23T23:10:04.926Z"
+        },
+        {
+          "runtime_item_id": "97973cea-3579-4dd3-875f-dba766c251e7",
+          "turn_id": "5039103d-53e1-46e5-9329-abf2cca46787",
+          "kind": "assistant-message",
+          "effective_state": "completed",
+          "provider_state": "completed",
+          "synthetic_state": null,
+          "terminal_source": "provider",
+          "may_still_be_running": 0,
+          "started_at": "2026-10-23T23:12:43.002Z",
+          "completed_at": "2026-10-23T23:12:45.548Z"
+        },
+        {
+          "runtime_item_id": "649dec13-983f-49cc-9ee3-f8756fb55ed7",
+          "turn_id": "8d521e57-8201-4b12-b109-564e1becd615",
+          "kind": "assistant-message",
+          "effective_state": "completed",
+          "provider_state": "completed",
+          "synthetic_state": null,
+          "terminal_source": "provider",
+          "may_still_be_running": 0,
+          "started_at": "2026-10-23T23:09:39.863Z",
+          "completed_at": "2026-10-23T23:09:40.434Z"
+        }
+      ],
+      "activities": [
+        {
+          "kind": "tool.started",
+          "summary": "Subagent task started",
+          "payload_json": "{\"itemType\":\"collab_agent_tool_call\",\"detail\":\"Agent: {}\"}",
+          "created_at": "2026-10-23T23:12:35.603Z"
+        },
+        {
+          "kind": "tool.updated",
+          "summary": "Subagent task",
+          "payload_json": "{\"itemType\":\"collab_agent_tool_call\",\"status\":\"inProgress\",\"detail\":\"fast-worker: Return token NATIVE_A_1017\",\"data\":{\"toolName\":\"Agent\",\"input\":{\"description\":\"Return token NATIVE_A_1017\",\"prompt\":\"This is a bounded usability test. Do not use any tools at all (no files, shell, network, editing, research, or any other tool). Reply with exactly this text and nothing else: NATIVE_A_1017\",\"subagent_type\":\"fast-worker\",\"run_in_background\":true}}}",
+          "created_at": "2026-10-23T23:12:36.997Z"
+        },
+        {
+          "kind": "task.started",
+          "summary": "local_agent task started",
+          "payload_json": "{\"taskId\":\"a1578101aaa4a1ca1\",\"taskType\":\"local_agent\",\"detail\":\"Return token NATIVE_A_1017\"}",
+          "created_at": "2026-10-23T23:12:37.021Z"
+        },
+        {
+          "kind": "tool.started",
+          "summary": "Subagent task started",
+          "payload_json": "{\"itemType\":\"collab_agent_tool_call\",\"detail\":\"Agent: {}\"}",
+          "created_at": "2026-10-23T23:12:37.022Z"
+        },
+        {
+          "kind": "tool.updated",
+          "summary": "Subagent task",
+          "payload_json": "{\"itemType\":\"collab_agent_tool_call\",\"status\":\"inProgress\",\"detail\":\"fast-worker: Return token NATIVE_A_1017\",\"data\":{\"toolName\":\"Agent\",\"input\":{\"description\":\"Return token NATIVE_A_1017\",\"prompt\":\"This is a bounded usability test. Do not use any tools at all (no files, shell, network, editing, research, or any other tool). Reply with exactly this text and nothing else: NATIVE_A_1017\",\"subagent_type\":\"fast-worker\",\"run_in_background\":true},\"result\":{\"tool_use_id\":\"toolu_018MypEA1BcGhnhUTXYYwHLP\",\"type\":\"tool_result\",\"content\":[{\"type\":\"text\",\"text\":\"Async agent launched successfully. (This tool result is internal metadata \u2014 never quote or paste any part of it, including the agentId below, into a user-facing reply.)\\nagentId: a1578101aaa4a1ca1 (internal ID - do not mention to user. Use SendMessage with to: 'a1578101aaa4a1ca1', summary: '<5-10 word recap>' to continue this agent.)\\nThe agent is working in the background. You will be notified automatically when it completes. You know nothing about its results until that notification arrives \u2014 do not report, assume, or predict them; continue other work or respond to the user in the meantime.\\nDo not duplicate this agent's work \u2014 avoid working with the same files or topics it is using.\\noutput_file: /private/tmp/claude-501/-private-tmp-neokod-implementation-2026-10-23-ui-fixture-89290067-77cf-49e4-ab9f-0b1530054eae-repository/f60a5446-70f7-426b-ade7-01b344dd633e/tasks/a1578101aaa4a1ca1.output\\nDo NOT Read or tail this file via the shell tool \u2014 it is the full subagent JSONL transcript and reading it will overflow your context. If the user asks for progress, say the agent is still running; you'll get a completion notification.\"}]}}}",
+          "created_at": "2026-10-23T23:12:37.036Z"
+        },
+        {
+          "kind": "tool.completed",
+          "summary": "Subagent task",
+          "payload_json": "{\"itemType\":\"collab_agent_tool_call\",\"detail\":\"fast-worker: Return token NATIVE_A_1017\",\"data\":{\"toolName\":\"Agent\",\"input\":{\"description\":\"Return token NATIVE_A_1017\",\"prompt\":\"This is a bounded usability test. Do not use any tools at all (no files, shell, network, editing, research, or any other tool). Reply with exactly this text and nothing else: NATIVE_A_1017\",\"subagent_type\":\"fast-worker\",\"run_in_background\":true},\"result\":{\"tool_use_id\":\"toolu_018MypEA1BcGhnhUTXYYwHLP\",\"type\":\"tool_result\",\"content\":[{\"type\":\"text\",\"text\":\"Async agent launched successfully. (This tool result is internal metadata \u2014 never quote or paste any part of it, including the agentId below, into a user-facing reply.)\\nagentId: a1578101aaa4a1ca1 (internal ID - do not mention to user. Use SendMessage with to: 'a1578101aaa4a1ca1', summary: '<5-10 word recap>' to continue this agent.)\\nThe agent is working in the background. You will be notified automatically when it completes. You know nothing about its results until that notification arrives \u2014 do not report, assume, or predict them; continue other work or respond to the user in the meantime.\\nDo not duplicate this agent's work \u2014 avoid working with the same files or topics it is using.\\noutput_file: /private/tmp/claude-501/-private-tmp-neokod-implementation-2026-10-23-ui-fixture-89290067-77cf-49e4-ab9f-0b1530054eae-repository/f60a5446-70f7-426b-ade7-01b344dd633e/tasks/a1578101aaa4a1ca1.output\\nDo NOT Read or tail this file via the shell tool \u2014 it is the full subagent JSONL transcript and reading it will overflow your context. If the user asks for progress, say the agent is still running; you'll get a completion notification.\"}]}}}",
+          "created_at": "2026-10-23T23:12:37.036Z"
+        },
+        {
+          "kind": "tool.updated",
+          "summary": "Subagent task",
+          "payload_json": "{\"itemType\":\"collab_agent_tool_call\",\"status\":\"inProgress\",\"detail\":\"fast-worker: Return token NATIVE_B_1017\",\"data\":{\"toolName\":\"Agent\",\"input\":{\"description\":\"Return token NATIVE_B_1017\",\"prompt\":\"This is a bounded usability test. Do not use any tools at all (no files, shell, network, editing, research, or any other tool). Reply with exactly this text and nothing else: NATIVE_B_1017\",\"subagent_type\":\"fast-worker\",\"run_in_background\":true}}}",
+          "created_at": "2026-10-23T23:12:38.175Z"
+        },
+        {
+          "kind": "task.started",
+          "summary": "local_agent task started",
+          "payload_json": "{\"taskId\":\"a46ebfe645e58c11c\",\"taskType\":\"local_agent\",\"detail\":\"Return token NATIVE_B_1017\"}",
+          "created_at": "2026-10-23T23:12:38.185Z"
+        },
+        {
+          "kind": "tool.updated",
+          "summary": "Subagent task",
+          "payload_json": "{\"itemType\":\"collab_agent_tool_call\",\"status\":\"inProgress\",\"detail\":\"fast-worker: Return token NATIVE_B_1017\",\"data\":{\"toolName\":\"Agent\",\"input\":{\"description\":\"Return token NATIVE_B_1017\",\"prompt\":\"This is a bounded usability test. Do not use any tools at all (no files, shell, network, editing, research, or any other tool). Reply with exactly this text and nothing else: NATIVE_B_1017\",\"subagent_type\":\"fast-worker\",\"run_in_background\":true},\"result\":{\"tool_use_id\":\"toolu_01CkmPjGFAQAahf559MqF6Uq\",\"type\":\"tool_result\",\"content\":[{\"type\":\"text\",\"text\":\"Async agent launched successfully. (This tool result is internal metadata \u2014 never quote or paste any part of it, including the agentId below, into a user-facing reply.)\\nagentId: a46ebfe645e58c11c (internal ID - do not mention to user. Use SendMessage with to: 'a46ebfe645e58c11c', summary: '<5-10 word recap>' to continue this agent.)\\nThe agent is working in the background. You will be notified automatically when it completes. You know nothing about its results until that notification arrives \u2014 do not report, assume, or predict them; continue other work or respond to the user in the meantime.\\nDo not duplicate this agent's work \u2014 avoid working with the same files or topics it is using.\\noutput_file: /private/tmp/claude-501/-private-tmp-neokod-implementation-2026-10-23-ui-fixture-89290067-77cf-49e4-ab9f-0b1530054eae-repository/f60a5446-70f7-426b-ade7-01b344dd633e/tasks/a46ebfe645e58c11c.output\\nDo NOT Read or tail this file via the shell tool \u2014 it is the full subagent JSONL transcript and reading it will overflow your context. If the user asks for progress, say the agent is still running; you'll get a completion notification.\"}]}}}",
+          "created_at": "2026-10-23T23:12:38.195Z"
+        },
+        {
+          "kind": "tool.completed",
+          "summary": "Subagent task",
+          "payload_json": "{\"itemType\":\"collab_agent_tool_call\",\"detail\":\"fast-worker: Return token NATIVE_B_1017\",\"data\":{\"toolName\":\"Agent\",\"input\":{\"description\":\"Return token NATIVE_B_1017\",\"prompt\":\"This is a bounded usability test. Do not use any tools at all (no files, shell, network, editing, research, or any other tool). Reply with exactly this text and nothing else: NATIVE_B_1017\",\"subagent_type\":\"fast-worker\",\"run_in_background\":true},\"result\":{\"tool_use_id\":\"toolu_01CkmPjGFAQAahf559MqF6Uq\",\"type\":\"tool_result\",\"content\":[{\"type\":\"text\",\"text\":\"Async agent launched successfully. (This tool result is internal metadata \u2014 never quote or paste any part of it, including the agentId below, into a user-facing reply.)\\nagentId: a46ebfe645e58c11c (internal ID - do not mention to user. Use SendMessage with to: 'a46ebfe645e58c11c', summary: '<5-10 word recap>' to continue this agent.)\\nThe agent is working in the background. You will be notified automatically when it completes. You know nothing about its results until that notification arrives \u2014 do not report, assume, or predict them; continue other work or respond to the user in the meantime.\\nDo not duplicate this agent's work \u2014 avoid working with the same files or topics it is using.\\noutput_file: /private/tmp/claude-501/-private-tmp-neokod-implementation-2026-10-23-ui-fixture-89290067-77cf-49e4-ab9f-0b1530054eae-repository/f60a5446-70f7-426b-ade7-01b344dd633e/tasks/a46ebfe645e58c11c.output\\nDo NOT Read or tail this file via the shell tool \u2014 it is the full subagent JSONL transcript and reading it will overflow your context. If the user asks for progress, say the agent is still running; you'll get a completion notification.\"}]}}}",
+          "created_at": "2026-10-23T23:12:38.195Z"
+        },
+        {
+          "kind": "task.completed",
+          "summary": "Task completed",
+          "payload_json": "{\"taskId\":\"a1578101aaa4a1ca1\",\"status\":\"completed\"}",
+          "created_at": "2026-10-23T23:12:38.667Z"
+        },
+        {
+          "kind": "task.completed",
+          "summary": "Task completed",
+          "payload_json": "{\"taskId\":\"a1578101aaa4a1ca1\",\"status\":\"completed\",\"detail\":\"NATIVE_A_1017\",\"usage\":{\"total_tokens\":22536,\"tool_uses\":0,\"duration_ms\":1657}}",
+          "created_at": "2026-10-23T23:12:38.668Z"
+        },
+        {
+          "kind": "task.completed",
+          "summary": "Task completed",
+          "payload_json": "{\"taskId\":\"a46ebfe645e58c11c\",\"status\":\"completed\"}",
+          "created_at": "2026-10-23T23:12:39.762Z"
+        },
+        {
+          "kind": "task.completed",
+          "summary": "Task completed",
+          "payload_json": "{\"taskId\":\"a46ebfe645e58c11c\",\"status\":\"completed\",\"detail\":\"NATIVE_B_1017\",\"usage\":{\"total_tokens\":22536,\"tool_uses\":0,\"duration_ms\":1583}}",
+          "created_at": "2026-10-23T23:12:39.762Z"
+        }
+      ],
+      "interruptions": []
+    },
+    {
+      "threadId": "33d6470d-2936-422c-b914-76b33b5fb16b",
+      "session": {
+        "status": "ready",
+        "provider_name": "githubCopilot",
+        "provider_instance_id": "githubCopilot",
+        "active_turn_id": null,
+        "last_error": null
+      },
+      "messages": [
+        {
+          "role": "user",
+          "text": "COPILOT_UI_1017: Disposable Neokod normal-Code test. Do not use tools, files, shell, network, or subagents. Reply exactly: COPILOT_UI_1017_OK",
+          "is_streaming": 0,
+          "turn_id": null
+        },
+        {
+          "role": "assistant",
+          "text": "COPILOT_UI_1017_OK",
+          "is_streaming": 0,
+          "turn_id": "6f2f9e42-a420-498d-a214-9f2ff17482fe"
+        },
+        {
+          "role": "user",
+          "text": "Same-thread follow-up. Without tools, repeat your previous exact reply, then append |FOLLOWUP_OK.",
+          "is_streaming": 0,
+          "turn_id": null
+        },
+        {
+          "role": "assistant",
+          "text": "COPILOT_UI_1017_OK|FOLLOWUP_OK",
+          "is_streaming": 0,
+          "turn_id": "c737e148-8d85-4f2f-bdee-1c6ee0429cc4"
+        },
+        {
+          "role": "user",
+          "text": "Bounded native delegation test: if a native task/agent tool exists, launch exactly two workers together. Worker A replies NATIVE_A_1017; worker B replies NATIVE_B_1017. Collect both and report actual worker IDs and exact results. Only native spawn/wait/close tools are authorised; no shell, files, network, research or edits by parent or workers. Do not simulate delegation. If native delegation is unavailable, say so honestly and finish.",
+          "is_streaming": 0,
+          "turn_id": null
+        },
+        {
+          "role": "user",
+          "text": "Post-cancellation usability check. No tools of any kind. Reply exactly POST_STOP_1017_OK and finish.",
+          "is_streaming": 0,
+          "turn_id": null
+        },
+        {
+          "role": "assistant",
+          "text": "POST_STOP_1017_OK",
+          "is_streaming": 0,
+          "turn_id": "bc0bc674-2c65-48b6-b34f-87d389057d22"
+        }
+      ],
+      "runtimeItems": [
+        {
+          "runtime_item_id": "350ac7fb-c830-4771-a1f7-3eb93814e227",
+          "turn_id": "6f2f9e42-a420-498d-a214-9f2ff17482fe",
+          "kind": "assistant-message",
+          "effective_state": "completed",
+          "provider_state": "completed",
+          "synthetic_state": null,
+          "terminal_source": "provider",
+          "may_still_be_running": 0,
+          "started_at": "2026-10-23T23:09:38.908Z",
+          "completed_at": "2026-10-23T23:09:38.970Z"
+        },
+        {
+          "runtime_item_id": "472e71fd-19ea-49a8-ab5c-bd9cf7cab518",
+          "turn_id": "c737e148-8d85-4f2f-bdee-1c6ee0429cc4",
+          "kind": "assistant-message",
+          "effective_state": "completed",
+          "provider_state": "completed",
+          "synthetic_state": null,
+          "terminal_source": "provider",
+          "may_still_be_running": 0,
+          "started_at": "2026-10-23T23:09:58.844Z",
+          "completed_at": "2026-10-23T23:09:58.925Z"
+        },
+        {
+          "runtime_item_id": "5873faa6-c7f7-44be-a465-e4500c86e830",
+          "turn_id": "f46c2042-8d71-43b5-8772-b344988d9ade",
+          "kind": "assistant-message",
+          "effective_state": "completed",
+          "provider_state": "completed",
+          "synthetic_state": null,
+          "terminal_source": "provider",
+          "may_still_be_running": 0,
+          "started_at": "2026-10-23T23:17:32.608Z",
+          "completed_at": "2026-10-23T23:17:32.608Z"
+        },
+        {
+          "runtime_item_id": "6e2614dd-55d8-4354-8c06-9da17fa81d87",
+          "turn_id": "f46c2042-8d71-43b5-8772-b344988d9ade",
+          "kind": "approval",
+          "effective_state": "completed",
+          "provider_state": "completed",
+          "synthetic_state": null,
+          "terminal_source": "provider",
+          "may_still_be_running": 0,
+          "started_at": "2026-10-23T23:17:32.637Z",
+          "completed_at": "2026-10-23T23:17:42.282Z"
+        },
+        {
+          "runtime_item_id": "67a291d7-424b-4d06-9c9f-9636ac2837d9",
+          "turn_id": "f46c2042-8d71-43b5-8772-b344988d9ade",
+          "kind": "approval",
+          "effective_state": "completed",
+          "provider_state": "completed",
+          "synthetic_state": null,
+          "terminal_source": "provider",
+          "may_still_be_running": 0,
+          "started_at": "2026-10-23T23:17:42.297Z",
+          "completed_at": "2026-10-23T23:17:42.297Z"
+        },
+        {
+          "runtime_item_id": "call_hDMLgicbydb04A2UHOw6RZ6S",
+          "turn_id": "f46c2042-8d71-43b5-8772-b344988d9ade",
+          "kind": "tool",
+          "effective_state": "completed",
+          "provider_state": "completed",
+          "synthetic_state": null,
+          "terminal_source": "provider",
+          "may_still_be_running": 0,
+          "started_at": "2026-10-23T23:17:32.622Z",
+          "completed_at": "2026-10-23T23:17:42.310Z"
+        },
+        {
+          "runtime_item_id": "call_FQLR60g5wsOUsrC50wdDwhZF",
+          "turn_id": "f46c2042-8d71-43b5-8772-b344988d9ade",
+          "kind": "tool",
+          "effective_state": "failed",
+          "provider_state": "failed",
+          "synthetic_state": null,
+          "terminal_source": "provider",
+          "may_still_be_running": 0,
+          "started_at": "2026-10-23T23:17:32.610Z",
+          "completed_at": "2026-10-23T23:17:42.318Z"
+        },
+        {
+          "runtime_item_id": "71979f0d-1c14-4126-b704-0297d89629e6",
+          "turn_id": "f46c2042-8d71-43b5-8772-b344988d9ade",
+          "kind": "assistant-message",
+          "effective_state": "completed",
+          "provider_state": "completed",
+          "synthetic_state": null,
+          "terminal_source": "provider",
+          "may_still_be_running": 0,
+          "started_at": "2026-10-23T23:17:45.684Z",
+          "completed_at": "2026-10-23T23:17:45.684Z"
+        },
+        {
+          "runtime_item_id": "call_dHJnzD9JYCNOq4U7639lsI73",
+          "turn_id": "f46c2042-8d71-43b5-8772-b344988d9ade",
+          "kind": "tool",
+          "effective_state": "stopped",
+          "provider_state": "active",
+          "synthetic_state": "stopped",
+          "terminal_source": "synthetic",
+          "may_still_be_running": 0,
+          "started_at": "2026-10-23T23:17:45.689Z",
+          "completed_at": "2026-10-23T23:17:47.469Z"
+        },
+        {
+          "runtime_item_id": "call_Y3et6Sy5ApHvakCBS44cyHfy",
+          "turn_id": "f46c2042-8d71-43b5-8772-b344988d9ade",
+          "kind": "tool",
+          "effective_state": "stopped",
+          "provider_state": "active",
+          "synthetic_state": "stopped",
+          "terminal_source": "synthetic",
+          "may_still_be_running": 0,
+          "started_at": "2026-10-23T23:17:45.693Z",
+          "completed_at": "2026-10-23T23:17:47.469Z"
+        },
+        {
+          "runtime_item_id": "call_Y3et6Sy5ApHvakCBS44cyHfy",
+          "turn_id": "f46c2042-8d71-43b5-8772-b344988d9ade",
+          "kind": "delegated-task",
+          "effective_state": "completed",
+          "provider_state": "completed",
+          "synthetic_state": "orphaned",
+          "terminal_source": "provider",
+          "may_still_be_running": 0,
+          "started_at": "2026-10-23T23:17:45.711Z",
+          "completed_at": "2026-10-23T23:17:47.471Z"
+        },
+        {
+          "runtime_item_id": "call_dHJnzD9JYCNOq4U7639lsI73",
+          "turn_id": "f46c2042-8d71-43b5-8772-b344988d9ade",
+          "kind": "delegated-task",
+          "effective_state": "completed",
+          "provider_state": "completed",
+          "synthetic_state": "orphaned",
+          "terminal_source": "provider",
+          "may_still_be_running": 0,
+          "started_at": "2026-10-23T23:17:45.705Z",
+          "completed_at": "2026-10-23T23:17:47.480Z"
+        }
+      ],
+      "activities": [
+        {
+          "kind": "tool.started",
+          "summary": "Command run started",
+          "payload_json": "{\"itemType\":\"command_execution\",\"detail\":\"bash: echo 'noop'\"}",
+          "created_at": "2026-10-23T23:17:32.610Z"
+        },
+        {
+          "kind": "tool.started",
+          "summary": "Subagent task started",
+          "payload_json": "{\"itemType\":\"collab_agent_tool_call\",\"detail\":\"list_agents: {\\\"include_completed\\\":true}\"}",
+          "created_at": "2026-10-23T23:17:32.622Z"
+        },
+        {
+          "kind": "approval.requested",
+          "summary": "Command approval requested",
+          "payload_json": "{\"requestId\":\"6e2614dd-55d8-4354-8c06-9da17fa81d87\",\"requestKind\":\"command\",\"requestType\":\"command_execution_approval\",\"detail\":\"echo 'noop'\"}",
+          "created_at": "2026-10-23T23:17:32.637Z"
+        },
+        {
+          "kind": "approval.resolved",
+          "summary": "Approval resolved",
+          "payload_json": "{\"requestId\":\"6e2614dd-55d8-4354-8c06-9da17fa81d87\",\"requestKind\":\"command\",\"requestType\":\"command_execution_approval\",\"decision\":\"cancel\"}",
+          "created_at": "2026-10-23T23:17:42.282Z"
+        },
+        {
+          "kind": "approval.resolved",
+          "summary": "Approval resolved",
+          "payload_json": "{\"requestId\":\"67a291d7-424b-4d06-9c9f-9636ac2837d9\",\"requestKind\":\"command\",\"requestType\":\"command_execution_approval\"}",
+          "created_at": "2026-10-23T23:17:42.297Z"
+        },
+        {
+          "kind": "tool.completed",
+          "summary": "Tool",
+          "payload_json": "{\"itemType\":\"collab_agent_tool_call\",\"detail\":\"<no background agents>\",\"data\":{\"toolName\":\"list_agents\"}}",
+          "created_at": "2026-10-23T23:17:42.310Z"
+        },
+        {
+          "kind": "tool.completed",
+          "summary": "Tool",
+          "payload_json": "{\"itemType\":\"command_execution\",\"detail\":\"The user rejected this tool call. User feedback: Request cancelled by user.\",\"data\":{\"toolName\":\"bash\"}}",
+          "created_at": "2026-10-23T23:17:42.318Z"
+        },
+        {
+          "kind": "tool.started",
+          "summary": "Subagent task started",
+          "payload_json": "{\"itemType\":\"collab_agent_tool_call\",\"detail\":\"task: {\\\"description\\\":\\\"Worker A native delegation test\\\",\\\"prompt\\\":\\\"Reply exactly: NATIVE_A_1017\\\",\\\"agent_type\\\":\\\"task\\\",\\\"name\\\":\\\"worker-a\\\",\\\"mode\\\":\\\"sync\\\"}\"}",
+          "created_at": "2026-10-23T23:17:45.689Z"
+        },
+        {
+          "kind": "tool.started",
+          "summary": "Subagent task started",
+          "payload_json": "{\"itemType\":\"collab_agent_tool_call\",\"detail\":\"task: {\\\"description\\\":\\\"Worker B native delegation test\\\",\\\"prompt\\\":\\\"Reply exactly: NATIVE_B_1017\\\",\\\"agent_type\\\":\\\"task\\\",\\\"name\\\":\\\"worker-b\\\",\\\"mode\\\":\\\"sync\\\"}\"}",
+          "created_at": "2026-10-23T23:17:45.693Z"
+        },
+        {
+          "kind": "task.started",
+          "summary": "task task started",
+          "payload_json": "{\"taskId\":\"call_dHJnzD9JYCNOq4U7639lsI73\",\"taskType\":\"task\",\"detail\":\"Task Agent\",\"agentId\":\"call_dHJnzD9JYCNOq4U7639lsI73\",\"model\":\"mai-code-1.1-flash\",\"parentToolCallId\":\"call_dHJnzD9JYCNOq4U7639lsI73\"}",
+          "created_at": "2026-10-23T23:17:45.705Z"
+        },
+        {
+          "kind": "task.started",
+          "summary": "task task started",
+          "payload_json": "{\"taskId\":\"call_Y3et6Sy5ApHvakCBS44cyHfy\",\"taskType\":\"task\",\"detail\":\"Task Agent\",\"agentId\":\"call_Y3et6Sy5ApHvakCBS44cyHfy\",\"model\":\"mai-code-1.1-flash\",\"parentToolCallId\":\"call_Y3et6Sy5ApHvakCBS44cyHfy\"}",
+          "created_at": "2026-10-23T23:17:45.711Z"
+        },
+        {
+          "kind": "tool.completed",
+          "summary": "Tool stopped",
+          "payload_json": "{\"synthetic\":true,\"status\":\"stopped\",\"mayStillBeRunning\":false,\"itemId\":\"call_dHJnzD9JYCNOq4U7639lsI73\",\"detail\":\"Subagent task\"}",
+          "created_at": "2026-10-23T23:17:47.469Z"
+        },
+        {
+          "kind": "tool.completed",
+          "summary": "Tool stopped",
+          "payload_json": "{\"synthetic\":true,\"status\":\"stopped\",\"mayStillBeRunning\":false,\"itemId\":\"call_Y3et6Sy5ApHvakCBS44cyHfy\",\"detail\":\"Subagent task\"}",
+          "created_at": "2026-10-23T23:17:47.469Z"
+        },
+        {
+          "kind": "task.completed",
+          "summary": "Task orphaned",
+          "payload_json": "{\"synthetic\":true,\"status\":\"orphaned\",\"mayStillBeRunning\":true,\"taskId\":\"call_dHJnzD9JYCNOq4U7639lsI73\",\"detail\":\"Task Agent\"}",
+          "created_at": "2026-10-23T23:17:47.469Z"
+        },
+        {
+          "kind": "task.completed",
+          "summary": "Task orphaned",
+          "payload_json": "{\"synthetic\":true,\"status\":\"orphaned\",\"mayStillBeRunning\":true,\"taskId\":\"call_Y3et6Sy5ApHvakCBS44cyHfy\",\"detail\":\"Task Agent\"}",
+          "created_at": "2026-10-23T23:17:47.469Z"
+        },
+        {
+          "kind": "task.completed",
+          "summary": "Task completed",
+          "payload_json": "{\"taskId\":\"call_Y3et6Sy5ApHvakCBS44cyHfy\",\"status\":\"completed\",\"detail\":\"Task Agent\",\"usage\":{\"toolCallId\":\"call_Y3et6Sy5ApHvakCBS44cyHfy\",\"agentName\":\"task\",\"agentDisplayName\":\"Task Agent\",\"model\":\"mai-code-1.1-flash\",\"totalToolCalls\":0,\"durationMs\":1730},\"agentId\":\"call_Y3et6Sy5ApHvakCBS44cyHfy\"}",
+          "created_at": "2026-10-23T23:17:47.471Z"
+        },
+        {
+          "kind": "task.completed",
+          "summary": "Task completed",
+          "payload_json": "{\"taskId\":\"call_dHJnzD9JYCNOq4U7639lsI73\",\"status\":\"completed\",\"detail\":\"Task Agent\",\"usage\":{\"toolCallId\":\"call_dHJnzD9JYCNOq4U7639lsI73\",\"agentName\":\"task\",\"agentDisplayName\":\"Task Agent\",\"model\":\"mai-code-1.1-flash\",\"totalToolCalls\":0,\"durationMs\":1730},\"agentId\":\"call_dHJnzD9JYCNOq4U7639lsI73\"}",
+          "created_at": "2026-10-23T23:17:47.480Z"
+        }
+      ],
+      "interruptions": [
+        {
+          "event_type": "thread.turn-interrupt-requested",
+          "payload_json": "{\"threadId\":\"33d6470d-2936-422c-b914-76b33b5fb16b\",\"turnId\":\"f46c2042-8d71-43b5-8772-b344988d9ade\",\"createdAt\":\"2026-10-23T23:17:47.406Z\"}",
+          "occurred_at": "2026-10-23T23:17:47.406Z"
+        }
+      ]
+    }
+  ]
+}

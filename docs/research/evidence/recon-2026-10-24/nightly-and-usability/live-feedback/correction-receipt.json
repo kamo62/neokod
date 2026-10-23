@@ -1,0 +1,39 @@
+{
+  "status": "prepared-not-executed",
+  "sourceHead": "85a4acfe5a35e04467758be7b95bde2e3491aadf",
+  "scriptSha256": "ae5713079978cf6ef385c52f87b92bed255e18390ec31917a68b7363b1f084f5",
+  "priorScriptSha256": "1eba7a15e160d3371d453fe23b4cfd1bb0c5cec2c2ed59623e7c1adf69ea3601",
+  "preparationExit": 0,
+  "preparationAssertions": {
+    "node24": true,
+    "codexBinaryPresent": true,
+    "sourceClean": true,
+    "sourceMarkerPresent": true,
+    "sourceMarkerAccepted": true,
+    "featureDefaultDisabled": true,
+    "featureWrapperProbeEnabled": true,
+    "configSchemaValid": true,
+    "acceptedGuidanceSchemaValid": true,
+    "importResolutionOk": true
+  },
+  "blockers": [],
+  "corrections": [
+    "retarget only temp fixture imports and marker to clean integrated 85a4acfe5",
+    "Effect.timeoutOption for Option.match metadata readback",
+    "two valid 2-option model questions with short headers and explicit ids",
+    "second exact custom string submitted via native Other support",
+    "answer assertions match exact question ids regardless of provider ordering"
+  ],
+  "proofBoundary": "No no-options live proof possible with this model tool; no-options remains contract/test evidence only. No live call executed by this agent. Prior failed receipts untouched.",
+  "retained": [
+    "same authorised turn continuation",
+    "separate stage approval hold",
+    "reloaded answer state, delivery unknown, exact values",
+    "second turn same thread, no Resume",
+    "model/provider/autonomy pins",
+    "isolated auth and owned child cleanup",
+    "all existing failure blockers except obsolete no-options shape requirement"
+  ],
+  "applicationSourceChanged": false,
+  "buildInstallDeploy": false
+}

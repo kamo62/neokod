@@ -25,7 +25,7 @@ interface SymphonyNavItem {
 }
 
 // Global Symphony navigation stays deliberately small. Project-specific
-// board, run, attention, history, and settings tabs live in the project view.
+// Work, History and Settings sections live in the project view.
 const SYMPHONY_NAV_ITEMS: readonly SymphonyNavItem[] = [
   { label: "Projects", to: "/symphony", icon: FolderKanbanIcon },
   { label: "Tracker connections", to: "/symphony/trackers", icon: TagsIcon },

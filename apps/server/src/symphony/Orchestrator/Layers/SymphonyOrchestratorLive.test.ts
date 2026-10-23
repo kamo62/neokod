@@ -1,6 +1,7 @@
 import type {
   EffectiveWorkflowConfig,
   EvidenceBundle,
+  IsoDateTime,
   NormalizedIssue,
   PullRequestEvidence,
   SymphonyProjectConfiguration,
@@ -57,6 +58,7 @@ import {
   SymphonyOrchestratorLive,
   modelReviewAllowsMerge,
   providerForRemoteUrl,
+  trackerSourceMismatch,
 } from "./SymphonyOrchestratorLive.ts";
 import { RunDispatcher, RunDispatchError } from "../../Runner/Dispatcher.ts";
 import { PullRequestService } from "../../Evidence/PullRequest.ts";
@@ -212,13 +214,76 @@ const makeIssue = (
   priority: 1,
   state,
   branchName: null,
-  url: null,
+  url: `https://github.com/owner/repo/issues/${id}`,
   assigneeId: null,
   labels,
   blockedBy: [],
   dispatchable: true,
   createdAt: null,
   updatedAt: null,
+});
+
+it("qualified tracker source rejects scope changes and preserves manual provenance", () => {
+  const baseItem: WorkItem = {
+    id: WorkItemId.make("source-identity-item"),
+    mode: "symphony",
+    objective: "Source identity",
+    acceptanceCriteria: [],
+    source: {
+      kind: "github",
+      externalId: "1",
+      externalUrl: "https://github.com/owner-a/repo-a/issues/1",
+    },
+    trackerIssueId: "1",
+    lifecycle: "queued",
+    eligibilityReasons: [],
+    evidence: null,
+    createdAt: "2026-10-23T00:00:00.000Z",
+    updatedAt: "2026-10-23T00:00:00.000Z",
+  };
+  const issueAt = (url: string | null): NormalizedIssue => ({ ...makeIssue("1"), url });
+
+  expect(
+    trackerSourceMismatch(
+      baseItem,
+      issueAt("https://github.com/owner-b/repo-b/issues/1"),
+      makeConfig("/repo"),
+    ),
+  ).toContain("scope changed");
+  expect(
+    trackerSourceMismatch(
+      { ...baseItem, source: { kind: "manual" } },
+      issueAt(null),
+      makeConfig("/repo"),
+    ),
+  ).toBeNull();
+  expect(
+    trackerSourceMismatch(
+      {
+        ...baseItem,
+        source: { kind: "github", externalId: "1", externalUrl: "" },
+      },
+      issueAt(null),
+      makeConfig("/repo"),
+    ),
+  ).toContain("cannot be established");
+  expect(
+    trackerSourceMismatch(
+      baseItem,
+      issueAt("https://github.com/owner-a/repo-a/issues/1"),
+      makeConfig("/repo"),
+    ),
+  ).toBeNull();
+  expect(
+    trackerSourceMismatch(
+      {
+        ...baseItem,
+        source: { kind: "linear", externalId: "1", externalUrl: "https://linear.app/a" },
+      },
+      issueAt("https://linear.app/a"),
+      makeConfig("/repo"),
+    ),
+  ).toContain("kind changed");
 });
 
 const pollCountsByRepository = new Map<string, number>();
@@ -264,6 +329,8 @@ const settle = Effect.repeat(Effect.yieldNow, { times: 50 });
 // actually reaches the dispatcher, not just that a dispatch happened).
 const dispatchedInputs: Array<{
   readonly workItemId: string;
+  readonly workflowId?: string;
+  readonly workflowRevision?: string;
   readonly reviewFeedback?: ReviewFeedbackContext;
   readonly workflowInstructions?: string;
 }> = [];
@@ -275,6 +342,8 @@ const mockDispatcherLayer = Layer.effect(
     return {
       dispatchWorkItem: (input: {
         readonly workItem: { readonly id: WorkItemId };
+        readonly workflowId?: WorkflowId;
+        readonly workflowRevision?: IsoDateTime;
         readonly reviewFeedback?: ReviewFeedbackContext;
         readonly workflowInstructions?: string;
       }) =>
@@ -284,6 +353,10 @@ const mockDispatcherLayer = Layer.effect(
               dispatchedIds.push(String(input.workItem.id));
               dispatchedInputs.push({
                 workItemId: String(input.workItem.id),
+                ...(input.workflowId !== undefined ? { workflowId: input.workflowId } : {}),
+                ...(input.workflowRevision !== undefined
+                  ? { workflowRevision: input.workflowRevision }
+                  : {}),
                 ...(input.reviewFeedback !== undefined
                   ? { reviewFeedback: input.reviewFeedback }
                   : {}),
@@ -307,13 +380,20 @@ const mockDispatcherLayer = Layer.effect(
           Effect.mapError((cause) => new RunDispatchError(cause.message)),
           Effect.as("run-mock" as RunAttemptId),
         ),
-      cancelRun: () => Effect.void,
+      cancelRun: (runAttemptId) =>
+        Effect.succeed({
+          status: "confirmed",
+          runAttemptId,
+          evidence: "no_owner_recorded",
+          released: false,
+        } as const),
       isAgentActive: () => Effect.succeed(false),
-      stopAllRuns: () => Effect.succeed(0),
+      stopAllRuns: () => Effect.succeed({ confirmed: 0, held: 0 }),
     } satisfies RunDispatcher["Service"];
   }),
 );
 
+let reconciledDeliveryCalls = 0;
 const mockApprovalsLayer = Layer.effect(
   ApprovalService,
   Effect.gen(function* () {
@@ -336,6 +416,21 @@ const mockApprovalsLayer = Layer.effect(
         repository.decide(requestId, "expired").pipe(Effect.catch(() => Effect.void)),
       interrupt: (requestId) =>
         repository.decide(requestId, "interrupted").pipe(Effect.catch(() => Effect.void)),
+      reconcileUncertainDeliveries: () =>
+        Effect.gen(function* () {
+          reconciledDeliveryCalls += 1;
+          const rows = yield* repository.listDelivering().pipe(Effect.orElseSucceed(() => []));
+          let reconciled = 0;
+          const failedIds: string[] = [];
+          for (const row of rows) {
+            const result = yield* Effect.result(
+              repository.reconcileDelivery(row.id, "interrupted"),
+            );
+            if (result._tag === "Success") reconciled += 1;
+            else failedIds.push(row.id);
+          }
+          return { reconciled, failedIds };
+        }),
       expireRequest: (runAttemptId, requestId) =>
         repository.listForRun(runAttemptId).pipe(
           Effect.flatMap((records) => {
@@ -978,6 +1073,13 @@ layer("SymphonyOrchestrator Observe", (it) => {
 
       expect(dispatchedIds).toHaveLength(1);
       expect(dispatchedInputs[0]?.workflowInstructions).toBe("Implement.");
+      const workflows = yield* WorkflowRepository;
+      const workflow = yield* workflows.getById(WorkflowId.make("wf-execute-1"));
+      if (workflow === null) {
+        throw new Error("expected the execute workflow to exist");
+      }
+      expect(dispatchedInputs[0]?.workflowId).toBe("wf-execute-1");
+      expect(dispatchedInputs[0]?.workflowRevision).toBe(workflow.updatedAt);
       const workItems = yield* WorkItemRepository;
       const dispatched = yield* workItems.getById(WorkItemId.make(dispatchedIds[0] ?? "missing"));
       expect(dispatched?.lifecycle).toBe("preparing");
@@ -1321,7 +1423,9 @@ layer("SymphonyOrchestrator Observe", (it) => {
       expect(details?.attentionItems).toEqual([]);
       const answeredRow = details?.approvalRequests.find((request) => request.id === answered.id);
       expect(answeredRow?.kind).toBe("user_input");
-      expect(answeredRow?.state).toBe("approved");
+      // Shared feedback dependency (S4): a user-input answer is `answered`,
+      // never presented as a permission approval.
+      expect(answeredRow?.state).toBe("answered");
       expect(answeredRow?.reason).toBe("Which branch should I target?");
       expect(answeredRow?.decidedAt).not.toBeNull();
       expect(details?.approvalRequests.find((request) => request.id === expired.id)?.state).toBe(
@@ -1331,6 +1435,59 @@ layer("SymphonyOrchestrator Observe", (it) => {
         details?.approvalRequests.find((request) => request.id === interrupted.id)?.state,
       ).toBe("interrupted");
       expect(yield* Schema.encodeUnknownEffect(RunDetailsSchema)(details)).toBeDefined();
+    }),
+  );
+
+  it.effect("getRun exposes exact confirmed Stop closure from the authoritative event", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      const workItems = yield* WorkItemRepository;
+      const runAttempts = yield* RunAttemptRepository;
+      const runEvents = yield* RunEventRepository;
+      const workItemId = WorkItemId.make("stop-closure-run-1");
+      yield* workItems.upsert({
+        id: workItemId,
+        mode: "symphony",
+        projectId: TEST_PROJECT_ID,
+        objective: "Stop closure target",
+        acceptanceCriteria: [],
+        source: { kind: "manual" },
+        trackerIssueId: "stop-closure-run-1",
+        lifecycle: "cancelled",
+        priority: 1,
+        eligibilityReasons: [],
+        evidence: null,
+        createdAt: "2026-08-05T00:00:00.000Z",
+        updatedAt: "2026-08-05T00:00:00.000Z",
+      });
+      const runAttemptId = RunAttemptId.make("run-stop-closure-1");
+      yield* runAttempts.create({
+        id: runAttemptId,
+        workItemId,
+        attemptNumber: 1,
+        workspacePath: "/ws/stop-closure-run-1",
+        provider: {
+          instanceId: ProviderInstanceId.make("codex_default"),
+          driver: ProviderDriverKind.make("codex"),
+        },
+        status: "user_cancelled",
+        startedAt: "2026-08-05T00:00:00.000Z",
+        finishedAt: "2026-08-05T00:05:00.000Z",
+        error: null,
+      });
+      const confirmed = yield* runEvents.append(runAttemptId, "stop_confirmed", {
+        workItemId: String(workItemId),
+        closure: "group_terminated",
+        released: true,
+      });
+
+      const details = yield* orchestrator.getRun(String(runAttemptId));
+      expect(details?.runAttempt.stopClosure).toEqual({
+        state: "confirmed",
+        runAttemptId,
+        observedAt: confirmed.occurredAt,
+        source: "recovery.stop_confirmed",
+      });
     }),
   );
 
@@ -4574,13 +4731,17 @@ layer("SymphonyOrchestrator leadership", (it) => {
         acceptanceCriteria: [],
         source: { kind: "manual" },
         trackerIssueId: `manual-${id}`,
-        lifecycle: "running",
+        lifecycle: "queued",
         priority: 1,
         eligibilityReasons: [],
         evidence: null,
-        claimedAt: now,
         createdAt: now,
         updatedAt: now,
+      });
+      const claimed = yield* workItems.claim(WorkItemId.make(id), "leadership-owner");
+      yield* workItems.transition(WorkItemId.make(id), "running", {
+        ownerToken: "leadership-owner",
+        generation: claimed.generation,
       });
       const runAttempts = yield* RunAttemptRepository;
       const startedAt = yield* nowIso;
@@ -4598,6 +4759,12 @@ layer("SymphonyOrchestrator leadership", (it) => {
         startedAt,
         finishedAt: null,
         error: null,
+      });
+      const runEvents = yield* RunEventRepository;
+      yield* runEvents.append(runAttemptId, "issue_claimed", {
+        workItemId: id,
+        ownerToken: "leadership-owner",
+        generation: claimed.generation,
       });
       return { workItemId: WorkItemId.make(id), runAttemptId };
     });
@@ -4651,13 +4818,46 @@ layer("SymphonyOrchestrator leadership", (it) => {
   it.effect("a follower takes the lock when the lease expires and then runs recovery", () =>
     Effect.gen(function* () {
       if (second === null) throw new Error("second orchestrator missing");
-      const { runAttemptId } = yield* seedHeldRun("lead-2");
+      const { workItemId, runAttemptId } = yield* seedHeldRun("lead-2");
+      const stagedRepository = yield* ApprovalRepository;
+      const staged = yield* stagedRepository.create({
+        id: "lead-2-staged-delivery",
+        requestId: "lead-2-staged-request",
+        workItemId: String(workItemId),
+        runAttemptId,
+        action: "user_input",
+        scope: "current_run",
+        reason: "Which branch?",
+      });
+      yield* stagedRepository.stageDelivery(staged.id, "answered", {
+        answer: {
+          answers: [{ questionId: "q1", answer: "main" }],
+          delivery: "unknown",
+          actor: "local_operator",
+          recordedAt: yield* nowIso,
+        },
+      });
       const sql = yield* SqlClient.SqlClient;
       yield* sql`UPDATE symphony_orchestrator_state SET lock_expires_at = '1969-01-01T00:00:00.000Z'`;
       yield* second.refreshNow();
       expect((yield* second.getOverview()).orchestratorRole).toBe("leader");
       const runAttempts = yield* RunAttemptRepository;
-      expect((yield* runAttempts.getById(runAttemptId))?.status).toBe("interrupted");
+      // A bound attempt with no persisted child identity is not proof that no
+      // child exists; startup recovery holds it rather than interrupting.
+      expect((yield* runAttempts.getById(runAttemptId))?.status).toBe("streaming_turn");
+      const runEvents = yield* RunEventRepository;
+      expect(
+        (yield* runEvents.listForAttempt(runAttemptId)).some(
+          (event) => event.eventType === "recovery_hold",
+        ),
+      ).toBe(true);
+      // The same authoritative startup recovery reconciles uncertain staged
+      // deliveries before any worker can answer, preserving delivery-unknown.
+      const reconciledRow = yield* stagedRepository.getById(staged.id);
+      expect(reconciledRow?.state).toBe("interrupted");
+      expect(reconciledRow?.decision).toBe("answered");
+      expect(reconciledRow?.answer?.delivery).toBe("unknown");
+      expect(reconciledRow?.answer?.answers).toEqual([{ questionId: "q1", answer: "main" }]);
       const first = yield* SymphonyOrchestrator;
       yield* first.refreshNow();
       expect((yield* first.getOverview()).orchestratorRole).toBe("follower");

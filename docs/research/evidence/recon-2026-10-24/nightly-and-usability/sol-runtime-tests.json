@@ -1,0 +1,166 @@
+{
+  "sourceHead": "85a4acfe5a35e04467758be7b95bde2e3491aadf",
+  "sourceTree": "5f991f7d70adbcdb26b7a2cd4db6bd3aff8b437a",
+  "worktree": "/Users/kamogelo/.codex/worktrees/neokod-core-execution/t3code",
+  "node": "24.22.1",
+  "viteTest": "4.1.9",
+  "completedAt": "2026-10-23T22:26:21.721377+00:00",
+  "totalPassed": 672,
+  "totalFiles": 42,
+  "failed": 0,
+  "results": [
+    {
+      "name": "thread-orchestration",
+      "cwd": "/Users/kamogelo/.codex/worktrees/neokod-core-execution/t3code/apps/server",
+      "command": [
+        "vp",
+        "test",
+        "run",
+        "src/orchestration/Layers/OrchestrationEngine.test.ts",
+        "src/orchestration/Layers/ProviderRuntimeIngestion.test.ts",
+        "src/orchestration/Layers/TurnSettlementReactor.test.ts",
+        "src/orchestration/Layers/ProjectionPipeline.test.ts",
+        "src/orchestration/Layers/ProviderCommandReactor.test.ts",
+        "src/orchestration/RuntimeItemProjection.test.ts",
+        "src/orchestration/decider.runtimeItems.test.ts",
+        "src/orchestration/commandInvariants.test.ts",
+        "src/mcp/McpSessionRegistry.test.ts",
+        "src/mcp/McpInvocationContext.test.ts",
+        "src/mcp/McpHttpServer.test.ts"
+      ],
+      "exitCode": 0,
+      "passed": 189,
+      "files": 11,
+      "log": "/tmp/neokod-nightly-audit-2026-10-24/thread-orchestration-tests.log",
+      "sha256": "82293fda8b0427bac6184b300a47781c604076e231077c77718f7229751ec533"
+    },
+    {
+      "name": "symphony-expanded",
+      "cwd": "/Users/kamogelo/.codex/worktrees/neokod-core-execution/t3code/apps/server",
+      "command": [
+        "vp",
+        "test",
+        "run",
+        "src/symphony/Runner/RunnerFlow.test.ts",
+        "src/symphony/Runner/testkit/FakeCodexPeer.test.ts",
+        "src/symphony/Validation/Runner.test.ts",
+        "src/symphony/Orchestrator/Eligibility.test.ts",
+        "src/symphony/Orchestrator/Retry.test.ts",
+        "src/symphony/Orchestrator/Projection.test.ts",
+        "src/symphony/Orchestrator/ProjectBoard.test.ts",
+        "src/symphony/NotificationCoordinator.test.ts",
+        "src/symphony/Trackers/Registry.test.ts",
+        "src/symphony/Trackers/SettingsOverlay.test.ts",
+        "src/symphony/Persistence/Layers/OrchestratorStateRepository.test.ts",
+        "src/symphony/Workflow/Config.test.ts",
+        "src/symphony/Workflow/Parser.test.ts",
+        "src/symphony/Evidence/Service.test.ts",
+        "src/symphony/Evidence/PullRequest.test.ts"
+      ],
+      "exitCode": 0,
+      "passed": 121,
+      "files": 15,
+      "log": "/tmp/neokod-nightly-audit-2026-10-24/symphony-expanded-tests.log",
+      "sha256": "3ae1f5ea5897b5affbec726cc87019ae54b79679b4992d615688f110bdfe2be0"
+    },
+    {
+      "name": "provider-orchestration",
+      "cwd": "/Users/kamogelo/.codex/worktrees/neokod-core-execution/t3code/apps/server",
+      "command": [
+        "vp",
+        "test",
+        "run",
+        "src/provider/Layers/ProviderService.test.ts",
+        "src/provider/Layers/CodexAdapter.test.ts",
+        "src/provider/Layers/ClaudeAdapter.test.ts",
+        "src/provider/Layers/OpenCodeAdapter.test.ts",
+        "src/provider/copilot/CopilotAdapter.test.ts"
+      ],
+      "exitCode": 0,
+      "passed": 219,
+      "files": 5,
+      "log": "/tmp/neokod-nightly-audit-2026-10-24/provider-orchestration-tests.log",
+      "sha256": "72b1c1ad4259971456db753ee7f9d80ab4a5e916589babcbd30a66f525bbd246"
+    },
+    {
+      "name": "web-orchestration",
+      "cwd": "/Users/kamogelo/.codex/worktrees/neokod-core-execution/t3code/apps/web",
+      "command": [
+        "vp",
+        "test",
+        "run",
+        "--project",
+        "unit",
+        "src/session-logic.subagents.test.ts",
+        "src/subagentUiStore.test.ts",
+        "src/notifications/activityNotifications.logic.test.ts",
+        "src/notifications/browserNotification.test.ts",
+        "src/orchestrationRecovery.test.ts",
+        "src/orchestrationEventEffects.test.ts"
+      ],
+      "exitCode": 0,
+      "passed": 59,
+      "files": 6,
+      "log": "/tmp/neokod-nightly-audit-2026-10-24/web-orchestration-tests.log",
+      "sha256": "96612d5627dd78c05ebc22833ef9013f686cd144979f44ab547d88784174dc39"
+    },
+    {
+      "name": "protocol-orchestration",
+      "cwd": "/Users/kamogelo/.codex/worktrees/neokod-core-execution/t3code",
+      "command": [
+        "vp",
+        "test",
+        "run",
+        "packages/contracts/src/orchestration.test.ts",
+        "packages/effect-codex-app-server/src/client.test.ts",
+        "packages/effect-codex-app-server/src/protocol.test.ts"
+      ],
+      "exitCode": 0,
+      "passed": 52,
+      "files": 3,
+      "log": "/tmp/neokod-nightly-audit-2026-10-24/protocol-orchestration-tests.log",
+      "sha256": "832089e6b4caaa5176e99da2737644feec414fa623640367cdce8769e8ca2d18"
+    },
+    {
+      "name": "web-lifecycle",
+      "cwd": "/Users/kamogelo/.codex/worktrees/neokod-core-execution/t3code/apps/web",
+      "command": [
+        "vp",
+        "test",
+        "run",
+        "--project",
+        "unit",
+        "src/components/SubagentsPanel.test.ts",
+        "src/components/threadLifecycle.logic.test.ts"
+      ],
+      "exitCode": 0,
+      "passed": 32,
+      "files": 2,
+      "log": "/tmp/neokod-nightly-audit-2026-10-24/web-lifecycle-tests.log",
+      "sha256": "33ca158b5ed6b7d23aaf350cbd2a5cf1294e6ced14dddc97c95fb8730fd6fe05"
+    }
+  ],
+  "priorSourceChecksReused": {
+    "head": "14df4db593a0cde408fc3294f481bca9cd3f183c",
+    "vpCheck": {
+      "exitCode": 0,
+      "errors": 0,
+      "warnings": 54
+    },
+    "typecheck": {
+      "exitCode": 0,
+      "packages": 10
+    },
+    "priorInitialTests": 535,
+    "postCorrectionTests": 163,
+    "receipt": "docs/research/evidence/recon-2026-10-23/implementation-run/composition-final-checks.json",
+    "reuseReason": "git diff shows only plan/evidence documentation since accepted head; apps/packages/scripts/toolchain/lockfile unchanged"
+  },
+  "applicationSourceChanged": false,
+  "noBuildInstallPackageDeploy": true,
+  "noProductionWrites": true,
+  "noLiveProviderCallsByAgent": true,
+  "managedDelegation": "not implemented; W6 gated",
+  "tempProbe": "live-proof/correction-receipt.json",
+  "memoryUsed": "MEMORY.md:20-25,1157-1160; verified current source/plan before conclusions"
+}

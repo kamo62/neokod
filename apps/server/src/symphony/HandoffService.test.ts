@@ -87,16 +87,68 @@ const fakeDispatcher = Layer.effect(
   RunDispatcher,
   Effect.gen(function* () {
     const attempts = yield* RunAttemptRepository;
+    const workItems = yield* WorkItemRepository;
     return {
       dispatchWorkItem: () => Effect.never,
       cancelRun: (runAttemptId) =>
-        attempts
-          .updateStatus(runAttemptId, "user_cancelled", {
-            finishedAt: "2026-08-05T01:00:00.000Z",
-          })
-          .pipe(Effect.catch(() => Effect.void)),
+        Effect.gen(function* () {
+          const attempt = yield* attempts
+            .getById(runAttemptId)
+            .pipe(Effect.catch(() => Effect.succeed(null)));
+          yield* attempts
+            .updateStatus(runAttemptId, "user_cancelled", {
+              finishedAt: "2026-08-05T01:00:00.000Z",
+            })
+            .pipe(Effect.catch(() => Effect.void));
+          if (attempt === null) {
+            return {
+              status: "confirmed" as const,
+              runAttemptId,
+              evidence: "no_owner_recorded" as const,
+              released: false,
+            };
+          }
+          const ownership = yield* workItems
+            .getClaimOwnership(attempt.workItemId)
+            .pipe(Effect.catch(() => Effect.succeed(null)));
+          if (ownership !== null && ownership.ownerToken !== null) {
+            const released = yield* workItems
+              .releaseConfirmedStop(attempt.workItemId, {
+                ownerToken: ownership.ownerToken,
+                generation: ownership.generation,
+                ownerPid: ownership.ownerPid,
+                ownerPgid: ownership.ownerPgid,
+                ownerBirthToken: ownership.ownerBirthToken,
+              })
+              .pipe(Effect.catch(() => Effect.succeed(false)));
+            return {
+              status: "confirmed" as const,
+              runAttemptId,
+              evidence: "no_owner_recorded" as const,
+              released,
+              ...(released ? { releasedGeneration: ownership.generation + 1 } : {}),
+            };
+          }
+          // Legacy fixtures without a claim still exercise the real
+          // cancelled lifecycle shape that takeover must park.
+          if (ownership !== null) {
+            yield* workItems
+              .transition(attempt.workItemId, "cancelled", {
+                from: [ownership.lifecycle],
+                overrideFence: true,
+              })
+              .pipe(Effect.catch(() => Effect.succeed(false)));
+          }
+          return {
+            status: "confirmed" as const,
+            runAttemptId,
+            evidence: "no_owner_recorded" as const,
+            released: true,
+            ...(ownership !== null ? { releasedGeneration: ownership.generation } : {}),
+          };
+        }),
       isAgentActive: () => Effect.succeed(false),
-      stopAllRuns: () => Effect.succeed(0),
+      stopAllRuns: () => Effect.succeed({ confirmed: 0, held: 0 }),
     } satisfies RunDispatcher["Service"];
   }),
 );
@@ -149,7 +201,12 @@ const layer = it.layer(
     Layer.provideMerge(RunEventRepositoryLive),
     Layer.provideMerge(WorkflowRepositoryLive),
     Layer.provideMerge(WorkspaceOwnershipRepositoryLive),
-    Layer.provideMerge(fakeDispatcher.pipe(Layer.provide(RunAttemptRepositoryLive))),
+    Layer.provideMerge(
+      fakeDispatcher.pipe(
+        Layer.provide(RunAttemptRepositoryLive),
+        Layer.provide(WorkItemRepositoryLive),
+      ),
+    ),
     Layer.provideMerge(LiveRequestsLive),
     Layer.provideMerge(fakeGitLayer),
     Layer.provideMerge(fakeEngineLayer),
@@ -166,7 +223,12 @@ const bindingLayer = it.layer(
     Layer.provideMerge(RunEventRepositoryLive),
     Layer.provideMerge(WorkflowRepositoryLive),
     Layer.provideMerge(WorkspaceOwnershipRepositoryLive),
-    Layer.provideMerge(fakeDispatcher.pipe(Layer.provide(RunAttemptRepositoryLive))),
+    Layer.provideMerge(
+      fakeDispatcher.pipe(
+        Layer.provide(RunAttemptRepositoryLive),
+        Layer.provide(WorkItemRepositoryLive),
+      ),
+    ),
     Layer.provideMerge(LiveRequestsLive),
     Layer.provideMerge(fakeGitLayer),
     Layer.provideMerge(fakeEngineLayer),
@@ -195,6 +257,68 @@ layer("HandoffService takeOver", (it) => {
   );
 });
 
+const heldDispatcherLayer = Layer.succeed(RunDispatcher, {
+  dispatchWorkItem: () => Effect.never,
+  cancelRun: (runAttemptId: RunAttemptId) =>
+    Effect.succeed({
+      status: "held" as const,
+      runAttemptId,
+      reason: "unproven_group_identity",
+    }),
+  isAgentActive: () => Effect.succeed(false),
+  stopAllRuns: () => Effect.succeed({ confirmed: 0, held: 1 }),
+} as RunDispatcher["Service"]);
+
+const heldLayer = it.layer(
+  HandoffServiceLive.pipe(
+    Layer.provideMerge(WorkItemRepositoryLive),
+    Layer.provideMerge(RunAttemptRepositoryLive),
+    Layer.provideMerge(RunEventRepositoryLive),
+    Layer.provideMerge(WorkflowRepositoryLive),
+    Layer.provideMerge(WorkspaceOwnershipRepositoryLive),
+    Layer.provideMerge(heldDispatcherLayer),
+    Layer.provideMerge(LiveRequestsLive),
+    Layer.provideMerge(fakeGitLayer),
+    Layer.provideMerge(fakeEngineLayer),
+    Layer.provideMerge(fakeProjectionLayer),
+    Layer.provideMerge(SqlitePersistenceMemory),
+    Layer.provideMerge(NodeServices.layer),
+  ),
+);
+
+heldLayer("HandoffService held Stop refusal", (it) => {
+  it.effect("refuses takeover and never releases authority on an unconfirmed Stop", () =>
+    Effect.gen(function* () {
+      const workItem = makeWorkItem("wi-held", "queued");
+      const workItems = yield* WorkItemRepository;
+      yield* workItems.upsert(workItem);
+      const claimed = yield* workItems.claim(workItem.id, "owner-held");
+      yield* workItems.setClaimOwnerPid(workItem.id, "owner-held", claimed.generation, 777_001);
+      const attempts = yield* RunAttemptRepository;
+      yield* attempts.create(makeAttempt("run-held", "wi-held"));
+      const ownership = yield* WorkspaceOwnershipRepository;
+      yield* ownership.acquire({
+        workspacePath: "/ws/wi-1",
+        owner: "symphony",
+      });
+
+      const handoff = yield* HandoffService;
+      const result = yield* Effect.result(
+        handoff.takeOver({ runAttemptId: "run-held", threadId: "th-1" }),
+      );
+      expect(result._tag).toBe("Failure");
+      if (result._tag === "Failure") {
+        expect(result.failure.message).toContain("unconfirmed");
+      }
+      const after = yield* workItems.getById(workItem.id);
+      expect(after?.lifecycle).toBe("preparing");
+      expect(after?.ownerPid).toBe(777_001);
+      const held = yield* ownership.getByWorkspacePath("/ws/wi-1");
+      expect(held?.owner).toBe("symphony");
+    }),
+  );
+});
+
 const driftBindingLayer = it.layer(
   HandoffServiceLive.pipe(
     Layer.provideMerge(WorkItemRepositoryLive),
@@ -202,7 +326,12 @@ const driftBindingLayer = it.layer(
     Layer.provideMerge(RunEventRepositoryLive),
     Layer.provideMerge(WorkflowRepositoryLive),
     Layer.provideMerge(WorkspaceOwnershipRepositoryLive),
-    Layer.provideMerge(fakeDispatcher.pipe(Layer.provide(RunAttemptRepositoryLive))),
+    Layer.provideMerge(
+      fakeDispatcher.pipe(
+        Layer.provide(RunAttemptRepositoryLive),
+        Layer.provide(WorkItemRepositoryLive),
+      ),
+    ),
     Layer.provideMerge(LiveRequestsLive),
     Layer.provideMerge(
       Layer.succeed(GitVcsDriver, {
@@ -389,7 +518,12 @@ const busyProjectionLayer = it.layer(
     Layer.provideMerge(RunEventRepositoryLive),
     Layer.provideMerge(WorkflowRepositoryLive),
     Layer.provideMerge(WorkspaceOwnershipRepositoryLive),
-    Layer.provideMerge(fakeDispatcher.pipe(Layer.provide(RunAttemptRepositoryLive))),
+    Layer.provideMerge(
+      fakeDispatcher.pipe(
+        Layer.provide(RunAttemptRepositoryLive),
+        Layer.provide(WorkItemRepositoryLive),
+      ),
+    ),
     Layer.provideMerge(LiveRequestsLive),
     Layer.provideMerge(fakeGitLayer),
     Layer.provideMerge(fakeEngineLayer),

@@ -1,3 +1,5 @@
+import type { SymphonyStopAllResult } from "@neokod/contracts";
+
 export type GlobalAction = "pause" | "resume" | "stop";
 
 export interface DispatchOverviewSnapshot {
@@ -76,8 +78,35 @@ export function resolveDispatchDisplayState(input: {
   };
 }
 
-export function stopAllMessage(ok: boolean): string {
-  return ok ? "Stopped the running work." : "No runs were running.";
+const runCount = (value: number): string => `${value} ${value === 1 ? "run" : "runs"}`;
+
+/**
+ * Present the complete Stop-all acknowledgement. `ok` is never closure proof:
+ * legacy servers return only that boolean, so the result stays unknown. Held
+ * work keeps ownership and is never described as stopped or idle.
+ */
+export function stopAllMessage(result: SymphonyStopAllResult): string {
+  const { confirmed, held } = result;
+  if (confirmed === undefined && held === undefined) {
+    return result.ok
+      ? "Stop-all returned only a legacy acknowledgement. Closure is unknown; check the exact runs."
+      : "Stop-all returned no confirmed closure. Check the exact runs; ownership may be retained.";
+  }
+  if (confirmed === 0 && held === 0) {
+    return "No runs needed stopping.";
+  }
+  const parts: string[] = [];
+  if (confirmed === undefined) {
+    parts.push("confirmed count not reported");
+  } else {
+    parts.push(`${runCount(confirmed)} confirmed stopped`);
+  }
+  if (held === undefined) {
+    parts.push("held count not reported");
+  } else {
+    parts.push(`${runCount(held)} held with ownership retained`);
+  }
+  return `${parts.join("; ")}.`;
 }
 
 const GLOBAL_ACTION_LABEL: Readonly<Record<GlobalAction, string>> = {

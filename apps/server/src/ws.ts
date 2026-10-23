@@ -74,6 +74,8 @@ import {
   SymphonyRespondToUserInputInput,
   SymphonyResumeAutonomousInput,
   SymphonySetLocalPriorityInput,
+  SymphonyStopOutcomeSchema,
+  type SymphonyStopOutcome,
   SymphonyTakeOverInput,
   SymphonyActivateWorkflowInput,
   SymphonyValidateWorkflowInput,
@@ -422,13 +424,64 @@ const withApprovalService = <A, E>(
   Effect.serviceOption(ApprovalService.ApprovalService).pipe(
     Effect.flatMap((maybe) => (Option.isSome(maybe) ? run(maybe.value) : fallback)),
   );
-const approvalError = (message: string): SymphonyError =>
-  new SymphonyError({ code: "approval_request_not_found", message });
+const approvalError = (cause: { readonly message: string }): SymphonyError =>
+  new SymphonyError({
+    code:
+      cause instanceof ApprovalService.ApprovalAnswerValidationError
+        ? "invalid_answer"
+        : cause instanceof ApprovalService.ApprovalHistoryPendingError
+          ? "approval_history_pending"
+          : "approval_request_not_found",
+    message: cause.message,
+  });
 const approvalUnavailable = (): SymphonyError =>
   new SymphonyError({
     code: "symphony_unavailable",
     message: "symphony approval layer is not mounted",
   });
+
+const decodeStopOutcome = Schema.decodeUnknownOption(SymphonyStopOutcomeSchema);
+
+/**
+ * Preserve an actual typed Stop acknowledgement. A missing value is unknown,
+ * not confirmed; `{ok:true}` alone is never stop proof.
+ */
+const stopResultFrom = (
+  value: unknown,
+): { readonly ok: boolean; outcome?: SymphonyStopOutcome } => {
+  const outcome = decodeStopOutcome(value);
+  if (Option.isSome(outcome)) {
+    return { ok: outcome.value.status === "confirmed", outcome: outcome.value };
+  }
+  // Absent/undecodable outcome is unknown, not success. Legacy servers and
+  // malformed values must never present a Stop as confirmed.
+  return { ok: false };
+};
+
+/**
+ * Stop-all preserves the legacy boolean for a numeric count and adds
+ * confirmed/held only when the server observed them. Held runs never count as
+ * stopped.
+ */
+const stopAllResultFrom = (
+  value: unknown,
+): { readonly ok: boolean; readonly confirmed?: number; readonly held?: number } => {
+  if (typeof value === "number") {
+    return { ok: value > 0 };
+  }
+  if (typeof value === "object" && value !== null) {
+    const record = value as { readonly confirmed?: unknown; readonly held?: unknown };
+    if (typeof record.confirmed === "number" && typeof record.held === "number") {
+      return {
+        ok: record.confirmed > 0 && record.held === 0,
+        confirmed: record.confirmed,
+        held: record.held,
+      };
+    }
+  }
+  // Unrecognised result is unknown, not success.
+  return { ok: false };
+};
 
 /** Actions must not report success when the Symphony layer is absent. */
 const orchestratorUnavailable = (): SymphonyError =>
@@ -1017,10 +1070,15 @@ export const makeSymphonyRpcHandlers = () => ({
       SYMPHONY_WS_METHODS.approve,
       withApprovalService(
         (approvals) =>
-          approvals.approve(input.requestId).pipe(
-            Effect.mapError((cause) => approvalError(cause.message)),
-            Effect.as({ ok: true }),
-          ),
+          approvals
+            .approve(input.requestId, {
+              ...(input.note !== undefined ? { note: input.note } : {}),
+              ...(input.runAttemptId !== undefined ? { runAttemptId: input.runAttemptId } : {}),
+            })
+            .pipe(
+              Effect.mapError((cause) => approvalError(cause)),
+              Effect.as({ ok: true }),
+            ),
         Effect.fail(approvalUnavailable()),
       ),
       { "rpc.aggregate": "symphony" },
@@ -1030,10 +1088,19 @@ export const makeSymphonyRpcHandlers = () => ({
       SYMPHONY_WS_METHODS.reject,
       withApprovalService(
         (approvals) =>
-          approvals.reject(input.requestId, input.reason).pipe(
-            Effect.mapError((cause) => approvalError(cause.message)),
-            Effect.as({ ok: true }),
-          ),
+          approvals
+            .reject(input.requestId, {
+              ...(input.note !== undefined
+                ? { note: input.note }
+                : input.reason !== undefined
+                  ? { note: input.reason }
+                  : {}),
+              ...(input.runAttemptId !== undefined ? { runAttemptId: input.runAttemptId } : {}),
+            })
+            .pipe(
+              Effect.mapError((cause) => approvalError(cause)),
+              Effect.as({ ok: true }),
+            ),
         Effect.fail(approvalUnavailable()),
       ),
       { "rpc.aggregate": "symphony" },
@@ -1045,10 +1112,16 @@ export const makeSymphonyRpcHandlers = () => ({
       SYMPHONY_WS_METHODS.respondToUserInput,
       withApprovalService(
         (approvals) =>
-          approvals.respondToUserInput(input.requestId, input.text).pipe(
-            Effect.mapError((cause) => approvalError(cause.message)),
-            Effect.as({ ok: true }),
-          ),
+          approvals
+            .respondToUserInput(input.requestId, {
+              ...(input.answers !== undefined ? { answers: input.answers } : {}),
+              ...(input.text !== undefined ? { text: input.text } : {}),
+              ...(input.runAttemptId !== undefined ? { runAttemptId: input.runAttemptId } : {}),
+            })
+            .pipe(
+              Effect.mapError((cause) => approvalError(cause)),
+              Effect.as({ ok: true }),
+            ),
         Effect.fail(approvalUnavailable()),
       ),
       { "rpc.aggregate": "symphony" },
@@ -1101,7 +1174,10 @@ export const makeSymphonyRpcHandlers = () => ({
     observeRpcEffect(
       SYMPHONY_WS_METHODS.cancelRun,
       withOrchestrator(
-        (orchestrator) => orchestrator.cancelRun(input.runAttemptId).pipe(Effect.as({ ok: true })),
+        (orchestrator) =>
+          orchestrator
+            .cancelRun(input.runAttemptId)
+            .pipe(Effect.map((value) => stopResultFrom(value))),
         Effect.fail(orchestratorUnavailable()),
       ),
       { "rpc.aggregate": "symphony" },
@@ -1179,7 +1255,7 @@ export const makeSymphonyRpcHandlers = () => ({
       input.confirm === "stop-all-runs"
         ? withOrchestrator(
             (orchestrator) =>
-              orchestrator.stopAllRuns().pipe(Effect.map((stopped) => ({ ok: stopped > 0 }))),
+              orchestrator.stopAllRuns().pipe(Effect.map((stopped) => stopAllResultFrom(stopped))),
             Effect.fail(orchestratorUnavailable()),
           )
         : Effect.fail(

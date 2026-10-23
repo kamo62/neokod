@@ -3,17 +3,22 @@ import {
   ProviderInstanceId,
   RunAttemptId,
   SymphonyProjectId,
+  WorkflowId,
   WorkItemId,
 } from "@neokod/contracts";
-import type { RunAttempt } from "@neokod/contracts";
+import type { AcceptedGuidanceSnapshot, RunAttempt } from "@neokod/contracts";
 import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import { nowIso } from "../../Domain/Time.ts";
 import { WorkItemRepository } from "../Services/WorkItemRepository.ts";
 import { WorkItemRepositoryLive } from "./WorkItemRepository.ts";
-import { RunAttemptRepository } from "../Services/RunAttemptRepository.ts";
+import {
+  RunAttemptRepository,
+  validateAcceptedGuidanceSnapshot,
+} from "../Services/RunAttemptRepository.ts";
 import { RunAttemptRepositoryLive } from "./RunAttemptRepository.ts";
 import { SqlitePersistenceMemory } from "../../../persistence/Layers/Sqlite.ts";
 
@@ -67,6 +72,63 @@ const makeAttempt = (id: string, workItemId: string, attemptNumber: number) =>
       error: null,
     } satisfies RunAttempt;
   });
+
+const makeAcceptedGuidance = (
+  overrides: Partial<AcceptedGuidanceSnapshot> = {},
+): AcceptedGuidanceSnapshot => ({
+  schemaVersion: 1,
+  acceptedAt: "2026-10-23T08:00:00.000Z",
+  digest: "sha256:accepted",
+  workflow: {
+    id: WorkflowId.make("wf-1"),
+    path: "/repo/WORKFLOW.md",
+    revision: "2026-10-22T09:00:00.000Z",
+    digest: "sha256:workflow",
+    instructions: "Follow the repository contribution policy.",
+    validationRequired: ["vp check"],
+  },
+  source: {
+    trackerId: "tracker-1",
+    kind: "github",
+    externalId: "1",
+    externalUrl: "https://example.test/issues/1",
+    identifier: "#1",
+    title: "Fix the login bug",
+    description: null,
+    acceptanceCriteria: [],
+    labels: ["agent-ready"],
+    revision: null,
+    digest: "sha256:source",
+  },
+  guidance: {
+    batch: { state: "absent" },
+    story: { state: "present", text: "" },
+    digest: "sha256:guidance",
+  },
+  target: {
+    repositoryPath: "/repo",
+    workflowPath: "/repo/WORKFLOW.md",
+    provider: {
+      instanceId: ProviderInstanceId.make("codex_default"),
+      driver: ProviderDriverKind.make("codex"),
+    },
+  },
+  permission: {
+    autonomy: "execute",
+    approvalPolicy: "on-request",
+    threadSandbox: "workspace-write",
+    turnSandboxPolicy: { type: "workspaceWrite" },
+    editsAllowed: true,
+    approvalsEnabled: true,
+    protectedPaths: [],
+    delivery: {
+      approvalBeforePush: null,
+      approvalBeforePullRequest: true,
+      approvalBeforeMerge: null,
+    },
+  },
+  ...overrides,
+});
 
 layer("RunAttemptRepository", (it) => {
   it.effect("creates, updates status, and lists by work item", () =>
@@ -201,4 +263,124 @@ layer("RunAttemptRepository", (it) => {
       expect(limited).toHaveLength(2);
     }),
   );
+
+  it.effect("round-trips accepted guidance and never replaces it", () =>
+    Effect.gen(function* () {
+      const repo = yield* RunAttemptRepository;
+      yield* seedWorkItem("wi-guidance");
+      const attempt = yield* makeAttempt("run-guidance", "wi-guidance", 1);
+      const acceptedGuidance = makeAcceptedGuidance();
+
+      const created = yield* repo.create({ ...attempt, acceptedGuidance });
+      expect(created.acceptedGuidance).toEqual(acceptedGuidance);
+
+      yield* repo.updateStatus(RunAttemptId.make("run-guidance"), "succeeded", {
+        finishedAt: attempt.startedAt,
+      });
+      const afterStatus = yield* repo.getById(RunAttemptId.make("run-guidance"));
+      expect(afterStatus?.acceptedGuidance).toEqual(acceptedGuidance);
+
+      const replacement = makeAcceptedGuidance({
+        acceptedAt: "2026-10-24T08:00:00.000Z",
+        digest: "sha256:replacement",
+        guidance: {
+          batch: { state: "present", text: "Different guidance." },
+          story: { state: "absent" },
+          digest: "sha256:replacement-guidance",
+        },
+      });
+      expect(afterStatus).not.toBeNull();
+      if (afterStatus === null) {
+        throw new Error("expected the run attempt to exist");
+      }
+      yield* repo.update({
+        ...afterStatus,
+        currentStage: "review",
+        acceptedGuidance: replacement,
+      });
+
+      const afterUpdate = yield* repo.getById(RunAttemptId.make("run-guidance"));
+      expect(afterUpdate?.currentStage).toBe("review");
+      expect(afterUpdate?.acceptedGuidance).toEqual(acceptedGuidance);
+    }),
+  );
+
+  it.effect("never backfills accepted guidance through update", () =>
+    Effect.gen(function* () {
+      const repo = yield* RunAttemptRepository;
+      yield* seedWorkItem("wi-legacy-guidance");
+      const attempt = yield* makeAttempt("run-legacy-guidance", "wi-legacy-guidance", 1);
+      yield* repo.create(attempt);
+
+      const legacy = yield* repo.getById(RunAttemptId.make("run-legacy-guidance"));
+      expect(legacy?.acceptedGuidance).toBeUndefined();
+      if (legacy === null) {
+        throw new Error("expected the legacy run attempt to exist");
+      }
+
+      yield* repo.update({
+        ...legacy,
+        acceptedGuidance: makeAcceptedGuidance(),
+      });
+      const afterUpdate = yield* repo.getById(RunAttemptId.make("run-legacy-guidance"));
+      expect(afterUpdate?.acceptedGuidance).toBeUndefined();
+    }),
+  );
+
+  it.effect("rejects an invalid snapshot at create and on read", () =>
+    Effect.gen(function* () {
+      const repo = yield* RunAttemptRepository;
+      const sql = yield* SqlClient.SqlClient;
+      yield* seedWorkItem("wi-invalid-guidance");
+
+      const attempt = yield* makeAttempt("run-invalid-guidance", "wi-invalid-guidance", 1);
+      const createError = yield* repo
+        .create({
+          ...attempt,
+          acceptedGuidance: makeAcceptedGuidance({ acceptedAt: "not-a-date" }),
+        })
+        .pipe(Effect.flip);
+      expect(createError._tag).toBe("SymphonyPersistenceDecodeError");
+      expect(yield* repo.getById(RunAttemptId.make("run-invalid-guidance"))).toBeNull();
+
+      const valid = yield* repo.create({
+        ...attempt,
+        acceptedGuidance: makeAcceptedGuidance(),
+      });
+      expect(valid.id).toBe("run-invalid-guidance");
+
+      yield* sql`
+        UPDATE symphony_run_attempts
+        SET accepted_guidance_json = '{"schemaVersion":1}'
+        WHERE id = 'run-invalid-guidance'
+      `;
+      const readError = yield* repo
+        .getById(RunAttemptId.make("run-invalid-guidance"))
+        .pipe(Effect.flip);
+      expect(readError._tag).toBe("SymphonyPersistenceDecodeError");
+    }),
+  );
+
+  it("validates canonical shape, revision timestamps and approval consistency", () => {
+    const snapshot = makeAcceptedGuidance();
+    expect(validateAcceptedGuidanceSnapshot(snapshot)).toEqual({
+      _tag: "valid",
+      snapshot,
+    });
+    expect(
+      validateAcceptedGuidanceSnapshot({
+        ...snapshot,
+        acceptedAt: "2026-10-23T08:00:00.000Z",
+      })._tag,
+    ).toBe("valid");
+    expect(
+      validateAcceptedGuidanceSnapshot({ ...snapshot, acceptedAt: "not-a-date" }),
+    ).toMatchObject({ _tag: "invalid" });
+    expect(
+      validateAcceptedGuidanceSnapshot({
+        ...snapshot,
+        permission: { ...snapshot.permission, approvalsEnabled: false },
+      }),
+    ).toMatchObject({ _tag: "invalid" });
+  });
 });

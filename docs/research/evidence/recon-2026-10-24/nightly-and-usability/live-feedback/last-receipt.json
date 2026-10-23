@@ -1,0 +1,300 @@
+{
+  "schemaVersion": 1,
+  "fixture": "neokod.live-proof.request_user_input",
+  "status": "passed",
+  "evidenceKind": "live-provider",
+  "fakeProviderUsed": false,
+  "testkitUsed": false,
+  "applicationSourceEdits": false,
+  "applicationServerStarted": false,
+  "installedAppRuntimeUsed": false,
+  "playwrightUsed": false,
+  "startedAt": "2026-10-23T22:24:34.106Z",
+  "fixtureScript": {
+    "path": "/private/tmp/neokod-nightly-audit-2026-10-24/live-proof/neokod-live-proof.mts",
+    "sha256": "ae5713079978cf6ef385c52f87b92bed255e18390ec31917a68b7363b1f084f5"
+  },
+  "assertions": {
+    "sourceClean": true,
+    "sourceMarkerAccepted": true,
+    "featureDefaultDisabled": true,
+    "featureEnabledByWrapper": true,
+    "providerSpawned": true,
+    "requestUserInputObserved": true,
+    "twoQuestions": true,
+    "validOptionQuestions": true,
+    "customAnswer": true,
+    "answersSubmitted": true,
+    "answersExactPerQuestion": true,
+    "answerDeliveryUnknown": true,
+    "answerStateAnswered": true,
+    "unrelatedStageHoldLivePending": true,
+    "turn1Completed": true,
+    "turn1ContinuedAfterAnswer": true,
+    "turn2Completed": true,
+    "sameThread": true,
+    "noResume": true,
+    "userInputConsumedAfterTurn1": true,
+    "customQuestionNoOptions": false,
+    "reloadedAnswered": true,
+    "reloadedDecisionAnswered": true,
+    "reloadedDeliveryUnknown": true,
+    "reloadedAnswersExact": true,
+    "reloadedStageHoldPending": true,
+    "reloadedPendingListsOnlyHold": true,
+    "sessionIdCaptured": true
+  },
+  "blockers": [],
+  "stages": [
+    {
+      "at": "2026-10-23T22:24:34.108Z",
+      "name": "preflight-start"
+    },
+    {
+      "at": "2026-10-23T22:24:34.171Z",
+      "name": "run-claimed",
+      "runId": "live-202610232224341-4814c082"
+    },
+    {
+      "at": "2026-10-23T22:24:34.216Z",
+      "name": "auth-isolated"
+    },
+    {
+      "at": "2026-10-23T22:24:36.940Z",
+      "name": "model-selected",
+      "modelId": "gpt-6.1-sol"
+    },
+    {
+      "at": "2026-10-23T22:24:47.811Z",
+      "name": "runtime-exit",
+      "outcome": "success",
+      "elapsedMs": 10795
+    },
+    {
+      "at": "2026-10-23T22:24:48.039Z",
+      "name": "complete",
+      "status": "passed"
+    }
+  ],
+  "source": {
+    "worktree": "/Users/kamogelo/.codex/worktrees/neokod-core-execution/t3code",
+    "baseline": "85a4acfe5a35e04467758be7b95bde2e3491aadf",
+    "head": "85a4acfe5a35e04467758be7b95bde2e3491aadf",
+    "tree": "5f991f7d70adbcdb26b7a2cd4db6bd3aff8b437a",
+    "clean": true,
+    "dirtyPaths": [],
+    "marker": {
+      "present": true,
+      "digest": "308f88691851224e8374383734bc532087590990853c257fffd6c1c219b5432d",
+      "head": "85a4acfe5a35e04467758be7b95bde2e3491aadf",
+      "accepted": true,
+      "pin": {
+        "model": "gpt-6.1-sol",
+        "providerInstanceId": "codex_default",
+        "providerDriver": "codex",
+        "autonomy": "prepare"
+      }
+    }
+  },
+  "runId": "live-202610232224341-4814c082",
+  "runDir": "/tmp/neokod-nightly-audit-2026-10-24/live-proof/runs/live-202610232224341-4814c082",
+  "runtime": {
+    "wrapperFlags": ["--enable", "default_mode_request_user_input"],
+    "wrapperSha256": "53ced04aa5ec2f60d19cfa2be0286ac47fdf0f5a6bc5730f25459a09a82e1431",
+    "isolatedCodexHome": true,
+    "authCopied": true,
+    "authMode": "0600",
+    "authDeleted": true,
+    "nodeVersion": "24.22.1",
+    "nodeExecPath": "/private/tmp/neokod-core-symphony-2026-10-21/node-v24.22.1-darwin-arm64/bin/node",
+    "platform": "darwin",
+    "arch": "arm64",
+    "codexBinary": "/opt/homebrew/bin/codex",
+    "codexVersion": "codex-cli 0.163.0",
+    "featureDefault": {
+      "state": "under development",
+      "enabled": false
+    },
+    "featureEffective": {
+      "state": "under development",
+      "enabled": true
+    },
+    "installedCliConfigModified": false,
+    "installedCliFeaturesModified": false,
+    "accountStatus": "authenticated"
+  },
+  "model": {
+    "id": "gpt-6.1-sol",
+    "displayName": "GPT-6.1-Sol",
+    "priority": 1,
+    "defaultReasoningLevel": "low",
+    "catalogCount": 9,
+    "candidateCount": 7,
+    "selectionRule": "pinned-by-marker",
+    "pinnedBy": "marker",
+    "catalogSource": "codex debug models (isolated CODEX_HOME)",
+    "capturedAt": "2026-10-23T22:24:36.940Z"
+  },
+  "config": {
+    "autonomy": "prepare",
+    "approvalPolicy": "untrusted",
+    "threadSandbox": "read-only",
+    "turnSandboxPolicy": "readOnly",
+    "promptPolicy": "no shell, files, network tools, subagents, or non-question tools",
+    "provider": {
+      "instanceId": "codex_default",
+      "driver": "codex"
+    },
+    "model": "gpt-6.1-sol",
+    "acceptedTargetAligned": true,
+    "acceptedGuidanceDigest": "d3d52d01531b7552dc32c51840a5fbadf7e92cd381dd15bd0ab28f55e1273f51",
+    "turn1TimeoutMs": 90000,
+    "turn2TimeoutMs": 30000,
+    "requestWaitMs": 45000,
+    "overallTimeoutMs": 165000
+  },
+  "ids": {
+    "runAttemptId": "ra-live-202610232224341-4814c082",
+    "workItemId": "wi-live-202610232224341-4814c082",
+    "projectId": "project-live-202610232224341-4814c082",
+    "providerPid": 19419,
+    "providerGroup": {
+      "pgid": 19419,
+      "platform": "darwin",
+      "birthTokenCaptured": true
+    },
+    "threadId": "01a16add-b592-7153-b405-fb69ef44fe32",
+    "turnIds": ["01a16add-b5b9-7800-9421-ecba25f3407e", "01a16add-d7ba-7230-8f4c-c98f37801100"],
+    "providerRequestId": "0",
+    "durableRequestId": "sym-6d1ba41d-af9c-453f-989d-3361f27f5213",
+    "questionIds": ["fixture_colour", "fixture_label"],
+    "stageHoldRequestId": "fixture-stage-hold-794b1021-58ee-4311-8bb0-93f5fee29875",
+    "stageHoldDurableId": "sym-cdf31787-ef3b-4d10-8b3d-4f05e433f3ec",
+    "sessionId": "01a16add-b592-7153-b405-fb69ef44fe32",
+    "sessionIdSource": "codex thread/read (includeTurns=false)",
+    "sessionCliVersion": "0.163.0",
+    "sessionModelProvider": "openai"
+  },
+  "cleanup": {
+    "agentRuntime": {
+      "status": "terminated",
+      "pid": 19419,
+      "pgid": 19419,
+      "label": "agent-runtime"
+    },
+    "sessionReadback": {
+      "status": "terminated",
+      "pid": 19647,
+      "pgid": 19647,
+      "label": "session-readback"
+    },
+    "isolatedHomeRemoved": true
+  },
+  "questionPayload": {
+    "kind": "structured",
+    "version": 1,
+    "questionCount": 2,
+    "questions": [
+      {
+        "id": "fixture_colour",
+        "optionCount": 2,
+        "optionLabels": ["Amber", "Blue"],
+        "multiSelect": false,
+        "sensitive": false
+      },
+      {
+        "id": "fixture_label",
+        "optionCount": 2,
+        "optionLabels": ["Paper", "Stone"],
+        "multiSelect": false,
+        "sensitive": false
+      }
+    ]
+  },
+  "answerSubmission": {
+    "method": "ApprovalService.respondToUserInput",
+    "submittedAt": "2026-10-23T22:24:43.666Z",
+    "duringTurn": 1,
+    "values": [
+      {
+        "questionId": "fixture_colour",
+        "answer": "Amber",
+        "redacted": false
+      },
+      {
+        "questionId": "fixture_label",
+        "answer": "Fixture custom label 1017",
+        "redacted": false
+      }
+    ],
+    "error": null
+  },
+  "turns": {
+    "first": {
+      "turnId": "01a16add-b5b9-7800-9421-ecba25f3407e",
+      "completed": true,
+      "completedTag": "completed",
+      "completedAt": "2026-10-23T22:24:46.008Z",
+      "error": null,
+      "requestObservedDuringTurn": true
+    },
+    "second": {
+      "turnId": "01a16add-d7ba-7230-8f4c-c98f37801100",
+      "completed": true,
+      "completedTag": "completed",
+      "error": null,
+      "continuation": true
+    },
+    "sameThread": true,
+    "resumeUsed": false,
+    "turn1CompletedAfterAnswer": true,
+    "livePendingAfterTurn1": [
+      {
+        "requestId": "fixture-stage-hold-794b1021-58ee-4311-8bb0-93f5fee29875",
+        "kind": "approval",
+        "action": "push"
+      }
+    ],
+    "livePendingAfterTurn2": [
+      {
+        "requestId": "fixture-stage-hold-794b1021-58ee-4311-8bb0-93f5fee29875",
+        "kind": "approval",
+        "action": "push"
+      }
+    ]
+  },
+  "persistence": {
+    "reloaded": true,
+    "rowCount": 2,
+    "question": {
+      "state": "answered",
+      "decision": "answered",
+      "delivery": "unknown",
+      "answers": [
+        {
+          "questionId": "fixture_colour",
+          "answer": "Amber",
+          "redacted": false
+        },
+        {
+          "questionId": "fixture_label",
+          "answer": "Fixture custom label 1017",
+          "redacted": false
+        }
+      ],
+      "decidedAt": "2026-10-23T22:24:43.668Z",
+      "createdAt": "2026-10-23T22:24:43.663Z"
+    },
+    "stageHold": {
+      "state": "pending",
+      "decision": null,
+      "delivery": "not-applicable",
+      "answer": null,
+      "decidedAt": null,
+      "createdAt": "2026-10-23T22:24:37.057Z"
+    },
+    "listPendingIds": ["fixture-stage-hold-794b1021-58ee-4311-8bb0-93f5fee29875"]
+  },
+  "completedAt": "2026-10-23T22:24:48.119Z",
+  "durationMs": 14013
+}

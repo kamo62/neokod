@@ -14,6 +14,30 @@ import type { SymphonyPersistenceError } from "../Errors.ts";
  * `owner_token = ? AND generation = ?` via {@link assertOwnedTransition}, so a
  * resurrected zombie worker cannot write.
  */
+/**
+ * One atomic observation of a claim: the ownership fence AND the recorded
+ * process identity come from the same row read, so a caller can never pair a
+ * stale fence with a replacement owner's identity.
+ */
+export interface ClaimOwnership {
+  readonly lifecycle: WorkLifecycle;
+  readonly claimedAt: string | null;
+  readonly ownerToken: string | null;
+  readonly generation: number;
+  readonly ownerPid: number | null;
+  readonly ownerPgid: number | null;
+  readonly ownerBirthToken: string | null;
+}
+
+/** Exact claim fence, including the identity fields current at capture. */
+export interface ClaimFence {
+  readonly ownerToken: string;
+  readonly generation: number;
+  readonly ownerPid: number | null;
+  readonly ownerPgid: number | null;
+  readonly ownerBirthToken: string | null;
+}
+
 export interface WorkItemRepositoryShape {
   /** Insert a freshly discovered/created work item. Idempotent by unique key. */
   readonly upsert: (workItem: WorkItem) => Effect.Effect<WorkItem, SymphonyPersistenceError>;
@@ -106,6 +130,34 @@ export interface WorkItemRepositoryShape {
     pid: number,
   ) => Effect.Effect<boolean, SymphonyPersistenceError>;
 
+  /**
+   * Record the spawned child's full process identity on a live claim. The
+   * group id and birth token are persisted exactly as the runtime supplied
+   * them: a bare pid never invents a group, and a missing identity clears both
+   * fields so recovery fails closed instead of trusting the pid alone.
+   * Fenced by the claim owner token and generation.
+   */
+  readonly setClaimOwnerProcessIdentity: (
+    id: WorkItemId,
+    ownerToken: string,
+    generation: number,
+    identity: {
+      readonly pid: number;
+      readonly pgid?: number | null;
+      readonly birthToken?: string | null;
+    },
+  ) => Effect.Effect<boolean, SymphonyPersistenceError>;
+
+  /**
+   * Read the claim fence AND recorded process identity from one row. Recovery,
+   * Stop and reconciliation compare this exact snapshot before signalling or
+   * releasing so a replacement claim can never inherit a stale owner's
+   * decision or donate its identity.
+   */
+  readonly getClaimOwnership: (
+    id: WorkItemId,
+  ) => Effect.Effect<ClaimOwnership | null, SymphonyPersistenceError>;
+
   /** Record the base branch the run's workspace was created from. Fenced like setClaimOwnerPid. */
   readonly setBaseBranch: (
     id: WorkItemId,
@@ -123,6 +175,36 @@ export interface WorkItemRepositoryShape {
   readonly releaseClaim: (
     id: WorkItemId,
     to: "queued" | "retry_scheduled",
+    /** When supplied, release only the exact claim ownership snapshot. */
+    fence?: ClaimFence,
+  ) => Effect.Effect<boolean, SymphonyPersistenceError>;
+
+  /**
+   * Settle a confirmed Stop (plan 16.16 / X-7). Moves a non-terminal item to
+   * `cancelled` and clears the claim in one conditional statement: owner
+   * token, owner pid, owner start time and lease are released, and the
+   * generation is bumped so any lingering worker's fences stop matching.
+   *
+   * Callers must only use this after positive process closure. An unconfirmed
+   * Stop keeps the existing claim/lease held and records durable evidence
+   * instead of calling this. Because the update only matches non-terminal
+   * rows, a retry cannot be scheduled by a racing failure, and a second call
+   * returns false: closure releases once.
+   */
+  readonly releaseConfirmedStop: (
+    id: WorkItemId,
+    fence: ClaimFence,
+  ) => Effect.Effect<boolean, SymphonyPersistenceError>;
+
+  /**
+   * Park an exact confirmed, unclaimed cancellation into `blocked` for a
+   * takeover. This is the only path that may move `cancelled` back to a
+   * non-terminal state; it requires no live owner and the exact generation
+   * produced by the confirmed release, so it cannot touch a replacement claim.
+   */
+  readonly parkConfirmedCancellation: (
+    id: WorkItemId,
+    fence: { readonly generation: number },
   ) => Effect.Effect<boolean, SymphonyPersistenceError>;
 
   /** Write queue overrides (exclude / local priority) that survive restart. */

@@ -1,0 +1,121 @@
+{
+  "capturedAt": "2026-10-23T23:10:50.442Z",
+  "source": "85a4acfe5",
+  "kind": "live normalappUI plus authoritative disposableDBread",
+  "rows": [
+    {
+      "thread": {
+        "thread_id": "bfd2de18-8c0d-4dd0-9a35-7694a0a571a7",
+        "runtime_mode": "approval-required",
+        "interaction_mode": "default",
+        "model_selection_json": "{\"instanceId\":\"codex\",\"model\":\"gpt-6.1-sol\",\"options\":[{\"id\":\"reasoningEffort\",\"value\":\"low\"},{\"id\":\"serviceTier\",\"value\":\"default\"}]}"
+      },
+      "session": {
+        "thread_id": "bfd2de18-8c0d-4dd0-9a35-7694a0a571a7",
+        "status": "ready",
+        "provider_name": "codex",
+        "provider_instance_id": "codex",
+        "active_turn_id": null,
+        "last_error": null
+      },
+      "messages": [
+        {
+          "role": "user",
+          "text": "Disposable Neokod normal-Code usability test. Do not use tools, files, shell, network, or subagents. Reply exactly: CODEX_UI_1017_OK",
+          "is_streaming": 0
+        },
+        {
+          "role": "assistant",
+          "text": "CODEX_UI_1017_OK",
+          "is_streaming": 0
+        },
+        {
+          "role": "user",
+          "text": "Same-thread follow-up. Without tools, repeat your previous exact reply, then append |FOLLOWUP_OK.",
+          "is_streaming": 0
+        },
+        {
+          "role": "assistant",
+          "text": "CODEX_UI_1017_OK|FOLLOWUP_OK",
+          "is_streaming": 0
+        }
+      ]
+    },
+    {
+      "thread": {
+        "thread_id": "ec5e3352-34a7-47cc-8ca0-0f1de54e61ca",
+        "runtime_mode": "approval-required",
+        "interaction_mode": "default",
+        "model_selection_json": "{\"instanceId\":\"claudeAgent\",\"model\":\"opus\",\"options\":[{\"id\":\"effort\",\"value\":\"high\"},{\"id\":\"contextWindow\",\"value\":\"1m\"}]}"
+      },
+      "session": {
+        "thread_id": "ec5e3352-34a7-47cc-8ca0-0f1de54e61ca",
+        "status": "ready",
+        "provider_name": "claudeAgent",
+        "provider_instance_id": "claudeAgent",
+        "active_turn_id": null,
+        "last_error": null
+      },
+      "messages": [
+        {
+          "role": "user",
+          "text": "Disposable Neokod normal-Code usability test. Do not use tools, files, shell, network, or subagents. Reply exactly: CLAUDE_UI_1017_OK",
+          "is_streaming": 0
+        },
+        {
+          "role": "assistant",
+          "text": "CLAUDE_UI_1017_OK",
+          "is_streaming": 0
+        },
+        {
+          "role": "user",
+          "text": "Same-thread follow-up. Without tools, repeat your previous exact reply, then append |FOLLOWUP_OK.",
+          "is_streaming": 0
+        },
+        {
+          "role": "assistant",
+          "text": "CLAUDE_UI_1017_OK|FOLLOWUP_OK",
+          "is_streaming": 0
+        }
+      ]
+    },
+    {
+      "thread": {
+        "thread_id": "33d6470d-2936-422c-b914-76b33b5fb16b",
+        "runtime_mode": "approval-required",
+        "interaction_mode": "default",
+        "model_selection_json": "{\"instanceId\":\"githubCopilot\",\"model\":\"auto\"}"
+      },
+      "session": {
+        "thread_id": "33d6470d-2936-422c-b914-76b33b5fb16b",
+        "status": "ready",
+        "provider_name": "githubCopilot",
+        "provider_instance_id": "githubCopilot",
+        "active_turn_id": null,
+        "last_error": null
+      },
+      "messages": [
+        {
+          "role": "user",
+          "text": "COPILOT_UI_1017: Disposable Neokod normal-Code test. Do not use tools, files, shell, network, or subagents. Reply exactly: COPILOT_UI_1017_OK",
+          "is_streaming": 0
+        },
+        {
+          "role": "assistant",
+          "text": "COPILOT_UI_1017_OK",
+          "is_streaming": 0
+        },
+        {
+          "role": "user",
+          "text": "Same-thread follow-up. Without tools, repeat your previous exact reply, then append |FOLLOWUP_OK.",
+          "is_streaming": 0
+        },
+        {
+          "role": "assistant",
+          "text": "COPILOT_UI_1017_OK|FOLLOWUP_OK",
+          "is_streaming": 0
+        }
+      ]
+    }
+  ]
+}

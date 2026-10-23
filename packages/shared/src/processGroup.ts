@@ -5,6 +5,8 @@ import * as NodeUtil from "node:util";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 
+import { HostProcessPlatform } from "./hostProcess.ts";
+
 /**
  * Shared validated process-group abstraction
  * (Issue #101 spec sections 4.1 / 6.3 / 6.6, implementation-sequence step 3).
@@ -922,6 +924,179 @@ export const planValidatedOrphanTermination = (
         return { action: "skip", reason: "pid_recycled" };
       case "unverifiable":
         return { action: "skip", reason: "birth_identity_unverifiable" };
+    }
+  });
+
+// ---------------------------------------------------------------------------
+// Owned-process closure (single policy for recovery and confirmed stop)
+// ---------------------------------------------------------------------------
+
+/**
+ * Why an owned process/group could not be confirmed closed. Every one of these
+ * states keeps the owning claim/lease held: releasing it would let a retry run
+ * beside a possibly-surviving process.
+ */
+export type ProcessClosureHoldReason =
+  | ValidatedOrphanSkipReason
+  | "owner_is_server"
+  | "invalid_owner_pid"
+  | "leader_gone_descendants_unconfirmed"
+  | "ownership_revoked"
+  | "termination_failed";
+
+/**
+ * Positive evidence that no process we owned can still be running.
+ * `no_owner_recorded` means the claim never recorded a child process, so there
+ * is nothing neokod could have signalled or must wait for.
+ */
+export type ProcessClosureEvidence =
+  | "no_owner_recorded"
+  | "group_terminated"
+  | "group_escalated_kill"
+  | "group_already_dead"
+  | "leader_and_group_gone";
+
+export type ProcessClosureResult =
+  | { readonly status: "closed"; readonly evidence: ProcessClosureEvidence }
+  | {
+      readonly status: "held";
+      readonly reason: ProcessClosureHoldReason;
+      readonly detail?: string;
+    };
+
+export interface ProcessClosureDeps {
+  readonly reader?: ProcessBirthReader;
+  readonly signaller?: ProcessGroupSignaller;
+  readonly platform?: NodeJS.Platform;
+  readonly graceMs?: number;
+  readonly killSignal?: NodeJS.Signals;
+  readonly forceSignal?: NodeJS.Signals;
+}
+
+const hold = (reason: ProcessClosureHoldReason, detail?: string): ProcessClosureResult =>
+  detail === undefined ? { status: "held", reason } : { status: "held", reason, detail };
+
+/**
+ * Resolve the closure of a persisted neokod-owned agent process group.
+ *
+ * This is the one shared closure policy. Recovery calls it before releasing a
+ * claim/lease, and a confirmed Stop calls it before settling a cancelled run.
+ * It only signals through {@link planValidatedOrphanTermination} and
+ * {@link terminateProcessGroup}, so:
+ *
+ *  - a bare pid, a recycled pid, a missing birth token, an unreadable process
+ *    table, or a non-POSIX platform is `held` and emits no signal;
+ *  - the leader's exit alone never proves descendant closure. When the leader
+ *    is gone but the group still has members, the result is `held`
+ *    (`leader_gone_descendants_unconfirmed`) rather than a signal or a release;
+ *  - ownership is revalidated immediately before each signal. If the leader
+ *    exits after SIGTERM while group members remain, escalation is refused
+ *    (`ownership_revoked`) because a recycled group id cannot be distinguished
+ *    from our surviving descendants, so closure stays unconfirmed.
+ */
+export const confirmOwnedProcessClosure = (
+  input: {
+    readonly ownerPid?: number | null;
+    readonly ownerPgid?: number | null;
+    readonly ownerBirthToken?: string | null;
+    readonly spawnedAtMs?: number | null;
+    /** The calling server's own pid; recovered rows must never target it. */
+    readonly ownPid?: number;
+  },
+  deps: ProcessClosureDeps = {},
+): Effect.Effect<ProcessClosureResult> =>
+  Effect.gen(function* () {
+    const pid = input.ownerPid;
+    if (pid === null || pid === undefined) {
+      return { status: "closed", evidence: "no_owner_recorded" } as const;
+    }
+    if (!Number.isInteger(pid) || pid <= 1) {
+      return hold("invalid_owner_pid");
+    }
+    const ownPid = input.ownPid ?? process.pid;
+    if (pid === ownPid) {
+      return hold("owner_is_server");
+    }
+
+    const reader = deps.reader ?? posixProcessBirthReader;
+    const signaller = deps.signaller ?? posixProcessGroupSignaller;
+    const platform = deps.platform ?? (yield* HostProcessPlatform);
+
+    const plan = yield* planValidatedOrphanTermination(
+      {
+        ownerPid: pid,
+        ...(input.ownerPgid === undefined ? {} : { ownerPgid: input.ownerPgid }),
+        ...(input.ownerBirthToken === undefined ? {} : { ownerBirthToken: input.ownerBirthToken }),
+        ...(input.spawnedAtMs === undefined ? {} : { spawnedAtMs: input.spawnedAtMs }),
+        platform,
+      },
+      reader,
+    );
+
+    switch (plan.action) {
+      case "skip":
+        return hold(plan.reason);
+      case "already_gone": {
+        // The recorded leader is gone. The group id stays allocated while any
+        // descendant remains, so a live group is evidence of possible surviving
+        // work, but with no live leader there is no birth identity left to
+        // prove it is OUR group. Preserve the uncertainty instead of signalling
+        // or releasing.
+        const pgid = input.ownerPgid;
+        if (pgid === null || pgid === undefined || pgid <= 0 || pgid !== pid) {
+          return hold("unproven_group_identity");
+        }
+        const groupAlive = yield* signaller.isGroupAlive(pgid);
+        return groupAlive
+          ? hold("leader_gone_descendants_unconfirmed")
+          : ({ status: "closed", evidence: "leader_and_group_gone" } as const);
+      }
+      case "terminate": {
+        const confirmOwnership = (): Effect.Effect<ProcessGroupOwnershipCheck> =>
+          Effect.gen(function* () {
+            const validation = yield* validateProcessBirthIdentity(
+              {
+                pid: plan.identity.pid,
+                ...(plan.identity.birthToken === null
+                  ? {}
+                  : { persistedBirthToken: plan.identity.birthToken }),
+              },
+              reader,
+            );
+            switch (validation.status) {
+              case "confirmed":
+                return { status: "confirmed" } as const;
+              case "process_gone":
+                return { status: "revoked", reason: "group_missing" } as const;
+              case "recycled":
+                return { status: "revoked", reason: "member_recycled" } as const;
+              case "unverifiable":
+                return { status: "revoked", reason: "reader_unavailable" } as const;
+            }
+          });
+
+        const outcome = yield* terminateProcessGroup(plan.identity, {
+          signaller,
+          ...(deps.graceMs === undefined ? {} : { graceMs: deps.graceMs }),
+          ...(deps.killSignal === undefined ? {} : { killSignal: deps.killSignal }),
+          ...(deps.forceSignal === undefined ? {} : { forceSignal: deps.forceSignal }),
+          confirmOwnership,
+        });
+        switch (outcome.status) {
+          case "terminated":
+            return { status: "closed", evidence: "group_terminated" } as const;
+          case "escalated_kill":
+            return { status: "closed", evidence: "group_escalated_kill" } as const;
+          case "already_dead":
+            return { status: "closed", evidence: "group_already_dead" } as const;
+          case "ownership_revoked":
+            return hold("ownership_revoked", outcome.detail);
+          case "termination_failed":
+            return hold("termination_failed", outcome.detail);
+          case "unsupported_platform":
+            return hold("unsupported_platform");
+        }
+      }
     }
   });
 

@@ -437,6 +437,178 @@ layer("WorkItemRepository claim authority", (it) => {
   );
 });
 
+layer("WorkItemRepository process identity", (it) => {
+  it.effect("persists the proven group and birth identity through a fenced claim write", () =>
+    Effect.gen(function* () {
+      const repo = yield* WorkItemRepository;
+      const id = yield* seed("identity-1", "identity-1");
+      const { generation } = yield* repo.claim(id, "owner-a");
+
+      const recorded = yield* repo.setClaimOwnerProcessIdentity(id, "owner-a", generation, {
+        pid: 5001,
+        pgid: 5001,
+        birthToken: "born-5001",
+      });
+      expect(recorded).toBe(true);
+
+      const after = yield* repo.getById(id);
+      expect(after?.ownerPid).toBe(5001);
+      expect(after?.ownerPgid).toBe(5001);
+      expect(after?.ownerBirthToken).toBe("born-5001");
+      expect(yield* repo.getClaimOwnership(id)).toEqual({
+        lifecycle: "preparing",
+        claimedAt: expect.any(String),
+        ownerToken: "owner-a",
+        generation,
+        ownerPid: 5001,
+        ownerPgid: 5001,
+        ownerBirthToken: "born-5001",
+      });
+
+      // Wrong generation cannot overwrite the recorded identity.
+      const stale = yield* repo.setClaimOwnerProcessIdentity(id, "owner-a", generation + 1, {
+        pid: 6002,
+        pgid: 6002,
+        birthToken: "born-6002",
+      });
+      expect(stale).toBe(false);
+      expect((yield* repo.getById(id))?.ownerPid).toBe(5001);
+
+      // A bare pid records no inferred group or birth token.
+      yield* repo.setClaimOwnerProcessIdentity(id, "owner-a", generation, { pid: 7003 });
+      const bare = yield* repo.getById(id);
+      expect(bare?.ownerPid).toBe(7003);
+      expect(bare?.ownerPgid ?? null).toBeNull();
+      expect(bare?.ownerBirthToken ?? null).toBeNull();
+    }),
+  );
+
+  it.effect("a fenced claim release clears the identity and rejects a stale fence", () =>
+    Effect.gen(function* () {
+      const repo = yield* WorkItemRepository;
+      const id = yield* seed("identity-2", "identity-2");
+      const { generation } = yield* repo.claim(id, "owner-a");
+      yield* repo.setClaimOwnerProcessIdentity(id, "owner-a", generation, {
+        pid: 5101,
+        pgid: 5101,
+        birthToken: "born-5101",
+      });
+
+      expect(
+        yield* repo.releaseClaim(id, "queued", {
+          ownerToken: "owner-a",
+          generation: generation + 1,
+          ownerPid: 5101,
+          ownerPgid: 5101,
+          ownerBirthToken: "born-5101",
+        }),
+      ).toBe(false);
+      expect((yield* repo.getById(id))?.ownerPgid).toBe(5101);
+
+      expect(
+        yield* repo.releaseClaim(id, "queued", {
+          ownerToken: "owner-a",
+          generation,
+          ownerPid: 5101,
+          ownerPgid: 5101,
+          ownerBirthToken: "born-5101",
+        }),
+      ).toBe(true);
+      const released = yield* repo.getById(id);
+      expect(released?.ownerPid ?? null).toBeNull();
+      expect(released?.ownerPgid ?? null).toBeNull();
+      expect(released?.ownerBirthToken ?? null).toBeNull();
+    }),
+  );
+});
+
+layer("WorkItemRepository confirmed Stop", (it) => {
+  it.effect("cancels and clears the exact claim once, preventing a racing retry", () =>
+    Effect.gen(function* () {
+      const repo = yield* WorkItemRepository;
+      const id = yield* seed("stop-1", "stop-1");
+      const { generation } = yield* repo.claim(id, "owner-a");
+      yield* repo.setClaimOwnerProcessIdentity(id, "owner-a", generation, {
+        pid: 4321,
+        pgid: 4321,
+        birthToken: "born-4321",
+      });
+      const fence = {
+        ownerToken: "owner-a",
+        generation,
+        ownerPid: 4321,
+        ownerPgid: 4321,
+        ownerBirthToken: "born-4321",
+      };
+
+      // A stale generation must not cancel the replacement claim.
+      expect(
+        yield* repo.releaseConfirmedStop(id, {
+          ownerToken: "owner-a",
+          generation: generation + 1,
+          ownerPid: 4321,
+          ownerPgid: 4321,
+          ownerBirthToken: "born-4321",
+        }),
+      ).toBe(false);
+      expect((yield* repo.getById(id))?.lifecycle).toBe("preparing");
+
+      const released = yield* repo.releaseConfirmedStop(id, fence);
+      expect(released).toBe(true);
+
+      const after = yield* repo.getById(id);
+      expect(after?.lifecycle).toBe("cancelled");
+      // Releasing the claim removes the recorded child identity, not just the token.
+      expect(after?.ownerPid ?? null).toBeNull();
+      expect(after?.ownerPgid ?? null).toBeNull();
+      expect(after?.ownerBirthToken ?? null).toBeNull();
+
+      // A failure that races the stop can no longer schedule a retry: the
+      // owner fence is gone and the terminal lifecycle is not a legal source.
+      const retried = yield* repo.transition(id, "retry_scheduled", {
+        ownerToken: "owner-a",
+        generation,
+      });
+      expect(retried).toBe(false);
+
+      // Confirmed closure releases exactly once.
+      expect(yield* repo.releaseConfirmedStop(id, fence)).toBe(false);
+      expect((yield* repo.getById(id))?.lifecycle).toBe("cancelled");
+    }),
+  );
+
+  it.effect(
+    "does not cancel review or terminal lifecycles the transition table never allowed",
+    () =>
+      Effect.gen(function* () {
+        const repo = yield* WorkItemRepository;
+        const reviewId = yield* seed("stop-review", "stop-review", "ready_for_review");
+        expect(
+          yield* repo.releaseConfirmedStop(reviewId, {
+            ownerToken: "owner-review",
+            generation: 1,
+            ownerPid: null,
+            ownerPgid: null,
+            ownerBirthToken: null,
+          }),
+        ).toBe(false);
+        expect((yield* repo.getById(reviewId))?.lifecycle).toBe("ready_for_review");
+
+        const failedId = yield* seed("stop-2", "stop-2", "failed");
+        expect(
+          yield* repo.releaseConfirmedStop(failedId, {
+            ownerToken: "owner-failed",
+            generation: 1,
+            ownerPid: null,
+            ownerPgid: null,
+            ownerBirthToken: null,
+          }),
+        ).toBe(false);
+        expect((yield* repo.getById(failedId))?.lifecycle).toBe("failed");
+      }),
+  );
+});
+
 layer("WorkItemRepository lifecycle legality (plan section 19 suite 6)", (it) => {
   it.effect("a from-restricted transition succeeds from a matching lifecycle", () =>
     Effect.gen(function* () {

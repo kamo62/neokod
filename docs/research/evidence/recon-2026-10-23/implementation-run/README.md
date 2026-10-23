@@ -1,0 +1,11 @@
+# Implementation execution evidence
+
+Canonical scope and current status are in plan.md16.17; this directory contains review/check receipts, not another delivery tracker.
+
+DeepSeek V4.1 Flash1017 (`deepseek/deepseek-flash`) implemented through OpenCode2 ACP. Native Sol6.1 high and onboard first-party Opus5.5 high independently accepted final feedback41a49b825, guidance/recovery69a712335 and Work UI daf6cfb557. Earlier observed native quota refusals caused the recorded Copilot fallback reviews; final native review results supersede pending statuses. The final platform-lint correction6e439d91b also has native Sol/Opus acceptance. Combined535tests and post-correction163affected tests pass; root vp check passes with0errors/54warnings and recursive typecheck passes across10packages.
+
+PR151 merged to dev at9ee7d4105 with normal Code S6 and the conservative shared Work projection. The remaining source is composed on feat/neokod-core-follow-through. Required local checks and exact source heads are recorded in the composition receipts. No compiler build, dependency installation, packaging or deployment was performed. CI jobs that would install/build or use Playwright are skipped; their absence is not an engineering pass.
+
+Chrome Computer Use captures under chrome-ui-accepted show the matching accepted UI backend/renderer with paused synthetic observe-only fixture data at desktop and390x844. Final integrated source backend/renderer started with fresh authenticated logs; macOS lock prevented the final Chrome reload, so these captures do not prove that final composition.
+
+The real Codex probe under live-proof completed two real turns on one thread and preserved an independent stage hold, but the model never issued request_user_input. No answers were submitted and no answer-continuation proof exists. A temporary fixture timeout classification and later optional metadata-read defect are recorded separately. This fails the explicit observe-before-shipping gate in16.15–16.16. Do not merge the inline-feedback candidate until that live gate is positively met. Source acceptance is not live Stop/restart, tracker delivery or the formal core exit. W6 and later machine/provider roles remain gated. PR150 stays held.

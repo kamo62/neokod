@@ -1,0 +1,31 @@
+{
+  "sessionId": "ses_e97fd93e9ffeusRzMsXj1ENGS2",
+  "requestedModel": "github-copilot/claude-opus-5.5",
+  "effectiveConfig": [
+    {
+      "id": "model",
+      "currentValue": "github-copilot/claude-opus-5.5"
+    },
+    {
+      "id": "effort",
+      "currentValue": "high"
+    },
+    {
+      "id": "mode",
+      "currentValue": "plan"
+    }
+  ],
+  "result": {
+    "stopReason": "end_turn",
+    "usage": {
+      "inputTokens": 118,
+      "outputTokens": 10800,
+      "totalTokens": 7877391,
+      "thoughtTokens": 28662,
+      "cachedReadTokens": 7643219,
+      "cachedWriteTokens": 194592
+    },
+    "_meta": {}
+  },
+  "evidence": "source review only; not live acceptance"
+}

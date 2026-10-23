@@ -1,0 +1,15 @@
+{
+  "neokodHead": "85a4acfe5a35e04467758be7b95bde2e3491aadf",
+  "neokodSource": "14df4db593a0cde408fc3294f481bca9cd3f183c",
+  "priorNightly": "1688f965682d331da16a8c39f049592361f69c8d",
+  "latest": {
+    "tag_name": "v0.1.3-nightly.20261023.3592",
+    "target_commitish": "e340aaeeb98bc6ac623c2e70ac8eca8bcbddfe1b",
+    "published_at": "2026-10-23T20:53:14Z",
+    "html_url": "https://github.com/pingdotgg/t3code/releases/tag/v0.1.3-nightly.20261023.3592"
+  },
+  "upstreamMain": "9a391eb3f55b738113b61768cf2d8263b4f3ac2e",
+  "deltaCommitCount": 206,
+  "census": "nightly-commit-census.tsv",
+  "coverage": "all subjects triaged; Sol17 and Opus about25 selected shippingdiffs, not all206semantically"
+}

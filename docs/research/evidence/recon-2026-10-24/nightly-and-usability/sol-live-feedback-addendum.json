@@ -1,0 +1,26 @@
+{
+  "review": "read-only",
+  "reviewedAt": "2026-10-23T22:28:47.774178+00:00",
+  "receipt": "/tmp/neokod-nightly-audit-2026-10-24/live-proof/last-receipt.json",
+  "receiptSha256": "6ece8dc232d4807047864b323b57540ad1cc8610d9f7abb4c8f85cdd8d440021",
+  "fixtureSha256Matches": true,
+  "runId": "live-202610232224341-4814c082",
+  "status": "passed",
+  "blockers": [],
+  "evidenceClass": "live provider through production source-import Symphony feedback services",
+  "narrowRealFeedbackGate": "positive evidence established; coordinator acceptance and delivery decision remain",
+  "answerTextValidated": false,
+  "providerAnswerReceiptAcknowledged": false,
+  "deliveryState": "unknown",
+  "installedAppOrBrowserValidated": false,
+  "nativeOtherUiClicked": false,
+  "noOptionsQuestionObserved": false,
+  "formalCoreExit": false,
+  "managedDelegationImplemented": false,
+  "testsRemain": {
+    "passed": 672,
+    "files": 42
+  },
+  "executedByThisReview": false,
+  "fixtureEditsByThisReview": false
+}

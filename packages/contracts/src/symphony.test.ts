@@ -1,10 +1,17 @@
 import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
-import { ApprovalRequestSchema, WorkItemSchema } from "./symphony.ts";
+import {
+  ApprovalRequestSchema,
+  RunAttemptSchema,
+  SymphonyStopResultSchema,
+  WorkItemSchema,
+} from "./symphony.ts";
 
 const decodeWorkItem = Schema.decodeUnknownSync(WorkItemSchema);
 const decodeApprovalRequest = Schema.decodeUnknownSync(ApprovalRequestSchema);
+const decodeRunAttempt = Schema.decodeUnknownSync(RunAttemptSchema);
+const decodeStopResult = Schema.decodeUnknownSync(SymphonyStopResultSchema);
 
 const workItem = {
   id: "work-item-1",
@@ -90,5 +97,315 @@ describe("ApprovalRequestSchema request kind", () => {
         decision: "interrupted",
       }).decision,
     ).toBe("interrupted");
+  });
+});
+
+describe("ApprovalRequestSchema question payload and answer history", () => {
+  const questionPayload = {
+    kind: "structured",
+    version: 1,
+    questions: [
+      {
+        id: "q1",
+        header: "Branch",
+        question: "Which branch?",
+        options: [
+          { label: "main", description: "default branch" },
+          { label: "release", description: "release branch" },
+        ],
+      },
+      {
+        id: "q2",
+        header: "Checks",
+        question: "Which checks should run?",
+        options: [
+          { label: "unit", description: "unit tests" },
+          { label: "lint", description: "lint" },
+        ],
+        multiSelect: true,
+        sensitive: false,
+      },
+    ],
+  } as const;
+
+  it("round-trips structured questions with options and multi-select", () => {
+    const decoded = decodeApprovalRequest({
+      ...approvalRequest,
+      kind: "user_input",
+      action: "user_input",
+      state: "answered",
+      decision: "answered",
+      questionPayload,
+      answer: {
+        answers: [
+          { questionId: "q1", answer: "main" },
+          { questionId: "q2", answer: ["unit", "lint"] },
+        ],
+        delivery: "unknown",
+        actor: "local_operator",
+        recordedAt: "2026-08-08T10:00:05.000Z",
+      },
+    });
+    expect(decoded.questionPayload).toMatchObject({ kind: "structured", version: 1 });
+    if (decoded.questionPayload?.kind !== "structured") throw new Error("expected structured");
+    expect(decoded.questionPayload.questions.map((question) => question.id)).toEqual(["q1", "q2"]);
+    expect(decoded.questionPayload.questions[1]?.multiSelect).toBe(true);
+    expect(decoded.answer?.answers).toEqual([
+      { questionId: "q1", answer: "main" },
+      { questionId: "q2", answer: ["unit", "lint"] },
+    ]);
+  });
+
+  it("decodes a legacy free-text question without inventing choices", () => {
+    const decoded = decodeApprovalRequest({
+      ...approvalRequest,
+      kind: "user_input",
+      action: "user_input",
+      questionPayload: { kind: "legacy_text", text: "Which branch?" },
+      answer: {
+        answers: [],
+        legacyText: "main",
+        delivery: "unknown",
+        actor: "local_operator",
+        recordedAt: "2026-08-08T10:00:05.000Z",
+      },
+    });
+    expect(decoded.questionPayload).toEqual({ kind: "legacy_text", text: "Which branch?" });
+    expect(decoded.answer?.legacyText).toBe("main");
+  });
+
+  it("keeps an unsupported question payload explicit", () => {
+    expect(
+      decodeApprovalRequest({
+        ...approvalRequest,
+        kind: "user_input",
+        action: "user_input",
+        questionPayload: {
+          kind: "unsupported",
+          providerMethod: "item/tool/requestUserInput",
+          detail: "missing question id",
+        },
+      }).questionPayload,
+    ).toEqual({
+      kind: "unsupported",
+      providerMethod: "item/tool/requestUserInput",
+      detail: "missing question id",
+    });
+  });
+
+  it("rejects a structured payload with an unknown version", () => {
+    expect(() =>
+      decodeApprovalRequest({
+        ...approvalRequest,
+        questionPayload: { ...questionPayload, version: 2 },
+      }),
+    ).toThrow();
+  });
+
+  it("decodes a history-only decision note", () => {
+    expect(
+      decodeApprovalRequest({
+        ...approvalRequest,
+        decisionNote: {
+          text: "Approved for this run only",
+          delivery: "history_only",
+          actor: "local_operator",
+          recordedAt: "2026-08-08T10:00:05.000Z",
+        },
+      }).decisionNote?.delivery,
+    ).toBe("history_only");
+  });
+});
+
+const runAttempt = {
+  id: "run-1",
+  workItemId: "work-item-1",
+  attemptNumber: 1,
+  workspacePath: "/repo",
+  provider: { instanceId: "codex_default", driver: "codex" },
+  status: "streaming_turn",
+  startedAt: "2026-08-08T10:00:00.000Z",
+  finishedAt: null,
+  error: null,
+} as const;
+
+const acceptedGuidance = {
+  schemaVersion: 1,
+  acceptedAt: "2026-08-08T10:00:00.000Z",
+  digest: "sha256:abc",
+  workflow: {
+    id: "workflow-1",
+    path: "/repo/WORKFLOW.md",
+    revision: "2026-08-08T09:00:00.000Z",
+    digest: "sha256:workflow",
+    instructions: "Implement the issue.",
+    validationRequired: [],
+  },
+  source: {
+    trackerId: "github:owner/repo",
+    kind: "github",
+    identifier: "#1",
+    title: "Issue 1",
+    description: null,
+    acceptanceCriteria: [],
+    labels: ["agent-ready"],
+    revision: null,
+    digest: "sha256:source",
+  },
+  guidance: {
+    batch: { state: "absent" },
+    story: { state: "present", text: "" },
+    digest: "sha256:guidance",
+  },
+  target: {
+    repositoryPath: "/repo",
+    workflowPath: "/repo/WORKFLOW.md",
+    provider: { instanceId: "codex_default", driver: "codex" },
+  },
+  permission: {
+    autonomy: "execute",
+    approvalPolicy: "on-request",
+    threadSandbox: "workspace-write",
+    turnSandboxPolicy: { type: "workspaceWrite" },
+    editsAllowed: true,
+    approvalsEnabled: true,
+    protectedPaths: [],
+    delivery: {
+      approvalBeforePush: null,
+      approvalBeforePullRequest: true,
+      approvalBeforeMerge: null,
+    },
+  },
+} as const;
+
+describe("RunAttemptSchema accepted guidance", () => {
+  it("keeps legacy attempts without an invented snapshot", () => {
+    expect(decodeRunAttempt(runAttempt).acceptedGuidance).toBeUndefined();
+  });
+
+  it("round-trips a frozen accepted snapshot and keeps absent versus empty guidance distinct", () => {
+    const decoded = decodeRunAttempt({ ...runAttempt, acceptedGuidance });
+    expect(decoded.acceptedGuidance).toEqual(acceptedGuidance);
+    expect(decoded.acceptedGuidance?.guidance.batch.state).toBe("absent");
+    expect(decoded.acceptedGuidance?.guidance.story).toEqual({ state: "present", text: "" });
+    expect(decoded.acceptedGuidance?.permission.delivery.approvalBeforePush).toBeNull();
+  });
+
+  it("preserves a manual work source instead of relabelling it as a tracker", () => {
+    const decoded = decodeRunAttempt({
+      ...runAttempt,
+      acceptedGuidance: {
+        ...acceptedGuidance,
+        source: {
+          ...acceptedGuidance.source,
+          trackerId: "manual:item-1",
+          kind: "manual",
+        },
+      },
+    });
+    expect(decoded.acceptedGuidance?.source.kind).toBe("manual");
+  });
+});
+
+describe("ApprovalRequestSchema question payload robustness", () => {
+  it("accepts an empty option description while keeping the label", () => {
+    const decoded = decodeApprovalRequest({
+      ...approvalRequest,
+      kind: "user_input",
+      action: "user_input",
+      questionPayload: {
+        kind: "structured",
+        version: 1,
+        questions: [
+          {
+            id: "q1",
+            header: "Branch",
+            question: "Which branch?",
+            options: [{ label: "main", description: "" }],
+          },
+        ],
+      },
+    });
+    if (decoded.questionPayload?.kind !== "structured") {
+      throw new Error("expected structured");
+    }
+    expect(decoded.questionPayload.questions[0]?.options).toEqual([
+      { label: "main", description: "" },
+    ]);
+  });
+
+  it("decodes a staged delivery state", () => {
+    expect(
+      decodeApprovalRequest({
+        ...approvalRequest,
+        kind: "user_input",
+        action: "user_input",
+        state: "delivering",
+        decision: "answered",
+      }).state,
+    ).toBe("delivering");
+  });
+
+  it("keeps an explicit history-unavailable reason without inventing content", () => {
+    const decoded = decodeApprovalRequest({
+      ...approvalRequest,
+      kind: "user_input",
+      action: "user_input",
+      state: "interrupted",
+      decision: "interrupted",
+      historyUnavailable: "the stored answer history could not be decoded",
+    });
+    expect(decoded.answer).toBeUndefined();
+    expect(decoded.historyUnavailable).toContain("answer history");
+  });
+});
+
+describe("Symphony Stop evidence", () => {
+  it("keeps absence of stop closure unknown", () => {
+    expect(decodeRunAttempt(runAttempt).stopClosure).toBeUndefined();
+  });
+
+  it("decodes a confirmed closure only with exact attempt, time and source", () => {
+    const decoded = decodeRunAttempt({
+      ...runAttempt,
+      stopClosure: {
+        state: "confirmed",
+        runAttemptId: "run-1",
+        observedAt: "2026-08-08T10:00:05.000Z",
+        source: "recovery.stop_confirmed",
+      },
+    });
+    expect(decoded.stopClosure?.runAttemptId).toBe("run-1");
+    expect(() =>
+      decodeRunAttempt({
+        ...runAttempt,
+        stopClosure: { state: "confirmed", observedAt: "2026-08-08T10:00:05.000Z" },
+      }),
+    ).toThrow();
+  });
+
+  it("decodes held and confirmed Stop results without treating absence as confirmation", () => {
+    expect(decodeStopResult({ ok: true })).toEqual({ ok: true });
+    expect(
+      decodeStopResult({
+        ok: false,
+        outcome: {
+          status: "held",
+          runAttemptId: "run-1",
+          reason: "unverified_owner",
+        },
+      }).outcome,
+    ).toMatchObject({ status: "held" });
+    expect(
+      decodeStopResult({
+        ok: true,
+        outcome: {
+          status: "confirmed",
+          runAttemptId: "run-1",
+          evidence: "group_terminated",
+          released: true,
+        },
+      }).outcome,
+    ).toMatchObject({ status: "confirmed", released: true });
   });
 });

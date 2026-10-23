@@ -1,0 +1,97 @@
+{
+  "time": "2026-10-23T22:14:16.322070+00:00",
+  "targets": [
+    {
+      "path": "/Users/kamogelo/.codex/worktrees/neokod-feedback/t3code",
+      "branch": "feat/neokod-feedback",
+      "head": "7acf85519c1197b3a2c9f97caa0ddaaf00a03c56",
+      "remotePreserved": true,
+      "trackedClean": true,
+      "liveCwd": false,
+      "ignoredDisposableOnly": [
+        "apps/desktop/node_modules/",
+        "apps/server/node_modules/",
+        "apps/web/node_modules/",
+        "apps/web/tsconfig.tsbuildinfo",
+        "node_modules/",
+        "oxlint-plugin-neokod/node_modules/",
+        "packages/client-runtime/node_modules/",
+        "packages/contracts/node_modules/",
+        "packages/effect-acp/node_modules/",
+        "packages/effect-codex-app-server/node_modules/",
+        "packages/shared/node_modules/",
+        "scripts/node_modules/"
+      ],
+      "removed": true
+    },
+    {
+      "path": "/Users/kamogelo/.codex/worktrees/neokod-recovery/t3code",
+      "branch": "feat/neokod-recovery",
+      "head": "4c9587615d18af5b2ea5efdd233ea40fdeb9e2b3",
+      "remotePreserved": true,
+      "trackedClean": true,
+      "liveCwd": false,
+      "ignoredDisposableOnly": [
+        "apps/desktop/node_modules/",
+        "apps/server/node_modules/",
+        "apps/web/node_modules/",
+        "node_modules/",
+        "oxlint-plugin-neokod/node_modules/",
+        "packages/client-runtime/node_modules/",
+        "packages/contracts/node_modules/",
+        "packages/effect-acp/node_modules/",
+        "packages/effect-codex-app-server/node_modules/",
+        "packages/shared/node_modules/",
+        "scripts/node_modules/"
+      ],
+      "removed": true
+    },
+    {
+      "path": "/Users/kamogelo/.codex/worktrees/neokod-work-ui/t3code",
+      "branch": "feat/neokod-work-ui",
+      "head": "daf6cfb55748f9d4f006a38421b258ed80054e86",
+      "remotePreserved": true,
+      "trackedClean": true,
+      "liveCwd": false,
+      "ignoredDisposableOnly": [
+        "apps/desktop/node_modules/",
+        "apps/server/node_modules/",
+        "apps/web/node_modules/",
+        "apps/web/tsconfig.tsbuildinfo",
+        "node_modules/",
+        "oxlint-plugin-neokod/node_modules/",
+        "packages/client-runtime/node_modules/",
+        "packages/contracts/node_modules/",
+        "packages/effect-acp/node_modules/",
+        "packages/effect-codex-app-server/node_modules/",
+        "packages/shared/node_modules/",
+        "scripts/node_modules/"
+      ],
+      "removed": true
+    },
+    {
+      "path": "/Users/kamogelo/.codex/worktrees/neokod-guidance/t3code",
+      "branch": "feat/neokod-guidance",
+      "head": "6e439d91b2423eff97eb4a41ec070515ca7a0c5a",
+      "remotePreserved": true,
+      "trackedClean": true,
+      "liveCwd": false,
+      "ignoredDisposableOnly": [
+        "apps/desktop/node_modules/",
+        "apps/server/node_modules/",
+        "apps/web/node_modules/",
+        "node_modules/",
+        "oxlint-plugin-neokod/node_modules/",
+        "packages/client-runtime/node_modules/",
+        "packages/contracts/node_modules/",
+        "packages/effect-acp/node_modules/",
+        "packages/effect-codex-app-server/node_modules/",
+        "packages/shared/node_modules/",
+        "scripts/node_modules/"
+      ],
+      "removed": true
+    }
+  ],
+  "branchesRetained": true,
+  "integrationPreserved": true
+}
