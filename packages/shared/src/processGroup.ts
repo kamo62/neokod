@@ -5,6 +5,8 @@ import * as NodeUtil from "node:util";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 
+import { HostProcessPlatform } from "./hostProcess.ts";
+
 /**
  * Shared validated process-group abstraction
  * (Issue #101 spec sections 4.1 / 6.3 / 6.6, implementation-sequence step 3).
@@ -1018,7 +1020,7 @@ export const confirmOwnedProcessClosure = (
 
     const reader = deps.reader ?? posixProcessBirthReader;
     const signaller = deps.signaller ?? posixProcessGroupSignaller;
-    const platform = deps.platform ?? process.platform;
+    const platform = deps.platform ?? (yield* HostProcessPlatform);
 
     const plan = yield* planValidatedOrphanTermination(
       {

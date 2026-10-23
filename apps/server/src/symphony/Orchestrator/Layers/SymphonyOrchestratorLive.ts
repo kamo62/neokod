@@ -43,6 +43,7 @@ import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import { approvalRequestKind } from "../../Domain/Approvals.ts";
 import { nowIso } from "../../Domain/Time.ts";
+import { HostProcessPlatform } from "@neokod/shared/hostProcess";
 import { SymphonyPersistenceSqlError } from "../../Persistence/Errors.ts";
 import type { SymphonyPersistenceError } from "../../Persistence/Errors.ts";
 import { SymphonyProjectRepository } from "../../Persistence/Services/SymphonyProjectRepository.ts";
@@ -1754,7 +1755,7 @@ const makeOrchestrator = Effect.gen(function* () {
     if (!(yield* Ref.get(holdsLockRef))) {
       return refused("not_leader");
     }
-    const platformRefusal = symphonyAdmissionPlatformRefusal();
+    const platformRefusal = symphonyAdmissionPlatformRefusal(yield* HostProcessPlatform);
     if (platformRefusal !== null) {
       // Shared platform capability gate, applied before acknowledging a start.
       return refused("not_dispatchable", platformRefusal);
