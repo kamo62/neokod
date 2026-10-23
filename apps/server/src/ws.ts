@@ -422,8 +422,14 @@ const withApprovalService = <A, E>(
   Effect.serviceOption(ApprovalService.ApprovalService).pipe(
     Effect.flatMap((maybe) => (Option.isSome(maybe) ? run(maybe.value) : fallback)),
   );
-const approvalError = (message: string): SymphonyError =>
-  new SymphonyError({ code: "approval_request_not_found", message });
+const approvalError = (cause: { readonly message: string }): SymphonyError =>
+  new SymphonyError({
+    code:
+      cause instanceof ApprovalService.ApprovalAnswerValidationError
+        ? "invalid_answer"
+        : "approval_request_not_found",
+    message: cause.message,
+  });
 const approvalUnavailable = (): SymphonyError =>
   new SymphonyError({
     code: "symphony_unavailable",
@@ -1017,10 +1023,15 @@ export const makeSymphonyRpcHandlers = () => ({
       SYMPHONY_WS_METHODS.approve,
       withApprovalService(
         (approvals) =>
-          approvals.approve(input.requestId).pipe(
-            Effect.mapError((cause) => approvalError(cause.message)),
-            Effect.as({ ok: true }),
-          ),
+          approvals
+            .approve(input.requestId, {
+              ...(input.note !== undefined ? { note: input.note } : {}),
+              ...(input.runAttemptId !== undefined ? { runAttemptId: input.runAttemptId } : {}),
+            })
+            .pipe(
+              Effect.mapError((cause) => approvalError(cause)),
+              Effect.as({ ok: true }),
+            ),
         Effect.fail(approvalUnavailable()),
       ),
       { "rpc.aggregate": "symphony" },
@@ -1030,10 +1041,19 @@ export const makeSymphonyRpcHandlers = () => ({
       SYMPHONY_WS_METHODS.reject,
       withApprovalService(
         (approvals) =>
-          approvals.reject(input.requestId, input.reason).pipe(
-            Effect.mapError((cause) => approvalError(cause.message)),
-            Effect.as({ ok: true }),
-          ),
+          approvals
+            .reject(input.requestId, {
+              ...(input.note !== undefined
+                ? { note: input.note }
+                : input.reason !== undefined
+                  ? { note: input.reason }
+                  : {}),
+              ...(input.runAttemptId !== undefined ? { runAttemptId: input.runAttemptId } : {}),
+            })
+            .pipe(
+              Effect.mapError((cause) => approvalError(cause)),
+              Effect.as({ ok: true }),
+            ),
         Effect.fail(approvalUnavailable()),
       ),
       { "rpc.aggregate": "symphony" },
@@ -1045,10 +1065,16 @@ export const makeSymphonyRpcHandlers = () => ({
       SYMPHONY_WS_METHODS.respondToUserInput,
       withApprovalService(
         (approvals) =>
-          approvals.respondToUserInput(input.requestId, input.text).pipe(
-            Effect.mapError((cause) => approvalError(cause.message)),
-            Effect.as({ ok: true }),
-          ),
+          approvals
+            .respondToUserInput(input.requestId, {
+              ...(input.answers !== undefined ? { answers: input.answers } : {}),
+              ...(input.text !== undefined ? { text: input.text } : {}),
+              ...(input.runAttemptId !== undefined ? { runAttemptId: input.runAttemptId } : {}),
+            })
+            .pipe(
+              Effect.mapError((cause) => approvalError(cause)),
+              Effect.as({ ok: true }),
+            ),
         Effect.fail(approvalUnavailable()),
       ),
       { "rpc.aggregate": "symphony" },

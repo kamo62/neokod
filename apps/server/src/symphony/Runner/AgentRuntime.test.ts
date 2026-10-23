@@ -1,4 +1,4 @@
-import { assert, it } from "@effect/vitest";
+import { assert, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as TestClock from "effect/testing/TestClock";
@@ -20,11 +20,16 @@ it("maps Symphony approval decisions to Codex wire values", () => {
   assert.strictEqual(toCodexApprovalDecision("rejected"), "decline");
 });
 
-it("builds a Codex user-input answer map from question ids", () => {
-  assert.deepStrictEqual(toCodexUserInputResponse([{ id: "q1" }, { id: "q2" }], "main"), {
-    answers: { q1: { answers: ["main"] }, q2: { answers: ["main"] } },
+it("builds a Codex user-input answer map from independent question ids", () => {
+  expect(
+    toCodexUserInputResponse(["q1", "q2"], {
+      q1: "main",
+      q2: ["unit", "lint"],
+    }),
+  ).toEqual({
+    answers: { q1: { answers: ["main"] }, q2: { answers: ["unit", "lint"] } },
   });
-  assert.deepStrictEqual(toCodexUserInputResponse(undefined, "main"), { answers: {} });
+  expect(toCodexUserInputResponse([], {})).toEqual({ answers: {} });
 });
 
 it.effect("sends exactly one reply to a command approval", () =>
@@ -238,10 +243,10 @@ it.effect("answers user input with an answers map on the wire", () =>
         pending = yield* liveRequests.listPending(runAttemptId);
         iterations += 1;
       }
-      yield* liveRequests.respondToUserInput(runAttemptId, "0", "main");
+      yield* liveRequests.respondToUserInput(runAttemptId, "0", { q1: "main", q2: "because" });
       const reply = yield* peer.awaitClientResponse(id);
       assert.deepStrictEqual(reply.result, {
-        answers: { q1: { answers: ["main"] }, q2: { answers: ["main"] } },
+        answers: { q1: { answers: ["main"] }, q2: { answers: ["because"] } },
       });
       yield* peer.completeTurn("completed");
       yield* Fiber.join(fiber);
@@ -258,6 +263,7 @@ it.effect("persists the protocol question text and its choices for a user-input 
         readonly requestId: string;
         readonly action: string;
         readonly reason?: string;
+        readonly questionPayload?: unknown;
       }> = [];
       const runtime = yield* makeFakeCodexRuntime({
         peer,
@@ -268,6 +274,9 @@ it.effect("persists the protocol question text and its choices for a user-input 
               requestId: input.requestId,
               action: input.action,
               ...(input.reason !== undefined ? { reason: input.reason } : {}),
+              ...(input.questionPayload !== undefined
+                ? { questionPayload: input.questionPayload }
+                : {}),
             });
           }),
       });
@@ -313,13 +322,30 @@ it.effect("persists the protocol question text and its choices for a user-input 
       assert.isTrue(prompt.includes("Which branch should I target?"));
       assert.isTrue(prompt.includes("options: main, release"));
 
-      yield* liveRequests.respondToUserInput(runAttemptId, pending[0]?.requestId ?? "0", "main");
+      yield* liveRequests.respondToUserInput(runAttemptId, pending[0]?.requestId ?? "0", {
+        q1: "main",
+      });
       const reply = yield* peer.awaitClientResponse(id);
       assert.deepStrictEqual(reply.result, { answers: { q1: { answers: ["main"] } } });
 
       const record = recorded.find((entry) => entry.action === "user_input");
       assert.isTrue(record?.reason?.includes("Which branch should I target?") ?? false);
       assert.isTrue(record?.reason?.includes("options: main, release") ?? false);
+      assert.deepStrictEqual(record?.questionPayload, {
+        kind: "structured",
+        version: 1,
+        questions: [
+          {
+            id: "q1",
+            header: "Branch",
+            question: "Which branch should I target?",
+            options: [
+              { label: "main", description: "default branch" },
+              { label: "release", description: "release branch" },
+            ],
+          },
+        ],
+      });
 
       yield* peer.completeTurn("completed");
       yield* Fiber.join(fiber);
@@ -384,10 +410,14 @@ it.effect("a timed-out question sends the answer that won the claim", () =>
         peer,
         liveRequests,
         requestTimedOut: (input) =>
-          liveRequests.respondToUserInput(input.runAttemptId, input.requestId, "main").pipe(
-            Effect.as(false),
-            Effect.catch(() => Effect.succeed(true)),
-          ),
+          liveRequests
+            .respondToUserInput(input.runAttemptId, input.requestId, {
+              q1: "main",
+            })
+            .pipe(
+              Effect.as(false),
+              Effect.catch(() => Effect.succeed(true)),
+            ),
       });
       const runAttemptId = RunAttemptId.make("run-timeout-question");
       const fiber = yield* runtime
@@ -415,6 +445,58 @@ it.effect("a timed-out question sends the answer that won the claim", () =>
       yield* settle;
       const reply = yield* peer.awaitClientResponse(id);
       assert.deepStrictEqual(reply.result, { answers: { q1: { answers: ["main"] } } });
+      yield* peer.completeTurn("completed");
+      yield* Fiber.join(fiber);
+    }),
+  ),
+);
+
+it.effect("an unanswered question expires without sending an empty synthetic answer", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const peer = yield* makeFakeCodexPeer();
+      const liveRequests = yield* makeLiveRequests;
+      const expired: Array<string> = [];
+      const runtime = yield* makeFakeCodexRuntime({
+        peer,
+        liveRequests,
+        requestTimedOut: (input) =>
+          Effect.sync(() => {
+            expired.push(input.requestId);
+            return true;
+          }),
+      });
+      const runAttemptId = RunAttemptId.make("run-question-timeout");
+      const fiber = yield* runtime
+        .runTurn({
+          issue: makeRunnerTestIssue("1"),
+          config: makeRunnerTestConfig({ liveRequestsWaitTimeoutMs: 30_000 }),
+          workspacePath: "/tmp/fake-ws",
+          branch: "b",
+          runAttemptId,
+          workItemId: WorkItemId.make("wi-question-timeout"),
+        })
+        .pipe(Effect.forkScoped);
+      yield* peer.awaitClientRequest("turn/start");
+      const id = yield* peer.sendUserInputRequest([{ id: "q1", question: "Which branch?" }]);
+      let pending = yield* liveRequests.listPending(runAttemptId);
+      for (let attempt = 0; attempt < 100 && pending.length === 0; attempt += 1) {
+        yield* Effect.yieldNow;
+        pending = yield* liveRequests.listPending(runAttemptId);
+      }
+      assert.strictEqual(pending.length, 1);
+
+      yield* TestClock.adjust("31 seconds");
+      yield* settle;
+      const reply = yield* peer.awaitClientResponse(id);
+      // No `{answers: {q1: {answers: [""]}}}` placeholder: the provider request
+      // is deliberately terminated and no human answer is claimed.
+      assert.strictEqual(reply.result, undefined);
+      assert.include(
+        String((reply.error as { message?: unknown }).message),
+        "did not answer before the request wait expired",
+      );
+      assert.deepStrictEqual(expired, [String(pending[0]?.requestId)]);
       yield* peer.completeTurn("completed");
       yield* Fiber.join(fiber);
     }),

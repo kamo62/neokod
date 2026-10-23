@@ -28,6 +28,7 @@ export const approvalServiceRequestCallbacks = (
         scope: "once",
         ...(input.command !== undefined ? { command: input.command } : {}),
         ...(input.reason !== undefined ? { reason: input.reason } : {}),
+        ...(input.questionPayload !== undefined ? { questionPayload: input.questionPayload } : {}),
       })
       .pipe(
         Effect.asVoid,
