@@ -345,6 +345,19 @@ describe("ApprovalRequestSchema question payload robustness", () => {
       }).state,
     ).toBe("delivering");
   });
+
+  it("keeps an explicit history-unavailable reason without inventing content", () => {
+    const decoded = decodeApprovalRequest({
+      ...approvalRequest,
+      kind: "user_input",
+      action: "user_input",
+      state: "interrupted",
+      decision: "interrupted",
+      historyUnavailable: "the stored answer history could not be decoded",
+    });
+    expect(decoded.answer).toBeUndefined();
+    expect(decoded.historyUnavailable).toContain("answer history");
+  });
 });
 
 describe("Symphony Stop evidence", () => {

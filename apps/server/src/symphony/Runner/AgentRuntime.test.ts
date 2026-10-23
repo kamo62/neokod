@@ -1145,6 +1145,41 @@ it.effect("refuses an unrepresentable accepted permission before spawn", () =>
   ),
 );
 
+it.effect("withdraws its own registration when request publication fails", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const peer = yield* makeFakeCodexPeer();
+      const liveRequests = yield* makeLiveRequests;
+      const runtime = yield* makeFakeCodexRuntime({
+        peer,
+        liveRequests,
+        recordRequest: () => Effect.succeed({ status: "record_failed" as const }),
+      });
+      const runAttemptId = RunAttemptId.make("run-record-failed");
+      const fiber = yield* runtime
+        .runTurn({
+          issue: makeRunnerTestIssue("1"),
+          config: makeRunnerTestConfig(),
+          workspacePath: "/tmp/fake-ws",
+          branch: "b",
+          runAttemptId,
+          workItemId: WorkItemId.make("wi-record-failed"),
+        })
+        .pipe(Effect.forkScoped);
+      yield* peer.awaitClientRequest("turn/start");
+      const id = yield* peer.sendUserInputRequest([{ id: "q1", question: "Which branch?" }]);
+      const reply = yield* peer.awaitClientResponse(id);
+      expect(reply.result).toBeUndefined();
+      expect(String((reply.error as { message?: unknown }).message)).toContain(
+        "could not be recorded",
+      );
+      expect(yield* liveRequests.listPending(runAttemptId)).toHaveLength(0);
+      yield* peer.completeTurn("completed");
+      yield* Fiber.join(fiber);
+    }),
+  ),
+);
+
 it.effect("rejects a redelivered decided request without creating an invisible waiter", () =>
   Effect.scoped(
     Effect.gen(function* () {

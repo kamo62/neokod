@@ -267,6 +267,16 @@ export interface AgentRuntimeDeps {
     readonly workItemId: WorkItemId;
     readonly runAttemptId: RunAttemptId;
   }) => Effect.Effect<boolean>;
+  /**
+   * The live request was settled by cancellation/run end (not a timeout).
+   * Implementations close the durable row as interrupted for this exact
+   * run/request only.
+   */
+  readonly requestSettled?: (input: {
+    readonly requestId: string;
+    readonly workItemId: WorkItemId;
+    readonly runAttemptId: RunAttemptId;
+  }) => Effect.Effect<void>;
 }
 
 const assertAcceptedTarget = (
@@ -323,7 +333,7 @@ export const makeCodexAgentRuntime = (
   Effect.gen(function* () {
     const scope = yield* Scope.Scope;
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-    const { liveRequests, recordRequest, requestTimedOut } = deps;
+    const { liveRequests, recordRequest, requestTimedOut, requestSettled } = deps;
 
     let activeClient: CodexClientService | undefined;
     let threadId: string | undefined;
@@ -485,6 +495,7 @@ export const makeCodexAgentRuntime = (
               recordRequest,
               input.config,
               requestTimedOut,
+              requestSettled,
             ),
           );
         }
@@ -703,6 +714,7 @@ const consumeIncoming = (
   recordRequest: AgentRuntimeDeps["recordRequest"],
   config: EffectiveWorkflowConfig,
   requestTimedOut?: AgentRuntimeDeps["requestTimedOut"],
+  requestSettled?: AgentRuntimeDeps["requestSettled"],
 ): Effect.Effect<void, never, never> =>
   Stream.runForEach(client.raw.requests, (request) =>
     handleRequest(
@@ -714,6 +726,7 @@ const consumeIncoming = (
       recordRequest,
       config,
       requestTimedOut,
+      requestSettled,
     ),
   ).pipe(
     Effect.catch(() => Effect.void),
@@ -729,6 +742,7 @@ const handleRequest = (
   recordRequest: AgentRuntimeDeps["recordRequest"],
   config: EffectiveWorkflowConfig,
   requestTimedOut?: AgentRuntimeDeps["requestTimedOut"],
+  requestSettled?: AgentRuntimeDeps["requestSettled"],
 ): Effect.Effect<void, never, never> =>
   Effect.gen(function* () {
     const params = (request.params ?? {}) as Record<string, unknown>;
@@ -738,6 +752,10 @@ const handleRequest = (
       requestTimedOut === undefined
         ? Effect.succeed(true)
         : requestTimedOut({ requestId, workItemId, runAttemptId });
+    const markSettled = (requestId: string) =>
+      requestSettled === undefined
+        ? Effect.void
+        : requestSettled({ requestId, workItemId, runAttemptId });
     /**
      * Resolve what happened when this runtime's own wait elapsed.
      *
@@ -769,29 +787,6 @@ const handleRequest = (
       const requestId = String(params.requestId ?? params.approvalId ?? request.id);
       const action = String(params.kind ?? request.method.split("/").at(-2) ?? "action");
       const command = typeof params.command === "string" ? params.command : undefined;
-      const record = yield* (
-        recordRequest?.({
-          requestId,
-          workItemId,
-          runAttemptId,
-          action,
-          ...(command !== undefined ? { command } : {}),
-        }) ?? Effect.succeed({ status: "recorded" as const })
-      ).pipe(
-        Effect.map((result) => result ?? { status: "recorded" as const }),
-        Effect.catch(() => Effect.succeed({ status: "record_failed" as const })),
-      );
-      if (record.status === "duplicate_decided" || record.status === "duplicate_mismatched") {
-        yield* client.raw
-          .respondError(
-            request.id,
-            CodexErrors.CodexAppServerRequestError.invalidParams(
-              `Request id ${requestId} was already used for a ${record.status === "duplicate_decided" ? "decided" : "different"} request`,
-            ),
-          )
-          .pipe(Effect.catch(() => Effect.void));
-        return;
-      }
       const registration = yield* Effect.result(
         liveRequests.registerApproval({
           requestId,
@@ -816,6 +811,35 @@ const handleRequest = (
         return yield* Effect.never;
       }
       const deferred = registration.success;
+      const record = yield* (
+        recordRequest?.({
+          requestId,
+          workItemId,
+          runAttemptId,
+          action,
+          ...(command !== undefined ? { command } : {}),
+        }) ?? Effect.succeed({ status: "recorded" as const })
+      ).pipe(
+        Effect.map((result) => result ?? { status: "recorded" as const }),
+        Effect.catch(() => Effect.succeed({ status: "record_failed" as const })),
+      );
+      if (record.status !== "recorded" && record.status !== "duplicate_pending") {
+        // Publication failed or the durable history is decided/mismatched.
+        // Withdraw only this caller's just-registered Deferred, then report the
+        // provider error; no invisible waiter survives.
+        yield* liveRequests.withdrawPending(runAttemptId, requestId);
+        yield* client.raw
+          .respondError(
+            request.id,
+            CodexErrors.CodexAppServerRequestError.invalidParams(
+              record.status === "record_failed"
+                ? `Request id ${requestId} could not be recorded`
+                : `Request id ${requestId} was already used for a ${record.status === "duplicate_decided" ? "decided" : "different"} request`,
+            ),
+          )
+          .pipe(Effect.catch(() => Effect.void));
+        return;
+      }
       const decision = yield* waitForAnswer<ApprovalDecision>(
         deferred,
         Duration.millis(waitTimeoutMs),
@@ -824,11 +848,12 @@ const handleRequest = (
       // fabricated human decision. The durable row records `expired`.
       const effectiveDecision = Option.isSome(decision)
         ? decision.value
-        : yield* resolveAfterWait(deferred, requestId).pipe(
-            Effect.map((outcome) =>
-              outcome._tag === "answered" ? outcome.value : ("rejected" as ApprovalDecision),
-            ),
-          );
+        : yield* Effect.gen(function* () {
+            const outcome = yield* resolveAfterWait(deferred, requestId);
+            if (outcome._tag === "answered") return outcome.value;
+            if (outcome._tag === "settled") yield* markSettled(requestId);
+            return "rejected" as ApprovalDecision;
+          });
       yield* client.raw
         .respond(request.id, { decision: toCodexApprovalDecision(effectiveDecision) })
         .pipe(Effect.catch(() => Effect.void));
@@ -837,33 +862,6 @@ const handleRequest = (
       const promptText = userInputRequestText(params, request.method);
       const questionPayload = parseQuestionPayload(params);
       const questionIds = questionPayloadIds(questionPayload);
-      const record = yield* (
-        recordRequest?.({
-          requestId,
-          workItemId,
-          runAttemptId,
-          action: "user_input",
-          // Persist the question itself and its preserved structure: the live
-          // registry only holds it in memory, so without this the Attention tab
-          // can only say that something was asked.
-          reason: promptText,
-          questionPayload,
-        }) ?? Effect.succeed({ status: "recorded" as const })
-      ).pipe(
-        Effect.map((result) => result ?? { status: "recorded" as const }),
-        Effect.catch(() => Effect.succeed({ status: "record_failed" as const })),
-      );
-      if (record.status === "duplicate_decided" || record.status === "duplicate_mismatched") {
-        yield* client.raw
-          .respondError(
-            request.id,
-            CodexErrors.CodexAppServerRequestError.invalidParams(
-              `Request id ${requestId} was already used for a ${record.status === "duplicate_decided" ? "decided" : "different"} request`,
-            ),
-          )
-          .pipe(Effect.catch(() => Effect.void));
-        return;
-      }
       const registration = yield* Effect.result(
         liveRequests.registerUserInput({
           requestId,
@@ -888,6 +886,36 @@ const handleRequest = (
         return yield* Effect.never;
       }
       const deferred = registration.success;
+      const record = yield* (
+        recordRequest?.({
+          requestId,
+          workItemId,
+          runAttemptId,
+          action: "user_input",
+          // Persist the question itself and its preserved structure: the live
+          // registry only holds it in memory, so without this the Attention tab
+          // can only say that something was asked.
+          reason: promptText,
+          questionPayload,
+        }) ?? Effect.succeed({ status: "recorded" as const })
+      ).pipe(
+        Effect.map((result) => result ?? { status: "recorded" as const }),
+        Effect.catch(() => Effect.succeed({ status: "record_failed" as const })),
+      );
+      if (record.status !== "recorded" && record.status !== "duplicate_pending") {
+        yield* liveRequests.withdrawPending(runAttemptId, requestId);
+        yield* client.raw
+          .respondError(
+            request.id,
+            CodexErrors.CodexAppServerRequestError.invalidParams(
+              record.status === "record_failed"
+                ? `Request id ${requestId} could not be recorded`
+                : `Request id ${requestId} was already used for a ${record.status === "duplicate_decided" ? "decided" : "different"} request`,
+            ),
+          )
+          .pipe(Effect.catch(() => Effect.void));
+        return;
+      }
       const answer = yield* waitForAnswer<UserInputAnswers>(
         deferred,
         Duration.millis(waitTimeoutMs),
@@ -916,6 +944,7 @@ const handleRequest = (
         if (outcome._tag === "answered") {
           yield* sendAnswers(outcome.value);
         } else {
+          if (outcome._tag === "settled") yield* markSettled(requestId);
           // A question has no safe default answer. Terminate its provider
           // request explicitly and leave the durable row `expired`/`interrupted`
           // instead of sending an empty synthetic answer that looks human.
