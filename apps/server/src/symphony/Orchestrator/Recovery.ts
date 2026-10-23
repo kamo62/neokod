@@ -4,6 +4,11 @@ import type {
   WorkItem,
   WorkflowRecord,
 } from "@neokod/contracts";
+import {
+  confirmOwnedProcessClosure,
+  type ProcessClosureDeps,
+  type ProcessClosureResult,
+} from "@neokod/shared/processGroup";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 
@@ -22,18 +27,27 @@ import { isRetryableCategory } from "./Retry.ts";
  * Runs once on orchestrator startup, before the poll loop. Everything is
  * best-effort and idempotent (PRD 18.4); repeated runs are safe.
  *
- * For each work item still held in `preparing`/`running`:
- * - The run attempt is terminal (the worker died between the run and the
- *   transition): release the claim to `queued` immediately.
- * - The run attempt is non-terminal with no live agent (the agent process
- *   died or the server restarted): mark the attempt `interrupted`, append an
- *   event, and release the claim. If the error category is retryable, release
- *   to `retry_scheduled` so the retry sweep re-dispatches it (plan 9.5);
- *   otherwise release to `queued`.
+ * For each work item still held in `preparing`/`running`/`testing`:
+ * - First resolve closure of any recorded owner process through the shared
+ *   {@link confirmOwnedProcessClosure} policy. The persisted pid must still
+ *   lead the recorded group and match its birth token before any signal, and
+ *   the claim must be unchanged since the snapshot.
+ * - Closure confirmed (or no owner process was ever recorded) and the run
+ *   attempt terminal: release the claim to `queued` (or land a succeeded run
+ *   in `ready_for_review`).
+ * - Closure confirmed and the attempt non-terminal: mark the attempt
+ *   `interrupted`, append an event, and release the claim. If the error
+ *   category is retryable, release to `retry_scheduled` so the retry sweep
+ *   re-dispatches it (plan 9.5); otherwise release to `queued`.
+ * - Closure held (bare legacy pid, recycled pid, missing/unreadable birth
+ *   token, unsupported platform, surviving descendants, failed termination,
+ *   or a claim that changed mid-check): do not signal, do not settle the
+ *   attempt or its approvals, and retain the claim, lease and lifecycle. A
+ *   durable `recovery_hold` run event records the reason for reconciliation.
+ *   This is the only honest outcome when identity or closure cannot be proven.
  *
- * Orphan-process termination and workspace inspection (PRD 18.2) are not part
- * of this slice: the workspace is preserved (PRD 18.1) and reused on retry by
- * the workspace manager.
+ * Workspace inspection (PRD 18.2) is not part of this slice: the workspace is
+ * preserved (PRD 18.1) and reused on retry by the workspace manager.
  */
 
 export interface RecoveryDeps {
@@ -49,36 +63,75 @@ export interface RecoveryDeps {
     readonly workItemId: WorkItem["id"];
     readonly runAttemptId: string;
   }) => Effect.Effect<void>;
-  /** Test seam. Default signals the real process (probe with kill -0, then SIGTERM). */
-  readonly terminateProcess?: (pid: number) => Effect.Effect<void>;
+  /**
+   * Process-identity readers/signallers for the shared closure policy. The
+   * default reads the live POSIX process table and signals a validated group;
+   * tests must inject fake readers/signallers and never signal real processes.
+   */
+  readonly processClosure?: ProcessClosureDeps;
+  /** The calling server's own pid; a recovered row must never target it. */
+  readonly ownPid?: number;
 }
 
 /** A claim with no attempt row older than this is a crash orphan, not an
  * in-flight dispatch (REVIEW P1 #10). */
 const STALL_WINDOW_MS = 5 * 60_000;
 
-/**
- * Terminate a coding-agent child that survived the server crash (audit item 3).
- * The claim records the agent child pid (written by the dispatcher right after
- * spawn). Claims written by older builds hold the old server pid; those are
- * skipped only when equal to this process's pid.
- */
-const signalProcess = (pid: number): Effect.Effect<void> =>
-  Effect.tryPromise(() =>
-    import("node:child_process").then(({ spawnSync }) => {
-      const probe = spawnSync("kill", ["-0", String(pid)], { stdio: "ignore" });
-      if (probe.status === 0) spawnSync("kill", ["-15", String(pid)], { stdio: "ignore" });
-    }),
-  ).pipe(Effect.catch(() => Effect.void));
+/** A hold reason owned by recovery itself (the rest come from the shared policy). */
+type RecoveryHoldReason =
+  | Extract<ProcessClosureResult, { readonly status: "held" }>["reason"]
+  | "claim_changed"
+  | "claim_unreadable";
 
-const terminateOrphanAgent = (deps: RecoveryDeps, item: WorkItem): Effect.Effect<void, never> =>
+/**
+ * Resolve closure for the owner process recorded on a held claim.
+ *
+ * The item snapshot is re-read immediately before the check. A numeric pid
+ * alone is never enough to signal: the shared policy additionally requires a
+ * leader-matching group id that is proven and a live birth token that matches.
+ * If the claim changed between the list read and this check, another authority
+ * (a re-claim, a stop, a manual edit) owns the row now, so this recovery pass
+ * must not touch it.
+ */
+const resolveOwnerClosure = (
+  deps: RecoveryDeps,
+  item: WorkItem,
+): Effect.Effect<
+  | ProcessClosureResult
+  | {
+      readonly status: "held";
+      readonly reason: RecoveryHoldReason;
+      readonly detail?: string;
+    }
+> =>
   Effect.gen(function* () {
-    const pid = item.ownerPid;
-    // null: no child was ever recorded. process.pid: a claim written by an older build stored the server's
-    // own pid, and after a restart (same pid in a container) signalling it would kill this server.
-    // pid <= 1: never signal init.
-    if (pid === null || pid === undefined || pid <= 1 || pid === process.pid) return;
-    yield* (deps.terminateProcess ?? signalProcess)(pid);
+    if (item.ownerPid === null || item.ownerPid === undefined) {
+      return { status: "closed", evidence: "no_owner_recorded" } as const;
+    }
+    const current = yield* deps.workItems
+      .getById(item.id)
+      .pipe(Effect.catch(() => Effect.succeed(null)));
+    if (current === null) {
+      return { status: "held", reason: "claim_unreadable" } as const;
+    }
+    const unchanged =
+      current.lifecycle === item.lifecycle &&
+      (current.claimedAt ?? null) === (item.claimedAt ?? null) &&
+      (current.ownerPid ?? null) === (item.ownerPid ?? null) &&
+      (current.ownerPgid ?? null) === (item.ownerPgid ?? null) &&
+      (current.ownerBirthToken ?? null) === (item.ownerBirthToken ?? null);
+    if (!unchanged) {
+      return { status: "held", reason: "claim_changed" } as const;
+    }
+    return yield* confirmOwnedProcessClosure(
+      {
+        ownerPid: item.ownerPid,
+        ...(item.ownerPgid === undefined ? {} : { ownerPgid: item.ownerPgid }),
+        ...(item.ownerBirthToken === undefined ? {} : { ownerBirthToken: item.ownerBirthToken }),
+        ...(deps.ownPid === undefined ? {} : { ownPid: deps.ownPid }),
+      },
+      deps.processClosure ?? {},
+    );
   });
 
 const TERMINAL_STATUSES: ReadonlySet<string> = new Set([
@@ -164,6 +217,24 @@ const recoverItem = (
       return;
     }
 
+    // Identity and closure come before ANY release, interruption or terminal
+    // transition, including the terminal-attempt shortcut below. An
+    // unverifiable owner keeps the claim, lease and lifecycle exactly as they
+    // are and records why, so reconciliation can handle it explicitly.
+    const closure = yield* resolveOwnerClosure(deps, item);
+    if (closure.status === "held") {
+      yield* deps.runEvents
+        .appendOnce(attempt.id, "recovery_hold", {
+          workItemId: String(item.id),
+          reason: closure.reason,
+          ...(closure.detail === undefined ? {} : { detail: closure.detail }),
+          ownerPid: item.ownerPid ?? null,
+          terminalAttempt: TERMINAL_STATUSES.has(attempt.status),
+        })
+        .pipe(Effect.catch(() => Effect.succeed(false)));
+      return;
+    }
+
     if (TERMINAL_STATUSES.has(attempt.status)) {
       // A `succeeded` attempt on a held item means finalization finished the
       // run but the ready_for_review transition never landed (crash in the
@@ -179,12 +250,11 @@ const recoverItem = (
       return;
     }
 
-    // Non-terminal attempt with no live agent: the worker is gone (restart or
-    // crash). Mark interrupted and release per the retry policy.
-    // Orphan adoption (audit item 3): the agent child may have survived the
-    // server crash (the claim row records its PID). Terminate it before
-    // releasing, so a dead run does not keep burning tokens in the background.
-    yield* terminateOrphanAgent(deps, item);
+    // Non-terminal attempt with no live agent and positively confirmed closure
+    // of any recorded owner process: the worker is gone (restart or crash).
+    // Mark interrupted and release per the retry policy. The shared closure
+    // check above already terminated a validated owned group; nothing
+    // unverified was signalled.
     // Pending approval/input requests for a dead run are unanswerable: mark
     // them interrupted (plan 8.3.1; audit item 3). The orchestrator supplies
     // the closure so Recovery stays free of ApprovalService's type.
