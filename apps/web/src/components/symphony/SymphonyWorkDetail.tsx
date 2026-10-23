@@ -234,8 +234,14 @@ const Muted = ({ children }: { readonly children: string }) => (
   <p className="text-xs text-muted-foreground">{children}</p>
 );
 
-export const stopAcknowledgementNote = (result: SymphonyStopResult): string => {
+export const stopAcknowledgementNote = (
+  result: SymphonyStopResult,
+  requestedRunAttemptId: RunAttemptId,
+): string => {
   const outcome = result.outcome;
+  if (outcome !== undefined && String(outcome.runAttemptId) !== String(requestedRunAttemptId)) {
+    return "Stop acknowledgement named a different run attempt. This is not confirmation for the requested attempt; check the exact run.";
+  }
   if (outcome?.status === "confirmed") {
     return `Stop confirmed by the server: ${outcome.evidence}. Ownership ${
       outcome.released ? "released" : "not released"
@@ -284,6 +290,13 @@ export function AttemptAttribution({ attempt }: { readonly attempt: RunAttempt }
   );
 }
 
+const stagedDecisionLabel = (decision: ApprovalRequest["decision"]): string | null => {
+  if (decision === "answered") return "Staged answer";
+  if (decision === "approved") return "Staged approval";
+  if (decision === "rejected") return "Staged rejection";
+  return null;
+};
+
 const requestStateVariant = (
   state: ApprovalRequest["state"],
 ): "error" | "info" | "secondary" | "success" | "warning" => {
@@ -326,6 +339,10 @@ export function ApprovalRequestHistoryList({
         {decided.map((request) => {
           const history = approvalRequestHistory(request);
           const mode = approvalRequestMode(request);
+          const stagedDecision =
+            request.state === "delivering" || request.state === "interrupted"
+              ? stagedDecisionLabel(request.decision)
+              : null;
           return (
             <li key={request.id} className="space-y-1.5 py-2.5 first:pt-0 last:pb-0">
               <div className="flex flex-wrap items-center gap-2">
@@ -333,14 +350,21 @@ export function ApprovalRequestHistoryList({
                   {mode === "question"
                     ? history.deliveryPending
                       ? "Question answer delivery pending"
-                      : history.answered
-                        ? "Question answered"
-                        : "Question closed"
+                      : stagedDecision === "Staged answer"
+                        ? "Question answer delivery unknown"
+                        : history.answered
+                          ? "Question answered"
+                          : "Question closed"
                     : `Approval ${request.state}`}
                 </span>
                 <Badge variant={requestStateVariant(request.state)} size="sm">
                   {request.state}
                 </Badge>
+                {stagedDecision === null ? null : (
+                  <Badge variant="warning" size="sm">
+                    {stagedDecision}
+                  </Badge>
+                )}
                 {request.decidedAt === null ? null : (
                   <span className="text-[10px] text-muted-foreground">
                     {new Date(request.decidedAt).toLocaleString()}
@@ -352,6 +376,11 @@ export function ApprovalRequestHistoryList({
                   </code>
                 )}
               </div>
+              {stagedDecision === null ? null : (
+                <p className="text-[11px] text-muted-foreground">
+                  Delivery unknown: the staged decision may or may not have reached the agent.
+                </p>
+              )}
               {request.historyUnavailable === undefined ? null : (
                 <p className="rounded-md border border-warning/40 bg-warning/5 px-2.5 py-1.5 text-[11px] text-foreground">
                   Stored answer or note history is unavailable: {request.historyUnavailable}.

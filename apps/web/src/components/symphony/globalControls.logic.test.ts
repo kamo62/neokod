@@ -117,12 +117,35 @@ describe("resolveDispatchDisplayState", () => {
 });
 
 describe("stopAllMessage", () => {
-  it("reports stopped work", () => {
-    expect(stopAllMessage(true)).toBe("Stopped the running work.");
+  it("reports confirmed and held work without hiding ownership", () => {
+    const message = stopAllMessage({ ok: false, confirmed: 1, held: 1 });
+    expect(message).toContain("1 run confirmed stopped");
+    expect(message).toContain("1 run held with ownership retained");
+    expect(message).not.toContain("No runs");
   });
 
-  it("reports an idle stop-all as nothing running rather than an error", () => {
-    expect(stopAllMessage(false)).toBe("No runs were running.");
+  it("never reports held-only work as nothing running", () => {
+    const message = stopAllMessage({ ok: false, held: 1 });
+    expect(message).toContain("held with ownership retained");
+    expect(message).toContain("confirmed count not reported");
+    expect(message).not.toContain("No runs were running");
+  });
+
+  it("never claims a legacy boolean proved closure", () => {
+    expect(stopAllMessage({ ok: true })).toContain("legacy acknowledgement");
+    expect(stopAllMessage({ ok: true })).toContain("Closure is unknown");
+    expect(stopAllMessage({ ok: false })).toContain("no confirmed closure");
+    expect(stopAllMessage({ ok: true })).not.toContain("Stopped");
+  });
+
+  it("reports an explicitly empty result as nothing needing a stop", () => {
+    expect(stopAllMessage({ ok: true, confirmed: 0, held: 0 })).toBe("No runs needed stopping.");
+  });
+
+  it("keeps a missing count explicit rather than assuming zero", () => {
+    const message = stopAllMessage({ ok: true, confirmed: 2 });
+    expect(message).toContain("2 runs confirmed stopped");
+    expect(message).toContain("held count not reported");
   });
 });
 
