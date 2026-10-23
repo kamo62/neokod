@@ -15,9 +15,17 @@ import type { SymphonyPersistenceError } from "../Errors.ts";
  *
  * One row per (work item, attempt number). Timestamps are ISO-8601 strings.
  * `error`, `tokenUsage` and `sessionId`/`threadId` are nullable JSON columns.
+ * `acceptedGuidance` is persisted as a nullable JSON snapshot and is immutable
+ * after the first write.
  */
 export interface RunAttemptRepositoryShape {
+  /** Persist a new attempt, including its accepted guidance snapshot when present. */
   readonly create: (attempt: RunAttempt) => Effect.Effect<RunAttempt, SymphonyPersistenceError>;
+  /**
+   * Replace mutable attempt fields. An accepted guidance snapshot is
+   * first-write immutable: a legacy row may accept its first snapshot, but an
+   * existing snapshot is never replaced by this update.
+   */
   readonly update: (attempt: RunAttempt) => Effect.Effect<RunAttempt, SymphonyPersistenceError>;
   readonly getById: (
     id: RunAttemptId,

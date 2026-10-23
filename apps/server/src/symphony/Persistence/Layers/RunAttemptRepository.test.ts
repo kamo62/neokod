@@ -3,9 +3,10 @@ import {
   ProviderInstanceId,
   RunAttemptId,
   SymphonyProjectId,
+  WorkflowId,
   WorkItemId,
 } from "@neokod/contracts";
-import type { RunAttempt } from "@neokod/contracts";
+import type { AcceptedGuidanceSnapshot, RunAttempt } from "@neokod/contracts";
 import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -67,6 +68,63 @@ const makeAttempt = (id: string, workItemId: string, attemptNumber: number) =>
       error: null,
     } satisfies RunAttempt;
   });
+
+const makeAcceptedGuidance = (
+  overrides: Partial<AcceptedGuidanceSnapshot> = {},
+): AcceptedGuidanceSnapshot => ({
+  schemaVersion: 1,
+  acceptedAt: "2026-10-23T08:00:00.000Z",
+  digest: "sha256:accepted",
+  workflow: {
+    id: WorkflowId.make("wf-1"),
+    path: "/repo/WORKFLOW.md",
+    revision: "2026-10-22T09:00:00.000Z",
+    digest: "sha256:workflow",
+    instructions: "Follow the repository contribution policy.",
+    validationRequired: ["vp check"],
+  },
+  source: {
+    trackerId: "tracker-1",
+    kind: "github",
+    externalId: "1",
+    externalUrl: "https://example.test/issues/1",
+    identifier: "#1",
+    title: "Fix the login bug",
+    description: null,
+    acceptanceCriteria: [],
+    labels: ["agent-ready"],
+    revision: null,
+    digest: "sha256:source",
+  },
+  guidance: {
+    batch: { state: "absent" },
+    story: { state: "present", text: "" },
+    digest: "sha256:guidance",
+  },
+  target: {
+    repositoryPath: "/repo",
+    workflowPath: "/repo/WORKFLOW.md",
+    provider: {
+      instanceId: ProviderInstanceId.make("codex_default"),
+      driver: ProviderDriverKind.make("codex"),
+    },
+  },
+  permission: {
+    autonomy: "execute",
+    approvalPolicy: "on-request",
+    threadSandbox: "workspace-write",
+    turnSandboxPolicy: { type: "workspaceWrite" },
+    editsAllowed: true,
+    approvalsEnabled: true,
+    protectedPaths: [],
+    delivery: {
+      approvalBeforePush: null,
+      approvalBeforePullRequest: true,
+      approvalBeforeMerge: null,
+    },
+  },
+  ...overrides,
+});
 
 layer("RunAttemptRepository", (it) => {
   it.effect("creates, updates status, and lists by work item", () =>
@@ -199,6 +257,78 @@ layer("RunAttemptRepository", (it) => {
 
       const limited = yield* repo.listRecent({ limit: 2 });
       expect(limited).toHaveLength(2);
+    }),
+  );
+
+  it.effect("round-trips accepted guidance and never replaces it", () =>
+    Effect.gen(function* () {
+      const repo = yield* RunAttemptRepository;
+      yield* seedWorkItem("wi-guidance");
+      const attempt = yield* makeAttempt("run-guidance", "wi-guidance", 1);
+      const acceptedGuidance = makeAcceptedGuidance();
+
+      const created = yield* repo.create({ ...attempt, acceptedGuidance });
+      expect(created.acceptedGuidance).toEqual(acceptedGuidance);
+
+      yield* repo.updateStatus(RunAttemptId.make("run-guidance"), "succeeded", {
+        finishedAt: attempt.startedAt,
+      });
+      const afterStatus = yield* repo.getById(RunAttemptId.make("run-guidance"));
+      expect(afterStatus?.acceptedGuidance).toEqual(acceptedGuidance);
+
+      const replacement = makeAcceptedGuidance({
+        acceptedAt: "2026-10-24T08:00:00.000Z",
+        digest: "sha256:replacement",
+        guidance: {
+          batch: { state: "present", text: "Different guidance." },
+          story: { state: "absent" },
+          digest: "sha256:replacement-guidance",
+        },
+      });
+      expect(afterStatus).not.toBeNull();
+      if (afterStatus === null) {
+        throw new Error("expected the run attempt to exist");
+      }
+      yield* repo.update({
+        ...afterStatus,
+        currentStage: "review",
+        acceptedGuidance: replacement,
+      });
+
+      const afterUpdate = yield* repo.getById(RunAttemptId.make("run-guidance"));
+      expect(afterUpdate?.currentStage).toBe("review");
+      expect(afterUpdate?.acceptedGuidance).toEqual(acceptedGuidance);
+    }),
+  );
+
+  it.effect("lets a legacy attempt accept its first snapshot exactly once", () =>
+    Effect.gen(function* () {
+      const repo = yield* RunAttemptRepository;
+      yield* seedWorkItem("wi-legacy-guidance");
+      const attempt = yield* makeAttempt("run-legacy-guidance", "wi-legacy-guidance", 1);
+      yield* repo.create(attempt);
+
+      const legacy = yield* repo.getById(RunAttemptId.make("run-legacy-guidance"));
+      expect(legacy?.acceptedGuidance).toBeUndefined();
+
+      const acceptedGuidance = makeAcceptedGuidance();
+      expect(legacy).not.toBeNull();
+      if (legacy === null) {
+        throw new Error("expected the legacy run attempt to exist");
+      }
+      yield* repo.update({ ...legacy, acceptedGuidance });
+      const firstWrite = yield* repo.getById(RunAttemptId.make("run-legacy-guidance"));
+      expect(firstWrite?.acceptedGuidance).toEqual(acceptedGuidance);
+      if (firstWrite === null) {
+        throw new Error("expected the legacy run attempt to exist after the first write");
+      }
+
+      yield* repo.update({
+        ...firstWrite,
+        acceptedGuidance: makeAcceptedGuidance({ digest: "sha256:replacement" }),
+      });
+      const secondWrite = yield* repo.getById(RunAttemptId.make("run-legacy-guidance"));
+      expect(secondWrite?.acceptedGuidance).toEqual(acceptedGuidance);
     }),
   );
 });
