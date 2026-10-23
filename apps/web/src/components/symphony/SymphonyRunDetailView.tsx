@@ -21,8 +21,11 @@ import { PullRequestPanel } from "./PullRequestPanel";
 import { SymphonyEmptyState } from "./SymphonyEmptyState";
 import {
   ApprovalRequestHistoryList,
+  AttemptAttribution,
+  AttemptOutcomeBadge,
   EvidencePanel,
   RequestActions,
+  stopAcknowledgementNote,
   Timeline,
   workLifecyclePresentation,
 } from "./SymphonyWorkDetail";
@@ -58,6 +61,28 @@ export function SymphonyRunDetailView({ runId }: { readonly runId: string }) {
       provider: attempt.provider,
       ...(attempt.model === undefined ? {} : { model: attempt.model }),
     };
+    const closures: Array<{
+      workItemId: typeof details.workItem.id;
+      runAttemptId?: typeof attempt.id;
+      observedAt: string;
+      source: string;
+    }> = [];
+    if (detail.error === null && attempt.stopClosure !== undefined) {
+      closures.push({
+        workItemId: details.workItem.id,
+        runAttemptId: attempt.stopClosure.runAttemptId,
+        observedAt: attempt.stopClosure.observedAt,
+        source: attempt.stopClosure.source,
+      });
+    }
+    if (detail.error === null && details.workItem.stopClosure !== undefined) {
+      closures.push({
+        workItemId: details.workItem.id,
+        runAttemptId: details.workItem.stopClosure.runAttemptId,
+        observedAt: details.workItem.stopClosure.observedAt,
+        source: details.workItem.stopClosure.source,
+      });
+    }
     return projectSymphonyWorkItem({
       environmentId,
       workItemId: details.workItem.id,
@@ -93,6 +118,7 @@ export function SymphonyRunDetailView({ runId }: { readonly runId: string }) {
         },
         ...(detail.error === null ? {} : { staleReason: detail.error }),
       },
+      ...(closures.length === 0 ? {} : { closures }),
     });
   }, [details, detail.error, environmentId]);
 
@@ -114,7 +140,9 @@ export function SymphonyRunDetailView({ runId }: { readonly runId: string }) {
         environmentId,
         input: { runAttemptId: cancelAction.runAttemptId },
       });
-      if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+      if (result._tag === "Success") {
+        setCancelNote(stopAcknowledgementNote(result.value));
+      } else if (!isAtomCommandInterrupted(result)) {
         const cause = squashAtomCommandFailure(result);
         setCancelNote(
           `Stop acknowledgement unknown. The attempt may still be running; check the exact run before requesting another stop.${
@@ -240,6 +268,9 @@ export function SymphonyRunDetailView({ runId }: { readonly runId: string }) {
               <Badge variant={runAttemptStatusBadgeVariant(details.runAttempt.status)} size="sm">
                 Attempt: {details.runAttempt.status}
               </Badge>
+              {projected?.attempts.history[0] === undefined ? null : (
+                <AttemptOutcomeBadge outcome={projected.attempts.history[0].outcome} />
+              )}
               <Badge variant="secondary" size="sm">
                 Attempt {details.runAttempt.attemptNumber}
               </Badge>
@@ -287,6 +318,7 @@ export function SymphonyRunDetailView({ runId }: { readonly runId: string }) {
                         </Badge>
                       </div>
                       <p className="text-[11px] text-muted-foreground">{entry.item.whyHuman}</p>
+                      <AttemptAttribution attempt={details.runAttempt} />
                       {environmentId === null ? null : (
                         <RequestActions
                           environmentId={environmentId}

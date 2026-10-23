@@ -7,9 +7,11 @@ import {
 } from "@neokod/client-runtime/state/runtime";
 import { Link } from "@tanstack/react-router";
 import type {
+  AttentionItem,
   EnvironmentId,
   SymphonyBoardCard,
   SymphonyProject,
+  RunAttemptStatus,
   SymphonyProjectBoard,
   SymphonyProjectId,
   WorkItemId,
@@ -18,14 +20,16 @@ import type {
 import { RunAttemptId, WorkLifecycleSchema } from "@neokod/contracts";
 
 import { useLocalStorage } from "../../hooks/useLocalStorage";
-import type {
-  SymphonyWorkAction,
-  SymphonyWorkAttentionEntry,
-  SymphonyWorkCollection,
-  SymphonyWorkDispatchFacts,
-  SymphonyWorkAttemptFact,
-  SymphonyWorkItemProjection,
-  SymphonyWorkRefusal,
+import {
+  projectSymphonyWorkItem,
+  type SymphonyWorkAction,
+  type SymphonyWorkAttempt,
+  type SymphonyWorkAttentionEntry,
+  type SymphonyWorkCollection,
+  type SymphonyWorkDispatchFacts,
+  type SymphonyWorkAttemptFact,
+  type SymphonyWorkItemProjection,
+  type SymphonyWorkRefusal,
 } from "../../symphonyWork.logic";
 import { useEnvironmentQuery } from "../../state/query";
 import { useSymphonyProjectWork } from "../../state/symphonyWork";
@@ -42,10 +46,12 @@ import {
   ExactRequestActions,
   lifecycleLabel,
   SymphonyWorkDetail,
+  stopAcknowledgementNote,
   workLifecyclePresentation,
   type SymphonyWorkRunAction,
 } from "./SymphonyWorkDetail";
 import { dispatchRefusalMessage } from "./dispatchRefusal.logic";
+import { ACTIVE_RUN_STATUSES } from "./symphonyRuns.logic";
 import type { WorkFilter } from "./symphonyProjectTabs";
 
 const PENDING_DISPATCH_STORAGE_KEY = "neokod:symphony-work-pending-dispatch:v1";
@@ -66,12 +72,91 @@ const EMPTY_PENDING_DISPATCHES: PendingDispatchEntry[] = [];
 interface RefusalSnapshot {
   readonly refusal: SymphonyWorkRefusal;
   readonly priorLifecycle: WorkLifecycle | null;
+  readonly priorAttemptId: string | null;
+  readonly recordedAt: string;
   readonly projectRevision: number;
   readonly projectStatus: SymphonyProject["status"];
 }
 
+const TERMINAL_REFUSAL_LIFECYCLES: ReadonlySet<WorkLifecycle> = new Set([
+  "completed",
+  "cancelled",
+  "failed",
+]);
+const EXPECTED_REFUSAL_REQUEUE_LIFECYCLES: ReadonlySet<WorkLifecycle> = new Set([
+  "queued",
+  "retry_scheduled",
+  "changes_requested",
+  "validation_failed",
+]);
+
+/**
+ * A refusal stays visible through the server's terminal -> queued requeue. A
+ * refresh does not clear it; only a policy/attempt change or an authoritative
+ * lifecycle outside that expected transition does.
+ */
+export const shouldClearWorkRefusal = (input: {
+  readonly priorLifecycle: WorkLifecycle | null;
+  readonly currentLifecycle: WorkLifecycle | null;
+  readonly priorAttemptId: string | null;
+  readonly currentAttemptId: string | null;
+  readonly currentAttemptStartedAt: string | null;
+  readonly recordedAt: string;
+  readonly projectRevisionChanged: boolean;
+  readonly projectStatusChanged: boolean;
+}): boolean => {
+  if (input.projectRevisionChanged || input.projectStatusChanged) return true;
+  if (input.currentAttemptId !== null) {
+    if (input.priorAttemptId !== null) {
+      return input.currentAttemptId !== input.priorAttemptId;
+    }
+    return (
+      input.currentAttemptStartedAt !== null &&
+      new Date(input.currentAttemptStartedAt).getTime() > new Date(input.recordedAt).getTime()
+    );
+  }
+  if (input.currentLifecycle === null) return false;
+  if (
+    input.priorLifecycle !== null &&
+    TERMINAL_REFUSAL_LIFECYCLES.has(input.priorLifecycle) &&
+    EXPECTED_REFUSAL_REQUEUE_LIFECYCLES.has(input.currentLifecycle)
+  ) {
+    return false;
+  }
+  return input.currentLifecycle !== input.priorLifecycle;
+};
+
 const lifecycleOf = (item: SymphonyWorkItemProjection): WorkLifecycle | null =>
   item.lifecycle.phase === "unknown" ? null : item.lifecycle.lifecycle;
+
+const UNRESOLVED_UNMATCHED_RUN_STATUSES: ReadonlySet<RunAttemptStatus> = new Set([
+  ...ACTIVE_RUN_STATUSES,
+  "user_cancelled",
+  "tracker_cancelled",
+  "canceled_by_reconciliation",
+  "interrupted",
+]);
+
+const attemptFactsFromProjection = (
+  attempt: SymphonyWorkAttempt,
+): ReadonlyArray<SymphonyWorkAttemptFact> => {
+  const statuses =
+    attempt.statuses.length > 0
+      ? attempt.statuses
+      : attempt.status === null
+        ? []
+        : [attempt.status];
+  return statuses.map((status) => ({
+    runAttemptId: attempt.runAttemptId,
+    workItemId: attempt.workItemId,
+    attemptNumber: attempt.attemptNumber,
+    status,
+    startedAt: attempt.startedAt,
+    finishedAt: attempt.finishedAt,
+    ...(attempt.provider === null ? {} : { provider: attempt.provider }),
+    ...(attempt.model === null ? {} : { model: attempt.model }),
+  }));
+};
 
 const unknownNote = (item: SymphonyWorkItemProjection): string | undefined => {
   const notes: string[] = [];
@@ -177,33 +262,41 @@ const coverageNote = (collection: SymphonyWorkCollection): string | null => {
       `${collection.contradictions.length} conflicting ${collection.contradictions.length === 1 ? "record needs" : "records need"} review.`,
     );
   }
+  if (collection.attentionOutsideBoard.length > 0) {
+    notes.push(
+      `${collection.attentionOutsideBoard.length} open ${collection.attentionOutsideBoard.length === 1 ? "request" : "requests"} outside the loaded work list.`,
+    );
+  }
   return notes.length === 0 ? null : notes.join(" · ");
 };
 
-const evidenceCaveat = (collection: SymphonyWorkCollection): string => {
+const noWorkCaveat = (collection: SymphonyWorkCollection): string => {
+  const reasons: string[] = [];
   if (collection.counts.items.state === "unavailable") {
-    return "The work record could not be read, so nothing can be concluded.";
+    reasons.push("The work record could not be read.");
+  } else if (collection.counts.items.state === "unknown") {
+    reasons.push("Work completeness is not reported.");
+  } else if (collection.freshness.board.state === "stale") {
+    reasons.push(`Board data is stale: ${collection.freshness.board.reason}`);
+  } else if (collection.freshness.board.state === "unknown") {
+    reasons.push(`Board freshness is unknown: ${collection.freshness.board.reason}`);
   }
-  if (collection.counts.items.state === "unknown") {
-    return "Completeness is not reported; this is not proof that no work exists.";
+  if (collection.counts.items.coverage.state !== "exhaustive") {
+    reasons.push("The board may omit work outside its caps.");
   }
-  if (collection.counts.items.state === "observed") {
-    return "This is an observed count from incomplete coverage, not a complete total.";
+  if (collection.evidence.runs === "unavailable") {
+    reasons.push("Run history could not be read.");
+  } else if (collection.evidence.runs === "unknown") {
+    reasons.push("Run history is not loaded.");
+  } else if (collection.freshness.runs.state === "stale") {
+    reasons.push(`Run history is stale: ${collection.freshness.runs.reason}`);
+  } else if (collection.freshness.runs.state === "unknown") {
+    reasons.push(`Run history freshness is unknown: ${collection.freshness.runs.reason}`);
   }
-  return "";
-};
-
-const attentionCaveat = (collection: SymphonyWorkCollection): string => {
-  if (collection.counts.attention.state === "unavailable") {
-    return "The attention read failed, so no claim is made that nothing needs you.";
+  if (collection.coverage.runs.state !== "exhaustive") {
+    reasons.push("Run history coverage is incomplete.");
   }
-  if (collection.counts.attention.state === "unknown") {
-    return "Attention completeness is not reported; this is not proof that nothing needs you.";
-  }
-  if (collection.counts.attention.state === "observed") {
-    return "This is an observed attention count from incomplete coverage, not a complete total.";
-  }
-  return "";
+  return reasons.join(" ");
 };
 
 const emptyCopy = (
@@ -217,6 +310,23 @@ const emptyCopy = (
       description: "The work projection has not loaded; no empty state can be confirmed.",
     };
   }
+
+  // History is a separate scope. A hand-typed filter must not change this copy.
+  if (history) {
+    const confirmed =
+      collection.counts.items.state === "known" &&
+      collection.counts.items.coverage.state === "exhaustive" &&
+      collection.freshness.board.state === "fresh" &&
+      collection.evidence.runs === "known" &&
+      collection.freshness.runs.state === "fresh";
+    return {
+      title: confirmed ? "No finished work recorded" : "No finished work observed",
+      description: confirmed
+        ? "Finished attempts appear here when the server reports them. History never replaces the current Work list."
+        : noWorkCaveat(collection) || "No finished work was observed in the loaded evidence.",
+    };
+  }
+
   if (filter === "attention") {
     const outside = collection.attentionOutsideBoard.length;
     if (outside > 0) {
@@ -225,41 +335,43 @@ const emptyCopy = (
         description: `${outside} open ${outside === 1 ? "request is" : "requests are"} attached to work outside the loaded list. Open \u201cOutside loaded work\u201d below for the exact attempts.`,
       };
     }
-    if (collection.counts.attention.state === "unavailable") {
-      return {
-        title: "Attention unavailable",
-        description: attentionCaveat(collection),
-      };
-    }
     const confirmed =
       collection.counts.attention.state === "known" &&
-      collection.counts.attention.coverage.state === "exhaustive";
+      collection.counts.attention.coverage.state === "exhaustive" &&
+      collection.counts.attention.freshness.state === "fresh" &&
+      collection.evidence.attention === "known" &&
+      collection.freshness.attention.state === "fresh";
+    if (confirmed) {
+      return {
+        title: "Nothing needs you",
+        description: "There is no open question or approval attached to this project's work.",
+      };
+    }
     return {
-      title: confirmed ? "Nothing needs you" : "No open requests observed",
-      description: confirmed
-        ? "There is no open question or approval attached to this project's work."
-        : attentionCaveat(collection) ||
-          "No open request was observed in the loaded attention evidence.",
+      title: "No open requests observed",
+      description:
+        collection.counts.attention.state === "unavailable"
+          ? "The attention read failed, so no claim is made that nothing needs you."
+          : "Attention completeness or freshness is not reported; this is not proof that nothing needs you.",
     };
   }
-  if (collection.counts.items.state === "unavailable") {
-    return { title: "Work unavailable", description: evidenceCaveat(collection) };
-  }
+
   const confirmed =
     collection.counts.items.state === "known" &&
-    collection.counts.items.coverage.state === "exhaustive";
-  const description = evidenceCaveat(collection);
-  if (history) {
-    return {
-      title: confirmed ? "No finished work recorded" : "No finished work observed",
-      description:
-        description ||
-        "Finished attempts appear here when the server reports them. History never replaces the current Work list.",
-    };
-  }
+    collection.counts.items.coverage.state === "exhaustive" &&
+    collection.freshness.board.state === "fresh" &&
+    collection.evidence.runs === "known" &&
+    collection.freshness.runs.state === "fresh";
+  const description = noWorkCaveat(collection);
   if (!confirmed) {
+    const title =
+      filter === "in_progress"
+        ? "No work in progress observed"
+        : filter === "not_started"
+          ? "No not-started work observed"
+          : "No current work observed";
     return {
-      title: "No work shown",
+      title,
       description:
         description ||
         "The loaded evidence is incomplete, so an empty list is not proof of no work.",
@@ -365,7 +477,7 @@ function OutsideBoardAttention({
         {unmatchedRuns.length === 0 ? null : (
           <div className="space-y-2">
             <p className="text-[11px] text-muted-foreground">
-              These run attempts are not matched to a loaded work item:
+              These active or unresolved run attempts are not matched to a loaded work item:
             </p>
             <ul className="divide-y divide-border/60">
               {unmatchedRuns.map((run) => (
@@ -496,6 +608,152 @@ export function SymphonyWorkView({
         }),
   );
 
+  // The collection is intentionally capped. When the exact card attempt has
+  // loaded, feed that single authoritative fact through the same projection so
+  // drawer actions see it without pretending the run history is complete.
+  const projectedSelectedItem = useMemo(() => {
+    if (environmentId === null || selectedItem === null || selectedCard === null) {
+      return selectedItem;
+    }
+    const details = detailQuery.data;
+    const exactAttempt = details?.runAttempt ?? null;
+    const exactWasKnown =
+      exactAttempt === null ||
+      selectedItem.attempts.history.some(
+        (attempt) => String(attempt.runAttemptId) === String(exactAttempt.id),
+      );
+    const runsCoverage =
+      !exactWasKnown && selectedItem.attempts.coverage.state === "exhaustive"
+        ? {
+            state: "bounded" as const,
+            reason:
+              "The exact attempt was loaded separately from the capped run list; that does not prove complete history.",
+          }
+        : selectedItem.attempts.coverage;
+    const facts: SymphonyWorkAttemptFact[] = selectedItem.attempts.history
+      .filter(
+        (attempt) =>
+          exactAttempt === null || String(attempt.runAttemptId) !== String(exactAttempt.id),
+      )
+      .flatMap((attempt) => attemptFactsFromProjection(attempt));
+    if (exactAttempt !== null) {
+      facts.push({
+        runAttemptId: exactAttempt.id,
+        workItemId: exactAttempt.workItemId,
+        attemptNumber: exactAttempt.attemptNumber,
+        status: exactAttempt.status,
+        startedAt: exactAttempt.startedAt,
+        finishedAt: exactAttempt.finishedAt,
+        provider: exactAttempt.provider,
+        ...(exactAttempt.model === undefined ? {} : { model: exactAttempt.model }),
+      });
+    }
+
+    const attentionById = new Map<string, AttentionItem>();
+    if (selectedItem.attention.state === "needs_attention") {
+      for (const entry of selectedItem.attention.items) {
+        attentionById.set(String(entry.item.id), entry.item);
+      }
+    }
+    for (const item of details?.attentionItems ?? []) {
+      attentionById.set(String(item.id), item);
+    }
+    const attentionCoverage =
+      selectedItem.attention.state === "needs_attention"
+        ? selectedItem.attention.coverage
+        : selectedItem.attention.state === "none" || selectedItem.attention.state === "unknown"
+          ? selectedItem.attention.coverage
+          : {
+              state: "unknown" as const,
+              reason: "Only pending requests from the exact attempt were loaded.",
+            };
+
+    const runsStaleReason =
+      detailQuery.error ??
+      (selectedItem.freshness.runs.state === "stale" ? selectedItem.freshness.runs.reason : null);
+    const attentionStaleReason =
+      detailQuery.error ??
+      (selectedItem.freshness.attention.state === "stale"
+        ? selectedItem.freshness.attention.reason
+        : null);
+    const closures: Array<{
+      workItemId: WorkItemId;
+      runAttemptId?: RunAttemptId;
+      observedAt: string;
+      source: string;
+    }> = [];
+    if (detailQuery.error === null && exactAttempt?.stopClosure !== undefined) {
+      closures.push({
+        workItemId: exactAttempt.workItemId,
+        runAttemptId: exactAttempt.stopClosure.runAttemptId,
+        observedAt: exactAttempt.stopClosure.observedAt,
+        source: exactAttempt.stopClosure.source,
+      });
+    }
+    if (detailQuery.error === null && details?.workItem.stopClosure !== undefined) {
+      closures.push({
+        workItemId: details.workItem.id,
+        runAttemptId: details.workItem.stopClosure.runAttemptId,
+        observedAt: details.workItem.stopClosure.observedAt,
+        source: details.workItem.stopClosure.source,
+      });
+    }
+    const pending = pendingForProject.some(
+      (entry) => entry.workItemId === String(selectedCard.workItemId),
+    );
+    const refusal = refusals.get(String(selectedCard.workItemId));
+
+    return projectSymphonyWorkItem({
+      environmentId,
+      workItemId: selectedCard.workItemId,
+      projectId,
+      card: { state: "known", value: selectedCard },
+      ...(details === null
+        ? {}
+        : {
+            workItem: {
+              state: "known" as const,
+              value: details.workItem,
+              ...(detailQuery.error === null ? {} : { staleReason: detailQuery.error }),
+            },
+          }),
+      ...(selectedCard.latestRunAttemptId === undefined
+        ? {}
+        : { currentRunAttemptId: selectedCard.latestRunAttemptId }),
+      runs: {
+        state: "known",
+        value: { runs: facts, coverage: runsCoverage },
+        ...(runsStaleReason === null ? {} : { staleReason: runsStaleReason }),
+      },
+      attention: {
+        state: "known",
+        value: { items: [...attentionById.values()], coverage: attentionCoverage },
+        ...(attentionStaleReason === null ? {} : { staleReason: attentionStaleReason }),
+      },
+      ...(pending ? { pendingDispatch: {} } : {}),
+      ...(refusal === undefined
+        ? {}
+        : {
+            refusal: {
+              ...refusal.refusal,
+              ...(refusal.priorLifecycle === null
+                ? {}
+                : { priorLifecycle: refusal.priorLifecycle }),
+            },
+          }),
+      ...(closures.length === 0 ? {} : { closures }),
+    });
+  }, [
+    detailQuery.data,
+    detailQuery.error,
+    environmentId,
+    pendingForProject,
+    projectId,
+    selectedCard,
+    selectedItem,
+    refusals,
+  ]);
+
   const refresh = () => {
     projectWork.refresh();
     detailQuery.refresh();
@@ -583,6 +841,13 @@ export function SymphonyWorkView({
               ...(refused.detail === undefined ? {} : { detail: refused.detail }),
             },
             priorLifecycle: before === undefined ? null : lifecycleOf(before),
+            priorAttemptId:
+              selectedCard?.latestRunAttemptId === undefined
+                ? before?.attempts.current === undefined || before.attempts.current === null
+                  ? null
+                  : String(before.attempts.current.runAttemptId)
+                : String(selectedCard.latestRunAttemptId),
+            recordedAt: new Date().toISOString(),
             projectRevision: project.revision,
             projectStatus: project.status,
           });
@@ -621,7 +886,9 @@ export function SymphonyWorkView({
     setCancelNote(null);
     try {
       const result = await cancelRun({ environmentId, input: { runAttemptId } });
-      if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+      if (result._tag === "Success") {
+        setCancelNote(stopAcknowledgementNote(result.value));
+      } else if (!isAtomCommandInterrupted(result)) {
         const cause = squashAtomCommandFailure(result);
         setCancelNote(
           `Stop acknowledgement unknown. The attempt may still be running; check the exact run before requesting another stop.${
@@ -639,25 +906,25 @@ export function SymphonyWorkView({
     (entry) => entry.workItemId === selectedWorkItemId,
   );
   const selectedStartAction =
-    selectedItem === null
+    projectedSelectedItem === null
       ? null
-      : (selectedItem.actions.find(
+      : (projectedSelectedItem.actions.find(
           (action) => action.kind === "start" || action.kind === "run_again",
         ) ?? null);
   const runAction =
-    selectedItem === null || selectedStartAction === null
+    projectedSelectedItem === null || selectedStartAction === null
       ? null
-      : actionFor(selectedItem, selectedStartAction);
+      : actionFor(projectedSelectedItem, selectedStartAction);
   const cancelActions =
-    selectedItem === null
+    projectedSelectedItem === null
       ? []
-      : selectedItem.actions
+      : projectedSelectedItem.actions
           .filter(
             (action): action is SymphonyWorkAction & { readonly runAttemptId: RunAttemptId } =>
               action.kind === "cancel" && action.runAttemptId !== undefined,
           )
           .map((action) => {
-            const attempt = selectedItem.attempts.history.find(
+            const attempt = projectedSelectedItem.attempts.history.find(
               (candidate) => String(candidate.runAttemptId) === String(action.runAttemptId),
             );
             return {
@@ -675,12 +942,15 @@ export function SymphonyWorkView({
             };
           });
   const selectedPresentation =
-    selectedItem === null ? null : workLifecyclePresentation(selectedItem);
+    projectedSelectedItem === null ? null : workLifecyclePresentation(projectedSelectedItem);
   const selectedAttentionEntries =
-    selectedItem !== null && selectedItem.attention.state === "needs_attention"
-      ? selectedItem.attention.items
+    projectedSelectedItem !== null && projectedSelectedItem.attention.state === "needs_attention"
+      ? projectedSelectedItem.attention.items
       : [];
   const visibleRows = (collection?.visibleItems ?? []).map(rowFor);
+  const visibleUnmatchedRuns = (collection?.unmatchedRuns ?? []).filter((run) =>
+    UNRESOLVED_UNMATCHED_RUN_STATUSES.has(run.status),
+  );
   const counts = collection === null ? EMPTY_WORK_COUNTS : countsFor(collection);
   const unresolvedPendingOutsideBoard =
     collection === null
@@ -702,7 +972,7 @@ export function SymphonyWorkView({
   const actionNote =
     cancelNote ??
     (selectedPending
-      ? "The last dispatch request's acknowledgement is unknown. Capped or unchanged reads cannot prove it failed, and this build has no durable dispatch receipt to reconcile it. Check the exact run before starting another attempt."
+      ? "The last dispatch request's acknowledgement is unknown. Capped or unchanged reads cannot prove it failed; refreshing evidence will not clear this guard, and this build has no durable dispatch receipt to reconcile it. Check the exact run before another attempt. Only an authoritative attempt or lifecycle change clears it."
       : null);
 
   useEffect(() => {
@@ -753,13 +1023,22 @@ export function SymphonyWorkView({
         (candidate) => String(candidate.identity.workItemId) === id,
       );
       const currentLifecycle = item === undefined ? null : lifecycleOf(item);
-      const policyChanged =
-        snapshot.projectRevision !== project.revision || snapshot.projectStatus !== project.status;
-      const lifecycleChanged =
-        currentLifecycle !== null &&
-        snapshot.priorLifecycle !== null &&
-        currentLifecycle !== snapshot.priorLifecycle;
-      if (policyChanged || lifecycleChanged) {
+      const currentAttemptId =
+        item?.attempts.current === null || item?.attempts.current === undefined
+          ? null
+          : String(item.attempts.current.runAttemptId);
+      if (
+        shouldClearWorkRefusal({
+          priorLifecycle: snapshot.priorLifecycle,
+          currentLifecycle,
+          priorAttemptId: snapshot.priorAttemptId,
+          currentAttemptId,
+          currentAttemptStartedAt: item?.attempts.current?.startedAt ?? null,
+          recordedAt: snapshot.recordedAt,
+          projectRevisionChanged: snapshot.projectRevision !== project.revision,
+          projectStatusChanged: snapshot.projectStatus !== project.status,
+        })
+      ) {
         next.delete(id);
         changed = true;
       }
@@ -787,14 +1066,17 @@ export function SymphonyWorkView({
           collection === null || environmentId === null ? null : (
             <OutsideBoardAttention
               entries={collection.attentionOutsideBoard}
-              unmatchedRuns={collection.unmatchedRuns}
+              unmatchedRuns={visibleUnmatchedRuns}
               environmentId={environmentId}
               onRefresh={refresh}
             />
           )
         }
       />
-      {selectedCard === null || selectedItem === null || collection === null ? null : (
+      {selectedCard === null ||
+      selectedItem === null ||
+      projectedSelectedItem === null ||
+      collection === null ? null : (
         <SymphonyWorkDetail
           key={selectedCard.workItemId}
           open
@@ -802,21 +1084,21 @@ export function SymphonyWorkView({
           card={selectedCard}
           details={detailQuery.data}
           attentionEntries={selectedAttentionEntries}
-          actions={selectedItem.actions}
-          attempts={selectedItem.attempts.history}
+          actions={projectedSelectedItem.actions}
+          attempts={projectedSelectedItem.attempts.history}
           currentAttemptNote={
-            selectedItem.attempts.currentState === "unknown"
-              ? selectedItem.attempts.currentReason
+            projectedSelectedItem.attempts.currentState === "unknown"
+              ? projectedSelectedItem.attempts.currentReason
               : null
           }
           knownRunAttemptId={knownRunAttemptId}
-          attemptState={selectedItem.attempts.currentState}
-          attemptReason={selectedItem.attempts.currentReason}
+          attemptState={projectedSelectedItem.attempts.currentState}
+          attemptReason={projectedSelectedItem.attempts.currentReason}
           lifecycleLabel={selectedPresentation?.label ?? "Unknown"}
           lifecycleTone={selectedPresentation?.tone ?? "warning"}
-          needsAttention={selectedItem.attention.state === "needs_attention"}
+          needsAttention={projectedSelectedItem.attention.state === "needs_attention"}
           attentionLabel={
-            selectedItem.attention.state === "needs_attention"
+            projectedSelectedItem.attention.state === "needs_attention"
               ? selectedAttentionEntries.length > 1
                 ? `${selectedAttentionEntries.length} requests`
                 : "Needs your attention"
