@@ -3,27 +3,19 @@ import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@neokod/client-runtime/state/runtime";
-import type {
-  RunSummary,
-  SymphonyBoardCard,
-  SymphonyProject,
-  SymphonyProjectBoard,
-  SymphonyProjectId,
-} from "@neokod/contracts";
-import { Link, useNavigate } from "@tanstack/react-router";
+import type { SymphonyProject, SymphonyProjectId } from "@neokod/contracts";
+import { useNavigate } from "@tanstack/react-router";
 import {
   ArrowLeftIcon,
-  CheckCircle2Icon,
-  CircleDotIcon,
   GitBranchIcon,
   PauseIcon,
   PlayIcon,
   RefreshCwIcon,
   TriangleAlertIcon,
 } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { useState } from "react";
 
-import { usePrimaryEnvironmentId } from "../../state/environments";
+import { usePrimaryEnvironment, usePrimaryEnvironmentId } from "../../state/environments";
 import { useEnvironmentQuery } from "../../state/query";
 import { primaryServerProvidersAtom } from "../../state/server";
 import { symphonyEnvironment } from "../../state/symphony";
@@ -32,11 +24,7 @@ import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Skeleton } from "../ui/skeleton";
 import { Spinner } from "../ui/spinner";
-import { SymphonyAttentionList } from "./SymphonyAttentionList";
 import { SymphonyEmptyState } from "./SymphonyEmptyState";
-import { canRunNow, formatEligibilityReason, runActionLabel } from "./boardCard.logic";
-import { dispatchRefusalMessage } from "./dispatchRefusal.logic";
-import { runAttemptStatusBadgeVariant } from "./runAttemptStatus.logic";
 import {
   availableSymphonyImplementationProviders,
   availableSymphonyReviewProviders,
@@ -44,6 +32,7 @@ import {
   isSymphonyProjectConfigurationComplete,
   SymphonyProjectConfigurationForm,
 } from "./SymphonyProjectConfigurationForm";
+import { SymphonyWorkView } from "./SymphonyWorkView";
 import {
   applySavedDraft,
   beginEditDraft,
@@ -54,13 +43,11 @@ import {
   startDraft,
 } from "./projectSettingsDraft";
 import { useProjectSettingsDraftStore } from "./projectSettingsDraftStore";
-import { filterRuns, type RunFilter } from "./symphonyRuns.logic";
-import { PROJECT_TABS, type ProjectTab } from "./symphonyProjectTabs";
+import { PROJECT_TABS, type ProjectTab, type WorkFilter } from "./symphonyProjectTabs";
 
 const TAB_LABELS: Readonly<Record<ProjectTab, string>> = {
-  board: "Board",
-  runs: "Runs",
-  attention: "Attention",
+  work: "Work",
+  history: "History",
   settings: "Settings",
 };
 
@@ -89,152 +76,6 @@ const trackerScope = (project: SymphonyProject): string => {
       return `GitHub Projects · ${tracker.owner} #${tracker.number}`;
   }
 };
-
-function BoardTab({
-  board,
-  onRefresh,
-}: {
-  readonly board: SymphonyProjectBoard;
-  readonly onRefresh: () => void;
-}) {
-  const environmentId = usePrimaryEnvironmentId();
-  const dispatchWorkItem = useAtomCommand(symphonyEnvironment.dispatchWorkItem);
-  const [dispatching, setDispatching] = useState<SymphonyBoardCard["workItemId"] | null>(null);
-  const [refusals, setRefusals] = useState<Record<string, string>>({});
-
-  const dispatch = async (workItemId: SymphonyBoardCard["workItemId"]) => {
-    if (environmentId === null) return;
-    setDispatching(workItemId);
-    try {
-      const result = await dispatchWorkItem({ environmentId, input: { workItemId } });
-      if (result._tag === "Success" && result.value.status === "refused") {
-        const refusal = result.value;
-        setRefusals((current) => ({
-          ...current,
-          [workItemId]: dispatchRefusalMessage(refusal),
-        }));
-      } else if (result._tag === "Success") {
-        setRefusals((current) => {
-          if (!(workItemId in current)) return current;
-          const next = { ...current };
-          delete next[workItemId];
-          return next;
-        });
-      } else {
-        setRefusals((current) => ({
-          ...current,
-          [workItemId]: "The request failed. Try again.",
-        }));
-      }
-      onRefresh();
-    } finally {
-      setDispatching(null);
-    }
-  };
-
-  const doneShown = board.columns.find((column) => column.id === "done")?.cards.length ?? 0;
-  const cardCount = (column: SymphonyProjectBoard["columns"][number]) =>
-    column.totalCount ?? column.cards.length;
-
-  return (
-    <div>
-      {board.truncated ? (
-        <p className="px-6 pt-4 text-xs text-muted-foreground sm:px-8">
-          Some items are hidden. Done shows the newest {doneShown} finished items.
-        </p>
-      ) : null}
-      <div className="grid min-h-full min-w-[70rem] grid-cols-5 gap-4 p-6 sm:p-8">
-        {board.columns.map((column) => (
-          <section key={column.id} className="min-w-0">
-            <div className="mb-3 flex items-center justify-between px-1">
-              <h2 className="text-sm font-semibold">{column.title}</h2>
-              <Badge variant="secondary">{cardCount(column)}</Badge>
-            </div>
-            <div className="space-y-3 rounded-2xl bg-muted/35 p-2 min-h-28">
-              {column.cards.length === 0 ? (
-                <p className="px-2 py-4 text-center text-xs text-muted-foreground">No work</p>
-              ) : (
-                column.cards.map((card) => (
-                  <article
-                    key={card.workItemId}
-                    className="rounded-xl border bg-card p-3 shadow-xs/5"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="text-sm font-medium leading-snug">{card.title}</p>
-                      {card.outcome ? (
-                        card.outcome === "completed" ? (
-                          <CheckCircle2Icon className="size-4 shrink-0 text-success" />
-                        ) : (
-                          <CircleDotIcon className="size-4 shrink-0 text-muted-foreground" />
-                        )
-                      ) : null}
-                    </div>
-                    <div className="mt-3 flex flex-wrap gap-1.5">
-                      {card.trackerIdentifier ? (
-                        <Badge variant="outline">{card.trackerIdentifier}</Badge>
-                      ) : null}
-                      <Badge
-                        variant={
-                          card.lifecycle === "validation_failed" || card.lifecycle === "failed"
-                            ? "error"
-                            : "secondary"
-                        }
-                      >
-                        {card.lifecycle.replaceAll("_", " ")}
-                      </Badge>
-                    </div>
-                    {canRunNow(card) ? (
-                      <>
-                        <Button
-                          size="sm"
-                          className="mt-3 w-full"
-                          disabled={environmentId === null || dispatching !== null}
-                          onClick={() => void dispatch(card.workItemId)}
-                        >
-                          {dispatching === card.workItemId ? (
-                            <Spinner className="size-3.5" />
-                          ) : null}
-                          {refusals[card.workItemId] === undefined
-                            ? runActionLabel(card.lifecycle)
-                            : "Try again"}
-                        </Button>
-                        {refusals[card.workItemId] === undefined ? null : (
-                          <p role="status" className="mt-2 text-xs text-destructive-foreground">
-                            {refusals[card.workItemId]}
-                          </p>
-                        )}
-                      </>
-                    ) : null}
-                    {card.lifecycle === "ineligible" ? (
-                      <p className="mt-2 text-xs text-muted-foreground">
-                        Not eligible:{" "}
-                        {(card.eligibilityReasons ?? []).map(formatEligibilityReason).join("; ")}
-                      </p>
-                    ) : null}
-                    {card.latestRunAttemptId === undefined ? null : (
-                      <Link
-                        to="/symphony/$runId"
-                        params={{ runId: card.latestRunAttemptId }}
-                        className="mt-2 inline-block text-xs text-muted-foreground underline"
-                      >
-                        Open run
-                      </Link>
-                    )}
-                  </article>
-                ))
-              )}
-            </div>
-            {column.totalCount !== undefined && column.totalCount > column.cards.length ? (
-              <p className="px-2 pb-2 text-center text-xs text-muted-foreground">
-                Showing {column.cards.length} of {column.totalCount}
-              </p>
-            ) : null}
-          </section>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 function SettingsTab({
   project,
@@ -382,14 +223,19 @@ function SettingsTab({
 export function SymphonyProjectView({
   projectId,
   tab,
+  filter,
   onTabChange,
+  onFilterChange,
 }: {
   readonly projectId: SymphonyProjectId;
   readonly tab: ProjectTab;
+  readonly filter: WorkFilter;
   readonly onTabChange: (tab: ProjectTab) => void;
+  readonly onFilterChange: (filter: WorkFilter) => void;
 }) {
   const navigate = useNavigate();
   const environmentId = usePrimaryEnvironmentId();
+  const environment = usePrimaryEnvironment();
   const [action, setAction] = useState<"start" | "pause" | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const settingsDraft = useProjectSettingsDraftStore((state) => state.drafts[projectId]);
@@ -402,16 +248,6 @@ export function SymphonyProjectView({
           input: { projectId },
         }),
   );
-  const runsQuery = useEnvironmentQuery(
-    environmentId === null || tab !== "runs"
-      ? null
-      : symphonyEnvironment.runs({ environmentId, input: { projectId } }),
-  );
-  const attentionQuery = useEnvironmentQuery(
-    environmentId === null || tab !== "attention"
-      ? null
-      : symphonyEnvironment.attention({ environmentId, input: { projectId } }),
-  );
   const startProject = useAtomCommand(symphonyEnvironment.startProject, {
     reportFailure: false,
   });
@@ -419,6 +255,21 @@ export function SymphonyProjectView({
     reportFailure: false,
   });
   const board = boardQuery.data;
+
+  if (environmentId === null) {
+    return (
+      <SymphonyEmptyState
+        icon={TriangleAlertIcon}
+        title="No environment connected"
+        description="Connect the local Neokod server before opening Symphony work."
+        action={
+          <Button size="sm" variant="outline" onClick={() => void navigate({ to: "/symphony" })}>
+            Back to projects
+          </Button>
+        }
+      />
+    );
+  }
 
   if (boardQuery.isPending && board === null) {
     return (
@@ -445,7 +296,6 @@ export function SymphonyProjectView({
   const project = board.project;
 
   const setProjectStatus = async (next: "start" | "pause") => {
-    if (environmentId === null) return;
     setAction(next);
     setActionError(null);
     try {
@@ -476,6 +326,7 @@ export function SymphonyProjectView({
   const deliveryNeedsRemote =
     project.configuration?.autonomy === "deliver" &&
     (board.sourceControl.state !== "known" || board.sourceControl.provider === null);
+  const machineLabel = environment?.label ?? null;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -497,12 +348,29 @@ export function SymphonyProjectView({
                 {project.status}
               </Badge>
             </div>
-            <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
+            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted-foreground">
               <Badge variant="outline">Tracker: {trackerScope(project)}</Badge>
               <Badge variant="outline">
                 <GitBranchIcon className="size-3" />
                 Source control: {sourceControl}
               </Badge>
+              <Badge variant="outline">
+                Policy: {project.configuration?.autonomy ?? "not set"}
+              </Badge>
+              {project.setupState === "needs_setup" ? (
+                <Badge variant="warning">Needs setup</Badge>
+              ) : null}
+              <span
+                className="inline-flex min-w-0 items-center gap-1"
+                title={project.repositoryPath}
+              >
+                <span className="shrink-0">Repository</span>
+                <span className="truncate font-mono text-[11px]">{project.repositoryPath}</span>
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <span className="shrink-0">Server</span>
+                <span className="truncate">{machineLabel ?? "Not reported"}</span>
+              </span>
             </div>
           </div>
           <div className="flex gap-2">
@@ -550,17 +418,6 @@ export function SymphonyProjectView({
             {actionError}
           </p>
         ) : null}
-        {boardQuery.error !== null ? (
-          <div className="mb-3 flex items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive-foreground">
-            <p>
-              Live updates stopped. Showing the board from{" "}
-              {new Date(board.generatedAt).toLocaleTimeString()}. {boardQuery.error}
-            </p>
-            <Button size="sm" variant="outline" onClick={boardQuery.refresh}>
-              Retry
-            </Button>
-          </div>
-        ) : null}
         <nav className="flex gap-1 overflow-x-auto" aria-label="Project sections">
           {TABS.map((item) => (
             <button
@@ -580,188 +437,31 @@ export function SymphonyProjectView({
         </nav>
       </header>
 
-      <main className="min-h-0 flex-1 overflow-auto">
-        {tab === "board" ? <BoardTab board={board} onRefresh={boardQuery.refresh} /> : null}
-        {tab === "settings" && environmentId !== null ? (
-          <SettingsTab
-            key={project.id}
-            project={project}
-            environmentId={environmentId}
-            onSaved={boardQuery.refresh}
-          />
-        ) : null}
-        {tab === "runs" ? (
-          <RunsTab
-            runs={runsQuery.data ?? []}
-            loading={runsQuery.isPending}
-            error={runsQuery.error}
-          />
-        ) : null}
-        {tab === "attention" && environmentId !== null ? (
-          <ListFrame
-            title="Attention"
-            loading={attentionQuery.isPending}
-            error={attentionQuery.error}
-            isEmpty={(attentionQuery.data ?? []).length === 0}
-          >
-            <SymphonyAttentionList
-              items={attentionQuery.data ?? []}
+      <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        {tab === "settings" ? (
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <SettingsTab
+              key={project.id}
+              project={project}
               environmentId={environmentId}
-              onChanged={attentionQuery.refresh}
+              onSaved={boardQuery.refresh}
             />
-          </ListFrame>
-        ) : null}
+          </div>
+        ) : (
+          <SymphonyWorkView
+            projectId={projectId}
+            environmentId={environmentId}
+            project={project}
+            board={board}
+            boardLoading={boardQuery.isPending}
+            boardError={boardQuery.error}
+            tab={tab}
+            filter={filter}
+            onFilterChange={onFilterChange}
+            machineLabel={machineLabel}
+          />
+        )}
       </main>
     </div>
-  );
-}
-
-function ListFrame({
-  title,
-  loading,
-  error,
-  isEmpty,
-  children,
-}: {
-  readonly title: string;
-  readonly loading: boolean;
-  readonly error: string | null;
-  readonly isEmpty: boolean;
-  readonly children: ReactNode;
-}) {
-  return (
-    <div className="mx-auto max-w-4xl space-y-4 p-6 sm:p-8">
-      <h2 className="text-base font-semibold">{title}</h2>
-      {loading && isEmpty ? (
-        <Skeleton className="h-32 rounded-2xl" />
-      ) : error && isEmpty ? (
-        <SymphonyEmptyState
-          icon={TriangleAlertIcon}
-          title={`${title} unavailable`}
-          description={error}
-        />
-      ) : isEmpty ? (
-        <p className="rounded-2xl border border-dashed p-8 text-center text-sm text-muted-foreground">
-          Nothing here yet.
-        </p>
-      ) : (
-        children
-      )}
-    </div>
-  );
-}
-
-const RUN_FILTERS: ReadonlyArray<{ readonly value: RunFilter; readonly label: string }> = [
-  { value: "all", label: "All" },
-  { value: "active", label: "Active" },
-  { value: "finished", label: "Finished" },
-];
-
-function RunsTab({
-  runs,
-  loading,
-  error,
-}: {
-  readonly runs: ReadonlyArray<RunSummary>;
-  readonly loading: boolean;
-  readonly error: string | null;
-}) {
-  const [filter, setFilter] = useState<RunFilter>("all");
-  const visible = filterRuns(runs, filter);
-  return (
-    <SimpleList
-      title="Runs"
-      loading={loading}
-      error={error}
-      isEmpty={runs.length === 0}
-      toolbar={
-        <div className="flex gap-1">
-          {RUN_FILTERS.map((item) => (
-            <Button
-              key={item.value}
-              size="sm"
-              variant={filter === item.value ? "secondary" : "ghost"}
-              onClick={() => setFilter(item.value)}
-            >
-              {item.label}
-            </Button>
-          ))}
-        </div>
-      }
-      rows={visible.map((run) => ({
-        id: run.runAttemptId,
-        title: run.issueTitle ?? run.workItemId,
-        detail: `${run.status.replaceAll("_", " ")} · item ${run.lifecycle.replaceAll("_", " ")} · attempt ${run.attemptNumber}`,
-        to: { runId: run.runAttemptId },
-        badge: {
-          label: run.status.replaceAll("_", " "),
-          variant: runAttemptStatusBadgeVariant(run.status),
-        },
-      }))}
-    />
-  );
-}
-
-function SimpleList({
-  title,
-  loading,
-  error,
-  rows,
-  toolbar,
-  isEmpty,
-}: {
-  readonly title: string;
-  readonly loading: boolean;
-  readonly error: string | null;
-  readonly isEmpty?: boolean;
-  readonly rows: ReadonlyArray<{
-    id: string;
-    title: string;
-    detail: string;
-    to?: { runId: string };
-    badge?: { label: string; variant: "error" | "info" | "secondary" | "success" };
-  }>;
-  readonly toolbar?: ReactNode;
-}) {
-  return (
-    <ListFrame title={title} loading={loading} error={error} isEmpty={isEmpty ?? rows.length === 0}>
-      {toolbar}
-      <div className="divide-y rounded-2xl border bg-card">
-        {rows.length === 0 ? (
-          <p className="px-4 py-6 text-center text-sm text-muted-foreground">
-            No runs match this filter.
-          </p>
-        ) : null}
-        {rows.map((row) => {
-          const body = (
-            <>
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-sm font-medium">{row.title}</p>
-                {row.badge === undefined ? null : (
-                  <Badge variant={row.badge.variant} size="sm">
-                    {row.badge.label}
-                  </Badge>
-                )}
-              </div>
-              <p className="mt-1 text-xs text-muted-foreground">{row.detail}</p>
-            </>
-          );
-          return row.to === undefined ? (
-            <div key={row.id} className="px-4 py-3">
-              {body}
-            </div>
-          ) : (
-            <Link
-              key={row.id}
-              to="/symphony/$runId"
-              params={row.to}
-              className="block px-4 py-3 hover:bg-muted/40"
-            >
-              {body}
-            </Link>
-          );
-        })}
-      </div>
-    </ListFrame>
   );
 }
