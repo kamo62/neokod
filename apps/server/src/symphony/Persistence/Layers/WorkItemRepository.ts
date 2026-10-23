@@ -52,6 +52,8 @@ const WorkItemRowSchema = Schema.Struct({
   ownerToken: Schema.NullOr(Schema.String),
   generation: Schema.Int,
   ownerPid: Schema.NullOr(Schema.Int),
+  ownerPgid: Schema.NullOr(Schema.Int),
+  ownerBirthToken: Schema.NullOr(Schema.String),
   ownerStartedAt: Schema.NullOr(Schema.String),
   leaseExpiresAt: Schema.NullOr(Schema.String),
   excluded: Schema.Int,
@@ -189,6 +191,8 @@ const rowToWorkItem = (row: Schema.Schema.Type<typeof WorkItemRowSchema>): WorkI
   updatedAt: row.updatedAt,
   ...(row.claimedAt === null ? {} : { claimedAt: row.claimedAt }),
   ...(row.ownerPid === null ? {} : { ownerPid: row.ownerPid }),
+  ...(row.ownerPgid === null ? {} : { ownerPgid: row.ownerPgid }),
+  ...(row.ownerBirthToken === null ? {} : { ownerBirthToken: row.ownerBirthToken }),
 });
 
 const workItemToRow = (
@@ -221,6 +225,8 @@ const workItemToRow = (
   ownerToken: null,
   generation: 0,
   ownerPid: null,
+  ownerPgid: null,
+  ownerBirthToken: null,
   ownerStartedAt: null,
   leaseExpiresAt: null,
   claimedAt: workItem.claimedAt ?? null,
@@ -244,6 +250,7 @@ const SELECT_COLUMNS = `  id, project_id AS "projectId", workflow_id AS "workflo
   workspace_path AS "workspacePath", base_branch AS "baseBranch",
   source_json AS "sourceJson", acceptance_criteria_json AS "acceptanceCriteriaJson",
   owner_token AS "ownerToken", generation, owner_pid AS "ownerPid",
+  owner_pgid AS "ownerPgid", owner_birth_token AS "ownerBirthToken",
   owner_started_at AS "ownerStartedAt", lease_expires_at AS "leaseExpiresAt",
   excluded, local_priority AS "localPriority",
   eligibility_reasons_json AS "eligibilityReasonsJson",
@@ -361,6 +368,8 @@ const makeRepository = Effect.gen(function* () {
           owner_token = ${request.ownerToken},
           generation = generation + 1,
           owner_pid = NULL,
+          owner_pgid = NULL,
+          owner_birth_token = NULL,
           owner_started_at = ${request.now},
           lease_expires_at = ${request.now},
           claimed_at = ${request.now},
@@ -632,6 +641,39 @@ const makeRepository = Effect.gen(function* () {
       return row.length > 0;
     });
 
+  const setClaimOwnerProcessIdentity: WorkItemRepositoryShape["setClaimOwnerProcessIdentity"] = (
+    id,
+    ownerToken,
+    generation,
+    identity,
+  ) =>
+    Effect.gen(function* () {
+      const now = yield* nowIso;
+      const row = yield* sql<Schema.Schema.Type<typeof WorkItemRowSchema>>`
+        UPDATE symphony_work_items SET
+          owner_pid = ${identity.pid},
+          owner_pgid = ${identity.pgid ?? null},
+          owner_birth_token = ${identity.birthToken ?? null},
+          updated_at = ${now}
+        WHERE id = ${id}
+          AND owner_token = ${ownerToken}
+          AND generation = ${generation}
+          AND lifecycle IN ('preparing', 'running', 'testing')
+        RETURNING ${cols}
+      `.pipe(Effect.mapError(toBusyOrSqlError("WorkItemRepository.setClaimOwnerProcessIdentity")));
+      return row.length > 0;
+    });
+
+  const getClaimFence: WorkItemRepositoryShape["getClaimFence"] = (id) =>
+    sql<{ readonly ownerToken: string | null; readonly generation: number }>`
+      SELECT owner_token AS "ownerToken", generation
+      FROM symphony_work_items
+      WHERE id = ${id}
+    `.pipe(
+      Effect.mapError(toSqlError("WorkItemRepository.getClaimFence")),
+      Effect.map((rows) => rows[0] ?? null),
+    );
+
   const setBaseBranch: WorkItemRepositoryShape["setBaseBranch"] = (
     id,
     ownerToken,
@@ -668,43 +710,56 @@ const makeRepository = Effect.gen(function* () {
       return Option.isSome(row);
     });
 
-  const releaseClaim: WorkItemRepositoryShape["releaseClaim"] = (id, to) =>
+  const releaseClaim: WorkItemRepositoryShape["releaseClaim"] = (id, to, fence) =>
     Effect.gen(function* () {
       const now = yield* nowIso;
+      const fenceClause =
+        fence === undefined
+          ? sql``
+          : sql`AND owner_token = ${fence.ownerToken} AND generation = ${fence.generation}`;
       const row = yield* sql<Schema.Schema.Type<typeof WorkItemRowSchema>>`
         UPDATE symphony_work_items SET
           lifecycle = ${to},
           owner_token = NULL,
           owner_pid = NULL,
+          owner_pgid = NULL,
+          owner_birth_token = NULL,
           owner_started_at = NULL,
           lease_expires_at = NULL,
           generation = generation + 1,
           updated_at = ${now}
         WHERE id = ${id}
           AND lifecycle IN ('preparing', 'running', 'testing')
+          ${fenceClause}
         RETURNING ${cols}
       `.pipe(Effect.mapError(toBusyOrSqlError("WorkItemRepository.releaseClaim")));
       return row.length > 0;
     });
 
-  const releaseConfirmedStop: WorkItemRepositoryShape["releaseConfirmedStop"] = (id) =>
+  const releaseConfirmedStop: WorkItemRepositoryShape["releaseConfirmedStop"] = (id, fence) =>
     Effect.gen(function* () {
       const now = yield* nowIso;
-      // Only non-terminal rows are claimable by a Stop. `cancelled` is
-      // terminal, so this statement is the release-once guard: the first
-      // confirmed Stop clears the claim and bumps generation, and any later
-      // call (including a racing failure's transition) matches no row.
+      // Exact-claim CAS plus the legal `cancelled` source set: a stale Stop
+      // (or one racing a replacement claim) matches no row, and review states
+      // the transition table never allowed cannot be cancelled here.
       const row = yield* sql<Schema.Schema.Type<typeof WorkItemRowSchema>>`
         UPDATE symphony_work_items SET
           lifecycle = 'cancelled',
           owner_token = NULL,
           owner_pid = NULL,
+          owner_pgid = NULL,
+          owner_birth_token = NULL,
           owner_started_at = NULL,
           lease_expires_at = NULL,
           generation = generation + 1,
           updated_at = ${now}
         WHERE id = ${id}
-          AND lifecycle NOT IN ('completed', 'cancelled', 'failed')
+          AND owner_token = ${fence.ownerToken}
+          AND generation = ${fence.generation}
+          AND lifecycle IN (
+            'draft', 'ineligible', 'queued', 'preparing', 'blocked',
+            'running', 'testing', 'waiting_for_approval', 'retry_scheduled'
+          )
         RETURNING ${cols}
       `.pipe(Effect.mapError(toBusyOrSqlError("WorkItemRepository.releaseConfirmedStop")));
       return row.length > 0;
@@ -747,6 +802,8 @@ const makeRepository = Effect.gen(function* () {
     listForBoard,
     claim,
     setClaimOwnerPid,
+    setClaimOwnerProcessIdentity,
+    getClaimFence,
     setBaseBranch,
     transition,
     releaseClaim,

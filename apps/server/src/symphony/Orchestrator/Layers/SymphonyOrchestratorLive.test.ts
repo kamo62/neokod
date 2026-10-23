@@ -307,9 +307,15 @@ const mockDispatcherLayer = Layer.effect(
           Effect.mapError((cause) => new RunDispatchError(cause.message)),
           Effect.as("run-mock" as RunAttemptId),
         ),
-      cancelRun: () => Effect.void,
+      cancelRun: (runAttemptId) =>
+        Effect.succeed({
+          status: "confirmed",
+          runAttemptId,
+          evidence: "no_owner_recorded",
+          released: false,
+        } as const),
       isAgentActive: () => Effect.succeed(false),
-      stopAllRuns: () => Effect.succeed(0),
+      stopAllRuns: () => Effect.succeed({ confirmed: 0, held: 0 }),
     } satisfies RunDispatcher["Service"];
   }),
 );
@@ -1321,7 +1327,9 @@ layer("SymphonyOrchestrator Observe", (it) => {
       expect(details?.attentionItems).toEqual([]);
       const answeredRow = details?.approvalRequests.find((request) => request.id === answered.id);
       expect(answeredRow?.kind).toBe("user_input");
-      expect(answeredRow?.state).toBe("approved");
+      // Shared feedback dependency (S4): a user-input answer is `answered`,
+      // never presented as a permission approval.
+      expect(answeredRow?.state).toBe("answered");
       expect(answeredRow?.reason).toBe("Which branch should I target?");
       expect(answeredRow?.decidedAt).not.toBeNull();
       expect(details?.approvalRequests.find((request) => request.id === expired.id)?.state).toBe(

@@ -284,10 +284,19 @@ export const makeHandoffService = Effect.gen(function* () {
       }
 
       // 1. Stop the worker: cancel the run (interrupts the turn, settles the
-      //    run's live requests, records the durable status).
-      yield* dispatcher
+      //    run's live requests, records the durable status). A held outcome
+      //    means process ownership is unconfirmed: refuse the takeover rather
+      //    than moving a workspace that may still be under a live agent.
+      const stopped = yield* dispatcher
         .cancelRun(runAttemptId)
         .pipe(Effect.mapError((cause) => new HandoffError(cause.message)));
+      if (stopped.status === "held") {
+        return yield* Effect.fail(
+          new HandoffError(
+            `Symphony run stop is unconfirmed (${stopped.reason}); takeover aborted with its claim and workspace still held`,
+          ),
+        );
+      }
       yield* liveRequests
         .settleRun(runAttemptId, "handed over to work mode")
         .pipe(Effect.catch(() => Effect.void));

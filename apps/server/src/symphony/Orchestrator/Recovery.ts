@@ -96,6 +96,7 @@ type RecoveryHoldReason =
 const resolveOwnerClosure = (
   deps: RecoveryDeps,
   item: WorkItem,
+  fence: { readonly ownerToken: string | null; readonly generation: number },
 ): Effect.Effect<
   | ProcessClosureResult
   | {
@@ -105,7 +106,19 @@ const resolveOwnerClosure = (
     }
 > =>
   Effect.gen(function* () {
+    const currentFence = yield* deps.workItems
+      .getClaimFence(item.id)
+      .pipe(Effect.catch(() => Effect.succeed(null)));
+    if (
+      currentFence === null ||
+      currentFence.ownerToken !== fence.ownerToken ||
+      currentFence.generation !== fence.generation
+    ) {
+      return { status: "held", reason: "claim_changed" } as const;
+    }
     if (item.ownerPid === null || item.ownerPid === undefined) {
+      // No child ownership was ever recorded on this exact claim. There is
+      // nothing to signal or wait for; the release below stays fenced.
       return { status: "closed", evidence: "no_owner_recorded" } as const;
     }
     const current = yield* deps.workItems
@@ -182,6 +195,13 @@ const recoverItem = (
   now: string,
 ) =>
   Effect.gen(function* () {
+    const fence = yield* deps.workItems
+      .getClaimFence(item.id)
+      .pipe(Effect.catch(() => Effect.succeed(null)));
+    const releaseFence =
+      fence === null || fence.ownerToken === null
+        ? undefined
+        : { ownerToken: fence.ownerToken, generation: fence.generation };
     const attempt = yield* deps.runAttempts
       .latestForWorkItem(item.id)
       .pipe(Effect.catch(() => Effect.succeed(null)));
@@ -199,7 +219,9 @@ const recoverItem = (
         !Number.isNaN(claimedAt) &&
         (yield* Clock.currentTimeMillis) - claimedAt > STALL_WINDOW_MS
       ) {
-        yield* deps.workItems.releaseClaim(item.id, "queued").pipe(Effect.catch(() => Effect.void));
+        yield* deps.workItems
+          .releaseClaim(item.id, "queued", releaseFence)
+          .pipe(Effect.catch(() => Effect.void));
       }
       return;
     }
@@ -221,7 +243,10 @@ const recoverItem = (
     // transition, including the terminal-attempt shortcut below. An
     // unverifiable owner keeps the claim, lease and lifecycle exactly as they
     // are and records why, so reconciliation can handle it explicitly.
-    const closure = yield* resolveOwnerClosure(deps, item);
+    if (fence === null) {
+      return; // claim row disappeared; nothing authoritative to act on
+    }
+    const closure = yield* resolveOwnerClosure(deps, item, fence);
     if (closure.status === "held") {
       yield* deps.runEvents
         .appendOnce(attempt.id, "recovery_hold", {
@@ -229,6 +254,7 @@ const recoverItem = (
           reason: closure.reason,
           ...(closure.detail === undefined ? {} : { detail: closure.detail }),
           ownerPid: item.ownerPid ?? null,
+          generation: fence.generation,
           terminalAttempt: TERMINAL_STATUSES.has(attempt.status),
         })
         .pipe(Effect.catch(() => Effect.succeed(false)));
@@ -242,11 +268,18 @@ const recoverItem = (
       // creation (REVIEW P1 #11). Land the item in its review state instead.
       if (attempt.status === "succeeded") {
         yield* deps.workItems
-          .transition(item.id, "ready_for_review", { from: ["preparing", "running", "testing"] })
+          .transition(item.id, "ready_for_review", {
+            from: ["preparing", "running", "testing"],
+            ...(releaseFence === undefined
+              ? {}
+              : { ownerToken: releaseFence.ownerToken, generation: releaseFence.generation }),
+          })
           .pipe(Effect.catch(() => Effect.void));
         return;
       }
-      yield* deps.workItems.releaseClaim(item.id, "queued").pipe(Effect.catch(() => Effect.void));
+      yield* deps.workItems
+        .releaseClaim(item.id, "queued", releaseFence)
+        .pipe(Effect.catch(() => Effect.void));
       return;
     }
 
@@ -297,7 +330,7 @@ const recoverItem = (
     const retryable =
       isRetryableCategory("interrupted") && attempt.attemptNumber < maxAttemptsFor(workflows, item);
     yield* deps.workItems
-      .releaseClaim(item.id, retryable ? "retry_scheduled" : "queued")
+      .releaseClaim(item.id, retryable ? "retry_scheduled" : "queued", releaseFence)
       .pipe(Effect.catch(() => Effect.void));
     if (retryable) {
       yield* deps.runEvents
