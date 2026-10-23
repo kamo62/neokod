@@ -383,6 +383,40 @@ layer("ApprovalRepository request vocabulary", (it) => {
       }),
   );
 
+  it.effect("degrades one malformed answer/note row without hiding the valid row", () =>
+    Effect.gen(function* () {
+      yield* seedWorkItem("wi-history-robust");
+      const sql = yield* SqlClient.SqlClient;
+      const repository = yield* ApprovalRepository;
+      const valid = yield* record({
+        id: "sym-history-valid",
+        requestId: "40",
+        action: "user_input",
+        workItemId: "wi-history-robust",
+      });
+      yield* sql`
+        INSERT INTO symphony_approvals (
+          id, request_id, work_item_id, run_attempt_id, action, scope,
+          state, policy_source, payload_json, answer_json, decision_note_json, created_at
+        )
+        VALUES (
+          'sym-history-bad-answer', '41', 'wi-history-robust', ${runAttemptId},
+          'user_input', 'once', 'pending', 'once',
+          ${encodeJson({ reason: "Which branch?" })},
+          'not-json', '{bad}', '2026-08-05T00:00:00.000Z'
+        )
+      `;
+      const rows = yield* repository.listForRun(runAttemptId);
+      expect(rows.map((row) => String(row.id))).toContain(String(valid.id));
+      const bad = rows.find((row) => String(row.id) === "sym-history-bad-answer");
+      expect(bad?.historyUnavailable).toContain("answer");
+      expect(bad?.historyUnavailable).toContain("decision note");
+      expect(bad?.answer).toBeUndefined();
+      expect(bad?.decisionNote).toBeUndefined();
+      expect(rows.find((row) => row.id === valid.id)?.questionPayload).toBeDefined();
+    }),
+  );
+
   it.effect("keeps a redelivered provider request as one durable row", () =>
     Effect.gen(function* () {
       yield* seedWorkItem("wi-duplicate-1");

@@ -72,6 +72,18 @@ export interface ApprovalRepositoryShape {
     decision: "expired" | "interrupted",
   ) => Effect.Effect<void, SymphonyPersistenceError>;
 
+  /** Rows whose accepted content was staged but not finalised. */
+  readonly listDelivering: () => Effect.Effect<ApprovalRequest[], SymphonyPersistenceError>;
+
+  /**
+   * Close an uncertain staged row as interrupted while preserving its stored
+   * answer/note content. Used by startup reconciliation after a crash/restart.
+   */
+  readonly reconcileDelivery: (
+    id: string,
+    decision: "interrupted",
+  ) => Effect.Effect<void, SymphonyPersistenceError>;
+
   /** List pending (undecided) requests, newest first. */
   readonly listPending: (options?: {
     readonly limit?: number;
