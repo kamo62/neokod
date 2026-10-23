@@ -897,7 +897,9 @@ layer("ApprovalService durable ids", (it) => {
         expect(reconciledResult).toEqual({ reconciled: 1, failedIds: [] });
         const reconciled = yield* repository.getById(record.id);
         expect(reconciled?.state).toBe("interrupted");
-        expect(reconciled?.decision).toBe("interrupted");
+        // The staged local decision is preserved separately from the
+        // interrupted settlement; delivery remains unknown.
+        expect(reconciled?.decision).toBe("answered");
         // Stored answer content is preserved as delivery-unknown, not erased or
         // promoted to answered.
         expect(reconciled?.answer?.answers).toEqual([{ questionId: "q1", answer: "main" }]);
