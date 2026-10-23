@@ -1342,6 +1342,59 @@ layer("SymphonyOrchestrator Observe", (it) => {
     }),
   );
 
+  it.effect("getRun exposes exact confirmed Stop closure from the authoritative event", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      const workItems = yield* WorkItemRepository;
+      const runAttempts = yield* RunAttemptRepository;
+      const runEvents = yield* RunEventRepository;
+      const workItemId = WorkItemId.make("stop-closure-run-1");
+      yield* workItems.upsert({
+        id: workItemId,
+        mode: "symphony",
+        projectId: TEST_PROJECT_ID,
+        objective: "Stop closure target",
+        acceptanceCriteria: [],
+        source: { kind: "manual" },
+        trackerIssueId: "stop-closure-run-1",
+        lifecycle: "cancelled",
+        priority: 1,
+        eligibilityReasons: [],
+        evidence: null,
+        createdAt: "2026-08-05T00:00:00.000Z",
+        updatedAt: "2026-08-05T00:00:00.000Z",
+      });
+      const runAttemptId = RunAttemptId.make("run-stop-closure-1");
+      yield* runAttempts.create({
+        id: runAttemptId,
+        workItemId,
+        attemptNumber: 1,
+        workspacePath: "/ws/stop-closure-run-1",
+        provider: {
+          instanceId: ProviderInstanceId.make("codex_default"),
+          driver: ProviderDriverKind.make("codex"),
+        },
+        status: "user_cancelled",
+        startedAt: "2026-08-05T00:00:00.000Z",
+        finishedAt: "2026-08-05T00:05:00.000Z",
+        error: null,
+      });
+      const confirmed = yield* runEvents.append(runAttemptId, "stop_confirmed", {
+        workItemId: String(workItemId),
+        closure: "group_terminated",
+        released: true,
+      });
+
+      const details = yield* orchestrator.getRun(String(runAttemptId));
+      expect(details?.runAttempt.stopClosure).toEqual({
+        state: "confirmed",
+        runAttemptId,
+        observedAt: confirmed.occurredAt,
+        source: "recovery.stop_confirmed",
+      });
+    }),
+  );
+
   it.effect("getRun normalises a provider action recorded by the runtime", () =>
     Effect.gen(function* () {
       const orchestrator = yield* SymphonyOrchestrator;
@@ -4610,6 +4663,12 @@ layer("SymphonyOrchestrator leadership", (it) => {
         startedAt,
         finishedAt: null,
         error: null,
+      });
+      const runEvents = yield* RunEventRepository;
+      yield* runEvents.append(runAttemptId, "issue_claimed", {
+        workItemId: id,
+        ownerToken: "leadership-owner",
+        generation: claimed.generation,
       });
       return { workItemId: WorkItemId.make(id), runAttemptId };
     });

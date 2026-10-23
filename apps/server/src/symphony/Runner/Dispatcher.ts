@@ -139,12 +139,10 @@ export class AgentRuntimeFactory extends Context.Service<
     readonly make: (
       config: EffectiveWorkflowConfig,
       options?: {
-        // The shared factory pass (Runner/Live.ts) still declares the narrow
-        // pid-only, error-free shape. The runtime invokes this with the
-        // optional identity and a typed ownership error; the dispatcher views
-        // the factory through OwnershipAwareFactory below until the shared
-        // owner widens this public surface.
-        readonly onChildSpawned?: (pid: number) => Effect.Effect<void>;
+        onChildSpawned?(
+          pid: number,
+          identity?: ProcessGroupIdentity,
+        ): Effect.Effect<void, AgentRuntimeChildOwnershipError>;
       },
     ) => Effect.Effect<AgentRuntimeService, never, Scope.Scope>;
   }
@@ -161,26 +159,75 @@ export class RunDispatcherProcessClosure extends Context.Service<
   ProcessClosureDeps
 >()("neokod/symphony/Runner/Dispatcher/RunDispatcherProcessClosure") {}
 
-/**
- * Narrow local view of the factory used at the dispatcher call site. The
- * runtime already forwards the optional identity and expects a typed ownership
- * failure; Runner/Live.ts still exposes the older pid-only shape to the layer
- * system and is feedback-owned.
- */
-type OwnershipAwareFactory = {
-  readonly make: (
-    config: EffectiveWorkflowConfig,
-    options?: {
-      readonly onChildSpawned?: (
-        pid: number,
-        identity?: ProcessGroupIdentity,
-      ) => Effect.Effect<void, AgentRuntimeChildOwnershipError>;
-    },
-  ) => Effect.Effect<AgentRuntimeService, never, Scope.Scope>;
-};
-
 /** How long a Stop waits for the interrupted dispatch fiber to exit. */
 const STOP_FIBER_EXIT_TIMEOUT = Duration.seconds(5);
+
+/**
+ * Exact attempt-to-claim binding recorded before any provider spawn. This is
+ * the only positive association between an attempt and a claim generation;
+ * timestamps are not identity.
+ */
+export interface AttemptClaimBinding {
+  readonly runAttemptId: RunAttemptId;
+  readonly workItemId: string;
+  readonly ownerToken: string;
+  readonly generation: number;
+}
+
+export const CLAIM_BINDING_EVENT = "issue_claimed";
+
+/**
+ * Read the exact durable claim binding for one attempt. The latest well-formed
+ * `issue_claimed` event wins; a missing or malformed binding is unknown, never
+ * inferred from attempt timing or the current row.
+ */
+export const readAttemptClaimBinding = (
+  runEvents: RunEventRepository["Service"],
+  runAttemptId: RunAttemptId,
+): Effect.Effect<AttemptClaimBinding | null> =>
+  runEvents.listForAttempt(runAttemptId).pipe(
+    Effect.map((events) => {
+      for (let index = events.length - 1; index >= 0; index -= 1) {
+        const event = events[index];
+        if (event === undefined || event.eventType !== CLAIM_BINDING_EVENT) continue;
+        const payload = event.payload;
+        if (payload === undefined) continue;
+        const workItemId = payload.workItemId;
+        const ownerToken = payload.ownerToken;
+        const generation = payload.generation;
+        if (
+          typeof workItemId === "string" &&
+          typeof ownerToken === "string" &&
+          ownerToken.length > 0 &&
+          typeof generation === "number" &&
+          Number.isInteger(generation)
+        ) {
+          return {
+            runAttemptId,
+            workItemId,
+            ownerToken,
+            generation,
+          } satisfies AttemptClaimBinding;
+        }
+      }
+      return null;
+    }),
+    Effect.catch(() => Effect.succeed(null)),
+  );
+
+/** Exact binding match against the current atomic claim ownership row. */
+export const claimBindingMatches = (
+  binding: AttemptClaimBinding | null,
+  ownership: ClaimOwnership | null,
+  workItemId: WorkItemId,
+): binding is AttemptClaimBinding =>
+  binding !== null &&
+  ownership !== null &&
+  ownership.ownerToken !== null &&
+  binding.runAttemptId !== undefined &&
+  binding.workItemId === String(workItemId) &&
+  binding.ownerToken === ownership.ownerToken &&
+  binding.generation === ownership.generation;
 
 export const makeRunDispatcher = Effect.gen(function* () {
   const crypto = yield* Crypto.Crypto;
@@ -188,7 +235,7 @@ export const makeRunDispatcher = Effect.gen(function* () {
   const runAttempts = yield* RunAttemptRepository;
   const runEvents = yield* RunEventRepository;
   const workspaces = yield* WorkspaceManager;
-  const factory = (yield* AgentRuntimeFactory) as unknown as OwnershipAwareFactory;
+  const factory = yield* AgentRuntimeFactory;
   const liveRequests = yield* LiveRequests;
   const finalizer = yield* ExecutionFinalizer;
   const maybeProcessClosure = yield* Effect.serviceOption(RunDispatcherProcessClosure);
@@ -250,22 +297,6 @@ export const makeRunDispatcher = Effect.gen(function* () {
 
   const readOwnership = (workItemId: WorkItemId) =>
     workItems.getClaimOwnership(workItemId).pipe(Effect.catch(() => Effect.succeed(null)));
-
-  /**
-   * An attempt belongs to the current claim only when it started at or after
-   * that claim was taken. A newer claim whose attempt row has not been created
-   * yet (the preparation window) therefore keeps the old latest attempt from
-   * authorising or releasing the new owner's claim.
-   */
-  const attemptAssociatesWithClaim = (
-    attempt: { readonly startedAt: string },
-    ownership: ClaimOwnership,
-  ): boolean => {
-    if (ownership.claimedAt === null) return false;
-    const attemptStarted = Date.parse(attempt.startedAt);
-    const claimedAt = Date.parse(ownership.claimedAt);
-    return !Number.isNaN(attemptStarted) && !Number.isNaN(claimedAt) && attemptStarted >= claimedAt;
-  };
 
   /**
    * Resolve closure from one atomic ownership row. `interrupt()` is a request
@@ -398,8 +429,18 @@ export const makeRunDispatcher = Effect.gen(function* () {
       ) {
         return; // a replacement claim owns the item; never touch it
       }
-      if (attempt !== null && !attemptAssociatesWithClaim(attempt, currentOwnership)) {
-        return; // preparation window: the claim belongs to a newer attempt
+      const binding = yield* readAttemptClaimBinding(runEvents, runAttemptId);
+      if (!claimBindingMatches(binding, currentOwnership, workItemId)) {
+        yield* runEvents
+          .appendOnce(runAttemptId, "failure_hold", {
+            workItemId: String(workItemId),
+            reason: "claim_binding_unverified",
+            ownerPid: currentOwnership.ownerPid,
+            generation: currentOwnership.generation,
+            category: error.category,
+          })
+          .pipe(Effect.catch(() => Effect.succeed(false)));
+        return;
       }
       const ownership = yield* resolveStopClosure(currentOwnership);
       if (ownership.status === "held") {
@@ -478,6 +519,15 @@ export const makeRunDispatcher = Effect.gen(function* () {
                 Effect.catch(() => Effect.succeed(false)),
               );
       if (runAttemptId !== null && created) {
+        // Exact binding for this attempt even though no provider child exists;
+        // the failure release still uses the same claim authority.
+        yield* runEvents
+          .append(runAttemptId, CLAIM_BINDING_EVENT, {
+            workItemId: String(input.workItemId),
+            ownerToken: input.ownerToken,
+            generation: input.generation,
+          })
+          .pipe(Effect.catch(() => Effect.void));
         yield* appendEvent(runAttemptId, "dispatch_failed_early", {
           stage: input.stage,
           message: input.error.message,
@@ -589,7 +639,38 @@ export const makeRunDispatcher = Effect.gen(function* () {
               .pipe(Effect.catch(() => Effect.void)),
           ),
         );
-      yield* appendEvent(runAttemptId, "issue_claimed", { workItemId: String(workItemId) });
+      // REQUIRED exact attempt/claim binding, written before any provider
+      // spawn. If this cannot be persisted, the run must not start: a missing
+      // binding is permanently unverifiable for recovery.
+      yield* runEvents
+        .append(runAttemptId, CLAIM_BINDING_EVENT, {
+          workItemId: String(workItemId),
+          ownerToken,
+          generation: claimed.generation,
+        })
+        .pipe(
+          Effect.mapError(
+            (cause) => new RunDispatchError(`failed to record claim binding: ${cause.message}`),
+          ),
+          Effect.tapError(() =>
+            Effect.gen(function* () {
+              yield* runAttempts
+                .updateStatus(runAttemptId, "failed", {
+                  finishedAt: yield* nowIso,
+                  error: {
+                    category: "workflow_error",
+                    message: "claim binding could not be persisted; provider was never spawned",
+                  },
+                })
+                .pipe(Effect.catch(() => Effect.void));
+              // No child exists yet: this is the one failure that may safely
+              // close the claim without process closure evidence.
+              yield* workItems
+                .transition(workItemId, "failed", { ownerToken, generation: claimed.generation })
+                .pipe(Effect.catch(() => Effect.void));
+            }),
+          ),
+        );
       yield* appendEvent(runAttemptId, "workspace_created", {
         path: workspace.path,
         branch: workspace.branch,
@@ -871,18 +952,19 @@ export const makeRunDispatcher = Effect.gen(function* () {
               if (alreadyTerminal && !itemHeld) {
                 return;
               }
+              const binding = yield* readAttemptClaimBinding(runEvents, runAttemptId);
               if (
                 currentOwnership === null ||
                 currentOwnership.ownerToken !== ownerToken ||
                 currentOwnership.generation !== claimed.generation ||
-                (attempt !== null && !attemptAssociatesWithClaim(attempt, currentOwnership))
+                !claimBindingMatches(binding, currentOwnership, workItemId)
               ) {
-                // A replacement claim (or an uncreated replacement attempt in
-                // the preparation window) owns the item; this fiber's stale
-                // cleanup must not release or retry it.
+                // A replacement claim owns the item, or this attempt has no
+                // exact durable binding: this fiber's stale cleanup must not
+                // release or retry it.
                 yield* appendEvent(runAttemptId, "execution_hold", {
                   workItemId: String(workItemId),
-                  reason: "claim_changed",
+                  reason: "claim_binding_unverified",
                 });
                 return;
               }
@@ -1020,13 +1102,6 @@ export const makeRunDispatcher = Effect.gen(function* () {
             }
           : held("claim_not_owned");
       }
-      // Preparation window: the current claim is newer than this attempt, so
-      // the claim belongs to a replacement execution that has not created its
-      // attempt row yet. Preserve it untouched.
-      if (!attemptAssociatesWithClaim(attempt, ownershipBefore)) {
-        yield* clearMarker;
-        return held("claim_not_associated");
-      }
       const fenceBefore = toFence(ownershipBefore);
       if (fenceBefore === null) {
         yield* clearMarker;
@@ -1038,6 +1113,17 @@ export const makeRunDispatcher = Effect.gen(function* () {
         ownerPid: ownershipBefore.ownerPid,
         generation: ownershipBefore.generation,
       });
+      // Positive association is the exact durable binding for this attempt,
+      // not timestamp order: a replacement claim can share the same
+      // millisecond as the previous attempt.
+      const binding = yield* readAttemptClaimBinding(runEvents, runAttemptId);
+      if (!claimBindingMatches(binding, ownershipBefore, attempt.workItemId)) {
+        return yield* settleUnconfirmed(
+          "claim_binding_unverified",
+          "this attempt has no exact issue_claimed binding for the current claim generation",
+          ownershipBefore,
+        );
+      }
 
       // Stop the live run before deciding closure: interrupting the fiber is
       // what ends our tracking, and closure must be observed after that point.
