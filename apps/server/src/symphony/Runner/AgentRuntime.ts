@@ -307,7 +307,7 @@ export interface AgentRuntimeDeps {
   }) => Effect.Effect<void>;
 }
 
-const assertAcceptedTarget = (
+export const assertAcceptedTarget = (
   accepted: AcceptedGuidanceSnapshot,
   input: {
     readonly config: EffectiveWorkflowConfig;

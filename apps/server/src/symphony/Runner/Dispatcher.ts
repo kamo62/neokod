@@ -1,4 +1,5 @@
 import type {
+  AcceptedPermissionScope,
   EffectiveWorkflowConfig,
   IsoDateTime,
   NormalizedIssue,
@@ -39,7 +40,11 @@ import {
   WorkspaceOutsideRootError,
   type SymphonyWorkspace,
 } from "../Workspaces/Manager.ts";
-import { AgentRuntimeChildOwnershipError, type AgentRuntimeService } from "./AgentRuntime.ts";
+import {
+  AgentRuntimeChildOwnershipError,
+  assertAcceptedTarget,
+  type AgentRuntimeService,
+} from "./AgentRuntime.ts";
 import {
   freezeAcceptedGuidance,
   narrowAcceptedPermissions,
@@ -924,11 +929,31 @@ export const makeRunDispatcher = Effect.gen(function* () {
         ? `${maybeConfig.value.symphonyLogsDir}/pr-bodies`
         : require("node:os").tmpdir();
 
+      interface CurrentPolicy {
+        readonly config: EffectiveWorkflowConfig;
+        readonly permission: AcceptedPermissionScope;
+      }
+
+      const refusePolicy = (stage: string, message: string): Effect.Effect<null> =>
+        Effect.gen(function* () {
+          yield* appendEvent(runAttemptId, "policy_refresh_failed", { stage, message });
+          yield* markFailed(
+            runAttemptId,
+            workItemId,
+            ownerToken,
+            claimed.generation,
+            { category: "workflow_error", message },
+            maxAttempts,
+          );
+          return null;
+        });
+
       // The accepted brief stays immutable. Before a continuation turn or
       // publication, reread the accepted workflow's current policy. A missing,
-      // invalid or conflicting policy refuses before the provider/publication;
-      // the admission-time config is never silently reused.
-      const currentPolicyFor = (stage: string): Effect.Effect<EffectiveWorkflowConfig | null> =>
+      // invalid, retargeted or conflicting policy refuses before the
+      // provider/publication; the admission-time config is never silently
+      // reused.
+      const currentPolicyFor = (stage: string): Effect.Effect<CurrentPolicy | null> =>
         Effect.gen(function* () {
           const load = input.loadCurrentWorkflowPolicy;
           const current =
@@ -937,21 +962,9 @@ export const makeRunDispatcher = Effect.gen(function* () {
               : yield* load(acceptedGuidance.workflow.id).pipe(
                   Effect.catch(() => Effect.succeed(null)),
                 );
-          const refuse = (message: string) =>
-            Effect.gen(function* () {
-              yield* appendEvent(runAttemptId, "policy_refresh_failed", { stage, message });
-              yield* markFailed(
-                runAttemptId,
-                workItemId,
-                ownerToken,
-                claimed.generation,
-                { category: "workflow_error", message },
-                maxAttempts,
-              );
-              return null;
-            });
           if (current === null) {
-            return yield* refuse(
+            return yield* refusePolicy(
+              stage,
               `Current workflow policy is unavailable before ${stage}; refusing rather than reusing admission-time configuration.`,
             );
           }
@@ -960,9 +973,42 @@ export const makeRunDispatcher = Effect.gen(function* () {
             resolveAcceptedPermissions(current),
           );
           if (narrowing._tag === "unrepresentable") {
-            return yield* refuse(
+            return yield* refusePolicy(
+              stage,
               `Current workflow policy conflicts with the accepted permission before ${stage}: ` +
                 `${narrowing.reason} (accepted ${narrowing.acceptedApprovalPolicy}, live ${narrowing.liveApprovalPolicy}).`,
+            );
+          }
+          const targetCheck = yield* Effect.result(
+            assertAcceptedTarget(acceptedGuidance, {
+              config: current,
+              workspacePath: workspace.path,
+              branch: workspace.branch,
+              baseBranch: workspace.baseBranch,
+            }),
+          );
+          if (targetCheck._tag === "Failure") {
+            return yield* refusePolicy(
+              stage,
+              `target_changed before ${stage}: ${targetCheck.failure.message}`,
+            );
+          }
+          return { config: current, permission: narrowing.permission };
+        });
+
+      const publicationPolicyFor = (): Effect.Effect<CurrentPolicy | null> =>
+        Effect.gen(function* () {
+          const current = yield* currentPolicyFor("publication");
+          if (current === null) {
+            return null;
+          }
+          if (
+            current.permission.autonomy === "prepare" ||
+            current.permission.autonomy === "observe"
+          ) {
+            return yield* refusePolicy(
+              "publication",
+              `Narrowed autonomy ${current.permission.autonomy} forbids publication; current workflow config cannot upgrade an accepted prepare/observe run.`,
             );
           }
           return current;
@@ -1066,7 +1112,7 @@ export const makeRunDispatcher = Effect.gen(function* () {
             branch: workspace.branch,
             previousAttemptId: String(latestAttempt.id),
           });
-          const publicationPolicy = yield* currentPolicyFor("publication");
+          const publicationPolicy = yield* publicationPolicyFor();
           if (publicationPolicy === null) {
             return runAttemptId;
           }
@@ -1075,7 +1121,7 @@ export const makeRunDispatcher = Effect.gen(function* () {
               workItem,
               issue,
               runAttemptId,
-              config: publicationPolicy,
+              config: publicationPolicy.config,
               workspacePath: workspace.path,
               branch: workspace.branch,
               baseBranch: workspace.baseBranch,
@@ -1126,7 +1172,7 @@ export const makeRunDispatcher = Effect.gen(function* () {
           result = yield* agent
             .runTurn({
               issue,
-              config: continuationPolicy,
+              config: continuationPolicy.config,
               workspacePath: workspace.path,
               branch: workspace.branch,
               baseBranch: workspace.baseBranch,
@@ -1151,7 +1197,7 @@ export const makeRunDispatcher = Effect.gen(function* () {
           }
           // Execute/deliver exit (plan 10, WS-L): validate, assemble
           // evidence, create the PR, and land the item in a stopping state.
-          const publicationPolicy = yield* currentPolicyFor("publication");
+          const publicationPolicy = yield* publicationPolicyFor();
           if (publicationPolicy === null) {
             return runAttemptId;
           }
@@ -1160,7 +1206,7 @@ export const makeRunDispatcher = Effect.gen(function* () {
               workItem,
               issue,
               runAttemptId,
-              config: publicationPolicy,
+              config: publicationPolicy.config,
               workspacePath: workspace.path,
               branch: workspace.branch,
               baseBranch: workspace.baseBranch,
