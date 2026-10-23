@@ -55,7 +55,12 @@ import {
   ApprovalService,
   type ApprovalReconciliationResult,
 } from "../../Runner/ApprovalService.ts";
-import { RunDispatcher, symphonyAdmissionPlatformRefusal } from "../../Runner/Dispatcher.ts";
+import {
+  describeSymphonyProvider,
+  isSupportedSymphonyProvider,
+  RunDispatcher,
+  symphonyAdmissionPlatformRefusal,
+} from "../../Runner/Dispatcher.ts";
 import { EvidenceRepository } from "../../Persistence/Services/EvidenceRepository.ts";
 import { PullRequestService } from "../../Evidence/PullRequest.ts";
 import { changeRequestRepositoryKey } from "../../../sourceControl/ChangeRequestUrl.ts";
@@ -274,11 +279,47 @@ const refreshIssueSnapshot = (
     };
   });
 
+/**
+ * A refreshed issue may only be used with the stored source it was originally
+ * discovered under. Kind and external id are necessary but not sufficient;
+ * the canonical URL carries the tracker scope (for example the repository).
+ * Manual sources skip tracker comparison entirely.
+ */
+export const trackerSourceMismatch = (
+  item: WorkItem,
+  issue: NormalizedIssue,
+  config: EffectiveWorkflowConfig,
+): string | null => {
+  const source = item.source;
+  if (source.kind === "manual") {
+    return null;
+  }
+  if (item.trackerIssueId === undefined || item.trackerIssueId.length === 0) {
+    // No tracker round-trip: the synthetic issue is not a refreshed tracker
+    // source, so there is no scope to combine.
+    return null;
+  }
+  if (source.kind !== config.trackerKind) {
+    return `tracker kind changed from ${source.kind} to ${config.trackerKind}; explicit rebind required`;
+  }
+  if (issue.id !== source.externalId) {
+    return `tracker external id changed from ${source.externalId} to ${issue.id}; explicit rebind required`;
+  }
+  if (source.externalUrl.length > 0) {
+    if (issue.url === null || issue.url.length === 0) {
+      return "refreshed tracker issue has no canonical URL; source scope cannot be verified";
+    }
+    if (issue.url !== source.externalUrl) {
+      return "tracker source scope changed; explicit rebind required";
+    }
+  }
+  return null;
+};
+
 interface OrchestratorRuntimeState {
   readonly lastPollAt: string | null;
   readonly trackerHealth: ReadonlyArray<TrackerHealth>;
 }
-
 interface PreparedDispatch {
   readonly item: WorkItem;
   readonly issue: NormalizedIssue;
@@ -1785,6 +1826,12 @@ const makeOrchestrator = Effect.gen(function* () {
     if (workflow === undefined || config === null || config === undefined) {
       return refused("no_workflow");
     }
+    if (!isSupportedSymphonyProvider(config.agentProvider)) {
+      return refused(
+        "ineligible",
+        `unsupported Symphony executor provider ${describeSymphonyProvider(config.agentProvider)}; this server only runs codex_default/codex`,
+      );
+    }
     if (config.autonomy === "observe") {
       return refused("observe_only");
     }
@@ -1815,9 +1862,29 @@ const makeOrchestrator = Effect.gen(function* () {
       return refused("concurrency_cap", "workflow");
     }
 
+    const hasTrackerIssueForSource =
+      item.trackerIssueId !== undefined && item.trackerIssueId.length > 0;
+    const preRefreshSourceMismatch =
+      hasTrackerIssueForSource &&
+      item.source.kind !== "manual" &&
+      item.source.kind !== config.trackerKind
+        ? `tracker kind changed from ${item.source.kind} to ${config.trackerKind}; explicit rebind required`
+        : null;
+    if (preRefreshSourceMismatch !== null) {
+      return refused("ineligible", preRefreshSourceMismatch);
+    }
+
     const issue = yield* refreshIssueSnapshot(item, config, registry, enablement);
     if (issue === null) {
       return refused("tracker_refresh_failed");
+    }
+    const sourceMismatch = trackerSourceMismatch(item, issue, config);
+    if (sourceMismatch !== null) {
+      yield* Effect.logWarning("symphony.dispatch.refused_source_scope", {
+        workItemId: String(item.id),
+        reason: sourceMismatch,
+      });
+      return refused("ineligible", sourceMismatch);
     }
     // Re-check eligibility on the fresh issue: the stored reasons are from the last poll.
     // Items without a tracker id use a synthetic snapshot, and review continuations may sit in a
@@ -1903,6 +1970,15 @@ const makeOrchestrator = Effect.gen(function* () {
           config: prepared.config,
           workflowId: prepared.workflowId,
           workflowRevision: prepared.workflowRevision,
+          loadCurrentWorkflowPolicy: (workflowId) =>
+            workflows.getById(workflowId).pipe(
+              Effect.map((record) =>
+                record === null || record.status === "invalid" || record.status === "draft"
+                  ? null
+                  : record.effectiveConfig,
+              ),
+              Effect.catch(() => Effect.succeed(null)),
+            ),
           ...(prepared.workflowInstructions !== undefined
             ? { workflowInstructions: prepared.workflowInstructions }
             : {}),

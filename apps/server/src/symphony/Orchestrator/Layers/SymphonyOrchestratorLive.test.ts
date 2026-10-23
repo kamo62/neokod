@@ -58,6 +58,7 @@ import {
   SymphonyOrchestratorLive,
   modelReviewAllowsMerge,
   providerForRemoteUrl,
+  trackerSourceMismatch,
 } from "./SymphonyOrchestratorLive.ts";
 import { RunDispatcher, RunDispatchError } from "../../Runner/Dispatcher.ts";
 import { PullRequestService } from "../../Evidence/PullRequest.ts";
@@ -220,6 +221,59 @@ const makeIssue = (
   dispatchable: true,
   createdAt: null,
   updatedAt: null,
+});
+
+it("qualified tracker source rejects scope changes and preserves manual provenance", () => {
+  const baseItem: WorkItem = {
+    id: WorkItemId.make("source-identity-item"),
+    mode: "symphony",
+    objective: "Source identity",
+    acceptanceCriteria: [],
+    source: {
+      kind: "github",
+      externalId: "1",
+      externalUrl: "https://github.com/owner-a/repo-a/issues/1",
+    },
+    trackerIssueId: "1",
+    lifecycle: "queued",
+    eligibilityReasons: [],
+    evidence: null,
+    createdAt: "2026-10-23T00:00:00.000Z",
+    updatedAt: "2026-10-23T00:00:00.000Z",
+  };
+  const issueAt = (url: string | null): NormalizedIssue => ({ ...makeIssue("1"), url });
+
+  expect(
+    trackerSourceMismatch(
+      baseItem,
+      issueAt("https://github.com/owner-b/repo-b/issues/1"),
+      makeConfig("/repo"),
+    ),
+  ).toContain("scope changed");
+  expect(
+    trackerSourceMismatch(
+      { ...baseItem, source: { kind: "manual" } },
+      issueAt(null),
+      makeConfig("/repo"),
+    ),
+  ).toBeNull();
+  expect(
+    trackerSourceMismatch(
+      baseItem,
+      issueAt("https://github.com/owner-a/repo-a/issues/1"),
+      makeConfig("/repo"),
+    ),
+  ).toBeNull();
+  expect(
+    trackerSourceMismatch(
+      {
+        ...baseItem,
+        source: { kind: "linear", externalId: "1", externalUrl: "https://linear.app/a" },
+      },
+      issueAt("https://linear.app/a"),
+      makeConfig("/repo"),
+    ),
+  ).toContain("kind changed");
 });
 
 const pollCountsByRepository = new Map<string, number>();
@@ -4791,7 +4845,7 @@ layer("SymphonyOrchestrator leadership", (it) => {
       // deliveries before any worker can answer, preserving delivery-unknown.
       const reconciledRow = yield* stagedRepository.getById(staged.id);
       expect(reconciledRow?.state).toBe("interrupted");
-      expect(reconciledRow?.decision).toBe("interrupted");
+      expect(reconciledRow?.decision).toBe("answered");
       expect(reconciledRow?.answer?.delivery).toBe("unknown");
       expect(reconciledRow?.answer?.answers).toEqual([{ questionId: "q1", answer: "main" }]);
       const first = yield* SymphonyOrchestrator;
