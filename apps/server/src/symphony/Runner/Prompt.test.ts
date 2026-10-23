@@ -1,7 +1,8 @@
 import { describe, expect, it } from "@effect/vitest";
-import { ProviderDriverKind, ProviderInstanceId } from "@neokod/contracts";
+import { ProviderDriverKind, ProviderInstanceId, WorkflowId } from "@neokod/contracts";
 import type { EffectiveWorkflowConfig, NormalizedIssue } from "@neokod/contracts";
 
+import { freezeAcceptedGuidance } from "./AcceptedGuidance.ts";
 import { buildRunPrompt, extractAcceptanceCriteria } from "./Prompt.ts";
 
 const makeConfig = (overrides: Partial<EffectiveWorkflowConfig> = {}): EffectiveWorkflowConfig =>
@@ -16,6 +17,8 @@ const makeConfig = (overrides: Partial<EffectiveWorkflowConfig> = {}): Effective
     workspaceRoot: "/ws",
     autonomy: "prepare",
     validationRequired: [],
+    approvalsProtectedPaths: [],
+    approvalsPolicies: [],
     agentProvider: {
       instanceId: ProviderInstanceId.make("codex_default"),
       driver: ProviderDriverKind.make("codex"),
@@ -42,6 +45,28 @@ const makeIssue = (overrides: Partial<NormalizedIssue> = {}): NormalizedIssue =>
   updatedAt: null,
   ...overrides,
 });
+
+const makeAcceptedGuidance = (
+  overrides: Partial<Parameters<typeof freezeAcceptedGuidance>[0]> = {},
+) =>
+  freezeAcceptedGuidance({
+    acceptedAt: "2026-10-23T08:00:00.000Z",
+    workflowId: WorkflowId.make("wf-1"),
+    workflowRevision: "2026-10-22T09:00:00.000Z",
+    workflowInstructions: "Accepted workflow policy.",
+    workItem: {
+      source: {
+        kind: "github",
+        externalId: "1",
+        externalUrl: "https://example.test/issues/1",
+      },
+    },
+    issue: makeIssue(),
+    config: makeConfig({ autonomy: "execute", validationRequired: ["vp check"] }),
+    batchInstructions: "Accepted batch guidance.",
+    storyInstructions: "Accepted story instruction.",
+    ...overrides,
+  });
 
 describe("extractAcceptanceCriteria", () => {
   it("parses a checklist under an acceptance criteria header", () => {
@@ -196,5 +221,97 @@ describe("buildRunPrompt", () => {
     expect(prompt).not.toContain("21. comment 20");
     expect(prompt).not.toContain("x".repeat(600));
     expect(prompt).toContain(`${"x".repeat(500)}…`);
+  });
+
+  it("renders the frozen accepted brief instead of live issue and workflow edits", () => {
+    const accepted = makeAcceptedGuidance();
+    const prompt = buildRunPrompt({
+      issue: makeIssue({
+        title: "Edited live title",
+        description: "Edited live description",
+      }),
+      config: makeConfig({
+        autonomy: "deliver",
+        validationRequired: ["live-command"],
+        codexThreadSandbox: "danger-full-access",
+      }),
+      workflowInstructions: "Edited live workflow instructions.",
+      acceptedGuidance: accepted,
+    });
+
+    expect(prompt).toContain("Fix the login bug");
+    expect(prompt).toContain("Valid password logs in");
+    expect(prompt).not.toContain("Edited live title");
+    expect(prompt).not.toContain("Edited live description");
+    expect(prompt).not.toContain("Edited live workflow instructions.");
+    expect(prompt).not.toContain("live-command");
+    expect(prompt).toContain("Accepted workflow policy.");
+    expect(prompt).toContain("- vp check");
+    expect(prompt).toContain("Autonomy level: execute");
+    expect(prompt).toContain("Effective approval policy: on-request");
+    expect(prompt).toContain("Effective sandbox: workspace-write");
+  });
+
+  it("binds batch guidance and per-story instructions additively", () => {
+    const accepted = makeAcceptedGuidance();
+    const prompt = buildRunPrompt({
+      issue: makeIssue(),
+      config: makeConfig({ autonomy: "execute" }),
+      acceptedGuidance: accepted,
+    });
+
+    expect(prompt).toContain("### Operator guidance");
+    expect(prompt).toContain("Batch guidance:\n\nAccepted batch guidance.");
+    expect(prompt).toContain("Story instructions:\n\nAccepted story instruction.");
+    // The tracker source stays in its own section and is not rewritten.
+    expect(prompt).toContain("### Description\n\nThe login form rejects valid passwords.");
+  });
+
+  it("renders live operator guidance for an unaccepted draft only", () => {
+    const prompt = buildRunPrompt({
+      issue: makeIssue(),
+      config: makeConfig({ autonomy: "execute" }),
+      operatorGuidance: {
+        batch: { state: "present", text: "Draft batch guidance." },
+        story: { state: "absent" },
+      },
+    });
+
+    expect(prompt).toContain("Draft batch guidance.");
+    expect(prompt).not.toContain("Story instructions:");
+  });
+
+  it("renders the frozen delivery scope, including unknown gates", () => {
+    const accepted = makeAcceptedGuidance({
+      config: makeConfig({
+        autonomy: "execute",
+        approvalsBeforePush: true,
+        approvalsBeforeMerge: true,
+      }),
+    });
+    const prompt = buildRunPrompt({
+      issue: makeIssue(),
+      config: makeConfig({ autonomy: "execute" }),
+      acceptedGuidance: accepted,
+    });
+
+    expect(prompt).toContain(
+      "Delivery approvals: push required, pull request not configured, merge required",
+    );
+  });
+
+  it("does not re-send accepted guidance on a continuation turn", () => {
+    const accepted = makeAcceptedGuidance();
+    const prompt = buildRunPrompt({
+      issue: makeIssue(),
+      config: makeConfig({ autonomy: "execute" }),
+      acceptedGuidance: accepted,
+      continuation: true,
+    });
+
+    expect(prompt).toContain("Symphony continuation");
+    expect(prompt).not.toContain("### WORKFLOW contract");
+    expect(prompt).not.toContain("Accepted workflow policy.");
+    expect(prompt).not.toContain("Accepted batch guidance.");
   });
 });
