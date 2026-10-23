@@ -455,9 +455,14 @@ layer("WorkItemRepository process identity", (it) => {
       expect(after?.ownerPid).toBe(5001);
       expect(after?.ownerPgid).toBe(5001);
       expect(after?.ownerBirthToken).toBe("born-5001");
-      expect(yield* repo.getClaimFence(id)).toEqual({
+      expect(yield* repo.getClaimOwnership(id)).toEqual({
+        lifecycle: "preparing",
+        claimedAt: expect.any(String),
         ownerToken: "owner-a",
         generation,
+        ownerPid: 5001,
+        ownerPgid: 5001,
+        ownerBirthToken: "born-5001",
       });
 
       // Wrong generation cannot overwrite the recorded identity.
@@ -493,13 +498,22 @@ layer("WorkItemRepository process identity", (it) => {
         yield* repo.releaseClaim(id, "queued", {
           ownerToken: "owner-a",
           generation: generation + 1,
+          ownerPid: 5101,
+          ownerPgid: 5101,
+          ownerBirthToken: "born-5101",
         }),
       ).toBe(false);
       expect((yield* repo.getById(id))?.ownerPgid).toBe(5101);
 
-      expect(yield* repo.releaseClaim(id, "queued", { ownerToken: "owner-a", generation })).toBe(
-        true,
-      );
+      expect(
+        yield* repo.releaseClaim(id, "queued", {
+          ownerToken: "owner-a",
+          generation,
+          ownerPid: 5101,
+          ownerPgid: 5101,
+          ownerBirthToken: "born-5101",
+        }),
+      ).toBe(true);
       const released = yield* repo.getById(id);
       expect(released?.ownerPid ?? null).toBeNull();
       expect(released?.ownerPgid ?? null).toBeNull();
@@ -519,13 +533,22 @@ layer("WorkItemRepository confirmed Stop", (it) => {
         pgid: 4321,
         birthToken: "born-4321",
       });
-      const fence = { ownerToken: "owner-a", generation };
+      const fence = {
+        ownerToken: "owner-a",
+        generation,
+        ownerPid: 4321,
+        ownerPgid: 4321,
+        ownerBirthToken: "born-4321",
+      };
 
       // A stale generation must not cancel the replacement claim.
       expect(
         yield* repo.releaseConfirmedStop(id, {
           ownerToken: "owner-a",
           generation: generation + 1,
+          ownerPid: 4321,
+          ownerPgid: 4321,
+          ownerBirthToken: "born-4321",
         }),
       ).toBe(false);
       expect((yield* repo.getById(id))?.lifecycle).toBe("preparing");
@@ -564,6 +587,9 @@ layer("WorkItemRepository confirmed Stop", (it) => {
           yield* repo.releaseConfirmedStop(reviewId, {
             ownerToken: "owner-review",
             generation: 1,
+            ownerPid: null,
+            ownerPgid: null,
+            ownerBirthToken: null,
           }),
         ).toBe(false);
         expect((yield* repo.getById(reviewId))?.lifecycle).toBe("ready_for_review");
@@ -573,6 +599,9 @@ layer("WorkItemRepository confirmed Stop", (it) => {
           yield* repo.releaseConfirmedStop(failedId, {
             ownerToken: "owner-failed",
             generation: 1,
+            ownerPid: null,
+            ownerPgid: null,
+            ownerBirthToken: null,
           }),
         ).toBe(false);
         expect((yield* repo.getById(failedId))?.lifecycle).toBe("failed");

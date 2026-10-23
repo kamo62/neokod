@@ -319,6 +319,37 @@ export const makeHandoffService = Effect.gen(function* () {
       const expectedBranch = deriveThreadBranch(attempt.workspacePath, workItem?.workspaceKey);
       yield* validateWorkspaceIdentity(attempt.workspacePath, expectedBranch);
 
+      // 1d. Park the exact confirmed, unclaimed cancellation BEFORE binding
+      //     or transferring ownership. The fence is the generation produced by
+      //     the confirmed release; a replacement claim has a different
+      //     generation and cannot be touched.
+      const cancellation = yield* workItems
+        .getClaimOwnership(attempt.workItemId)
+        .pipe(Effect.mapError((cause) => new HandoffError(cause.message)));
+      if (
+        cancellation === null ||
+        cancellation.lifecycle !== "cancelled" ||
+        cancellation.ownerToken !== null
+      ) {
+        return yield* Effect.fail(
+          new HandoffError(
+            "run is not in an exact confirmed, unclaimed cancellation; takeover aborted without releasing authority",
+          ),
+        );
+      }
+      const parked = yield* workItems
+        .parkConfirmedCancellation(attempt.workItemId, {
+          generation: cancellation.generation,
+        })
+        .pipe(Effect.mapError((cause) => new HandoffError(cause.message)));
+      if (!parked) {
+        return yield* Effect.fail(
+          new HandoffError(
+            "confirmed cancellation changed before takeover could park it; takeover aborted",
+          ),
+        );
+      }
+
       // 2. Bind (or reuse) the Work thread for this workspace. The thread's
       //    worktreePath is the Symphony workspace, so the same filesystem is
       //    visible in Work mode (FR-112/113, FR-115).
@@ -333,36 +364,9 @@ export const makeHandoffService = Effect.gen(function* () {
           : {}),
       });
 
-      // 3. Park the work item BEFORE ownership moves (REVIEW P0: the park was
-      //    last, unfenced and swallowed, so the still-running dispatch fiber
-      //    could overwrite `blocked` and re-dispatch into a Work-owned
-      //    workspace). Source-restricted to non-terminal lifecycles (cancelRun
-      //    releases the claim to queued first), and the boolean result is
-      //    checked — a terminal item can never be parked back into the pool.
-      //    requireUnclaimed fences against a concurrent re-claim racing the
-      //    park (fix-lane item 7): the park only lands on an item with no
-      //    live Symphony owner.
-      const parked = yield* workItems
-        .transition(attempt.workItemId, "blocked", {
-          from: [
-            "draft",
-            "ineligible",
-            "queued",
-            "preparing",
-            "running",
-            "waiting_for_approval",
-            "retry_scheduled",
-          ],
-          requireUnclaimed: true,
-        })
-        .pipe(Effect.catch(() => Effect.succeed(false)));
-      if (!parked) {
-        return yield* Effect.fail(
-          new HandoffError(
-            "work item is in a terminal lifecycle; takeover aborted before ownership transfer",
-          ),
-        );
-      }
+      // 3. The item is already parked (step 1d) under the exact cancellation
+      //    generation; ownership transfer below can no longer be pre-empted by
+      //    a re-dispatch of this workspace.
 
       // 4. Transfer workspace ownership to work. Fenced by generation when a
       //    record exists; otherwise acquire (only when no live other owner).

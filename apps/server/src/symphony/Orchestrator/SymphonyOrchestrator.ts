@@ -18,6 +18,7 @@ import type {
 import * as Context from "effect/Context";
 import type * as Effect from "effect/Effect";
 import type * as Scope from "effect/Scope";
+import type { StopOutcome } from "../Runner/Dispatcher.ts";
 import type { SymphonyPersistenceError } from "../Persistence/Errors.ts";
 
 export type SymphonyProjectUpdateResult =
@@ -129,7 +130,12 @@ export interface SymphonyOrchestratorShape {
   readonly dispatchWorkItem: (
     workItemId: string,
   ) => Effect.Effect<SymphonyDispatchResult, SymphonyPersistenceError>;
-  readonly cancelRun: (runAttemptId: string) => Effect.Effect<void, never, Scope.Scope>;
+  /**
+   * Stop one run. Returns the dispatcher's honest confirmed/held outcome so
+   * the RPC boundary can report an unconfirmed Stop instead of claiming it
+   * was cancelled.
+   */
+  readonly cancelRun: (runAttemptId: string) => Effect.Effect<StopOutcome, never, Scope.Scope>;
 
   // Review lifecycle (Phase 5, plan 14): review actions with their own
   // lifecycle transitions and confirmations.

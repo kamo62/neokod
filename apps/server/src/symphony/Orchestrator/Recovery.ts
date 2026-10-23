@@ -13,7 +13,11 @@ import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 
 import { nowIso } from "../Domain/Time.ts";
-import { WorkItemRepository } from "../Persistence/Services/WorkItemRepository.ts";
+import {
+  WorkItemRepository,
+  type ClaimFence,
+  type ClaimOwnership,
+} from "../Persistence/Services/WorkItemRepository.ts";
 import { RunAttemptRepository } from "../Persistence/Services/RunAttemptRepository.ts";
 import { RunEventRepository } from "../Persistence/Services/RunEventRepository.ts";
 import { WorkflowRepository } from "../Persistence/Services/WorkflowRepository.ts";
@@ -93,10 +97,102 @@ type RecoveryHoldReason =
  * (a re-claim, a stop, a manual edit) owns the row now, so this recovery pass
  * must not touch it.
  */
+const ownershipFence = (ownership: ClaimOwnership): ClaimFence | null =>
+  ownership.ownerToken === null
+    ? null
+    : {
+        ownerToken: ownership.ownerToken,
+        generation: ownership.generation,
+        ownerPid: ownership.ownerPid,
+        ownerPgid: ownership.ownerPgid,
+        ownerBirthToken: ownership.ownerBirthToken,
+      };
+
+/**
+ * An attempt belongs to the current claim only when it started at or after the
+ * claim was taken. A newer claim that has not created its attempt row yet (the
+ * preparation window) therefore leaves the previous terminal attempt unable to
+ * authorise a release of the new owner's claim.
+ */
+export const attemptAssociatesWithClaim = (
+  attempt: { readonly startedAt: string },
+  ownership: ClaimOwnership,
+): boolean => {
+  if (ownership.claimedAt === null) return false;
+  const attemptStarted = Date.parse(attempt.startedAt);
+  const claimedAt = Date.parse(ownership.claimedAt);
+  return !Number.isNaN(attemptStarted) && !Number.isNaN(claimedAt) && attemptStarted >= claimedAt;
+};
+
+/**
+ * Durable Stop intent. A Stop that ended held leaves `stop_unconfirmed` (and an
+ * earlier `stop_requested`) on the attempt; only a later `stop_confirmed`
+ * clears it. Restart/reconciliation consult this so an explicit Stop is never
+ * converted back into a queue or retry.
+ */
+export const hasPendingStopIntent = (
+  runEvents: RunEventRepository["Service"],
+  runAttemptId: RunAttempt["id"],
+): Effect.Effect<boolean> =>
+  runEvents.listForAttempt(runAttemptId).pipe(
+    Effect.map((events) => {
+      let pending = false;
+      for (const event of events) {
+        if (event.eventType === "stop_requested" || event.eventType === "stop_unconfirmed") {
+          pending = true;
+        } else if (event.eventType === "stop_confirmed") {
+          pending = false;
+        }
+      }
+      return pending;
+    }),
+    Effect.catch(() => Effect.succeed(false)),
+  );
+
+/**
+ * Settle a previously requested Stop once closure is confirmed: update the
+ * exact attempt to `user_cancelled` and release the exact claim snapshot to
+ * `cancelled`. Never queue or retry. Returns false when the claim changed and
+ * the CAS refused, leaving the replacement untouched.
+ */
+export const settleConfirmedStopIntent = (input: {
+  readonly workItems: WorkItemRepository["Service"];
+  readonly runAttempts: RunAttemptRepository["Service"];
+  readonly runEvents: RunEventRepository["Service"];
+  readonly runAttemptId: RunAttempt["id"];
+  readonly workItemId: WorkItem["id"];
+  readonly ownership: ClaimOwnership;
+  readonly now: string;
+}): Effect.Effect<boolean> =>
+  Effect.gen(function* () {
+    const fence = ownershipFence(input.ownership);
+    if (fence === null) return false;
+    const released = yield* input.workItems
+      .releaseConfirmedStop(input.workItemId, fence)
+      .pipe(Effect.catch(() => Effect.succeed(false)));
+    if (!released) return false;
+    yield* input.runAttempts
+      .updateStatus(input.runAttemptId, "user_cancelled", { finishedAt: input.now })
+      .pipe(Effect.catch(() => Effect.void));
+    yield* input.runEvents
+      .appendOnce(input.runAttemptId, "stop_confirmed", {
+        workItemId: String(input.workItemId),
+        closure: "recovered_stop",
+        released: true,
+      })
+      .pipe(Effect.catch(() => Effect.succeed(false)));
+    yield* input.runEvents
+      .appendOnce(input.runAttemptId, "user_cancelled", {
+        workItemId: String(input.workItemId),
+        recovered: true,
+      })
+      .pipe(Effect.catch(() => Effect.succeed(false)));
+    return true;
+  });
+
 const resolveOwnerClosure = (
   deps: RecoveryDeps,
-  item: WorkItem,
-  fence: { readonly ownerToken: string | null; readonly generation: number },
+  ownership: ClaimOwnership,
 ): Effect.Effect<
   | ProcessClosureResult
   | {
@@ -106,41 +202,18 @@ const resolveOwnerClosure = (
     }
 > =>
   Effect.gen(function* () {
-    const currentFence = yield* deps.workItems
-      .getClaimFence(item.id)
-      .pipe(Effect.catch(() => Effect.succeed(null)));
-    if (
-      currentFence === null ||
-      currentFence.ownerToken !== fence.ownerToken ||
-      currentFence.generation !== fence.generation
-    ) {
-      return { status: "held", reason: "claim_changed" } as const;
-    }
-    if (item.ownerPid === null || item.ownerPid === undefined) {
-      // No child ownership was ever recorded on this exact claim. There is
-      // nothing to signal or wait for; the release below stays fenced.
+    if (ownership.ownerPid === null) {
+      // No child ownership was recorded on this exact claim. The release
+      // remains fenced by the same snapshot (including a null pid).
       return { status: "closed", evidence: "no_owner_recorded" } as const;
-    }
-    const current = yield* deps.workItems
-      .getById(item.id)
-      .pipe(Effect.catch(() => Effect.succeed(null)));
-    if (current === null) {
-      return { status: "held", reason: "claim_unreadable" } as const;
-    }
-    const unchanged =
-      current.lifecycle === item.lifecycle &&
-      (current.claimedAt ?? null) === (item.claimedAt ?? null) &&
-      (current.ownerPid ?? null) === (item.ownerPid ?? null) &&
-      (current.ownerPgid ?? null) === (item.ownerPgid ?? null) &&
-      (current.ownerBirthToken ?? null) === (item.ownerBirthToken ?? null);
-    if (!unchanged) {
-      return { status: "held", reason: "claim_changed" } as const;
     }
     return yield* confirmOwnedProcessClosure(
       {
-        ownerPid: item.ownerPid,
-        ...(item.ownerPgid === undefined ? {} : { ownerPgid: item.ownerPgid }),
-        ...(item.ownerBirthToken === undefined ? {} : { ownerBirthToken: item.ownerBirthToken }),
+        ownerPid: ownership.ownerPid,
+        ...(ownership.ownerPgid === null ? {} : { ownerPgid: ownership.ownerPgid }),
+        ...(ownership.ownerBirthToken === null
+          ? {}
+          : { ownerBirthToken: ownership.ownerBirthToken }),
         ...(deps.ownPid === undefined ? {} : { ownPid: deps.ownPid }),
       },
       deps.processClosure ?? {},
@@ -195,13 +268,10 @@ const recoverItem = (
   now: string,
 ) =>
   Effect.gen(function* () {
-    const fence = yield* deps.workItems
-      .getClaimFence(item.id)
+    const ownership = yield* deps.workItems
+      .getClaimOwnership(item.id)
       .pipe(Effect.catch(() => Effect.succeed(null)));
-    const releaseFence =
-      fence === null || fence.ownerToken === null
-        ? undefined
-        : { ownerToken: fence.ownerToken, generation: fence.generation };
+    const releaseFence = ownership === null ? null : ownershipFence(ownership);
     const attempt = yield* deps.runAttempts
       .latestForWorkItem(item.id)
       .pipe(Effect.catch(() => Effect.succeed(null)));
@@ -211,16 +281,15 @@ const recoverItem = (
       // that predates this server start by more than the stall window is a
       // crash between claim and attempt-create: release it so the item is not
       // stuck in `preparing` forever (REVIEW P1 #10).
-      const claimedAtValue = item.claimedAt;
-      const claimedAt =
-        claimedAtValue === undefined || claimedAtValue === null ? null : Date.parse(claimedAtValue);
+      const claimedAtValue = ownership?.claimedAt ?? item.claimedAt ?? null;
+      const claimedAt = claimedAtValue === null ? null : Date.parse(claimedAtValue);
       if (
         claimedAt !== null &&
         !Number.isNaN(claimedAt) &&
         (yield* Clock.currentTimeMillis) - claimedAt > STALL_WINDOW_MS
       ) {
         yield* deps.workItems
-          .releaseClaim(item.id, "queued", releaseFence)
+          .releaseClaim(item.id, "queued", releaseFence ?? undefined)
           .pipe(Effect.catch(() => Effect.void));
       }
       return;
@@ -235,7 +304,23 @@ const recoverItem = (
     // means the item was seeded/written directly (tests, manual edits) and no
     // dispatch fiber ever owned it — interrupting it would mark a live run
     // dead (audit item 3; the claim is the proof a dispatcher was here).
-    if (item.claimedAt === undefined || item.claimedAt === null) {
+    if (ownership === null || ownership.ownerToken === null || releaseFence === null) {
+      return;
+    }
+
+    // Preserve the preparation window: a claim newer than the latest attempt
+    // belongs to a replacement execution that has not created its attempt row
+    // yet. The previous attempt's status must not release it.
+    if (!attemptAssociatesWithClaim(attempt, ownership)) {
+      yield* deps.runEvents
+        .appendOnce(attempt.id, "recovery_hold", {
+          workItemId: String(item.id),
+          reason: "claim_not_associated",
+          ownerPid: ownership.ownerPid,
+          generation: ownership.generation,
+          terminalAttempt: TERMINAL_STATUSES.has(attempt.status),
+        })
+        .pipe(Effect.catch(() => Effect.succeed(false)));
       return;
     }
 
@@ -243,21 +328,44 @@ const recoverItem = (
     // transition, including the terminal-attempt shortcut below. An
     // unverifiable owner keeps the claim, lease and lifecycle exactly as they
     // are and records why, so reconciliation can handle it explicitly.
-    if (fence === null) {
-      return; // claim row disappeared; nothing authoritative to act on
-    }
-    const closure = yield* resolveOwnerClosure(deps, item, fence);
+    const closure = yield* resolveOwnerClosure(deps, ownership);
     if (closure.status === "held") {
       yield* deps.runEvents
         .appendOnce(attempt.id, "recovery_hold", {
           workItemId: String(item.id),
           reason: closure.reason,
           ...(closure.detail === undefined ? {} : { detail: closure.detail }),
-          ownerPid: item.ownerPid ?? null,
-          generation: fence.generation,
+          ownerPid: ownership.ownerPid,
+          generation: ownership.generation,
           terminalAttempt: TERMINAL_STATUSES.has(attempt.status),
         })
         .pipe(Effect.catch(() => Effect.succeed(false)));
+      return;
+    }
+
+    // A durable Stop always wins over retry/requeue once closure is confirmed.
+    const stopPending = yield* hasPendingStopIntent(deps.runEvents, attempt.id);
+    if (stopPending) {
+      const settled = yield* settleConfirmedStopIntent({
+        workItems: deps.workItems,
+        runAttempts: deps.runAttempts,
+        runEvents: deps.runEvents,
+        runAttemptId: attempt.id,
+        workItemId: item.id,
+        ownership,
+        now,
+      });
+      if (!settled) {
+        yield* deps.runEvents
+          .appendOnce(attempt.id, "recovery_hold", {
+            workItemId: String(item.id),
+            reason: "claim_changed",
+            ownerPid: ownership.ownerPid,
+            generation: ownership.generation,
+            terminalAttempt: TERMINAL_STATUSES.has(attempt.status),
+          })
+          .pipe(Effect.catch(() => Effect.succeed(false)));
+      }
       return;
     }
 
@@ -270,9 +378,8 @@ const recoverItem = (
         yield* deps.workItems
           .transition(item.id, "ready_for_review", {
             from: ["preparing", "running", "testing"],
-            ...(releaseFence === undefined
-              ? {}
-              : { ownerToken: releaseFence.ownerToken, generation: releaseFence.generation }),
+            ownerToken: releaseFence.ownerToken,
+            generation: releaseFence.generation,
           })
           .pipe(Effect.catch(() => Effect.void));
         return;
