@@ -15,7 +15,9 @@ import {
   WorkItemId,
 } from "@neokod/contracts";
 import { expect, it } from "@effect/vitest";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 
@@ -253,6 +255,37 @@ const gatedLayer = it.layer(
   ),
 );
 
+let staleValidationGate: Deferred.Deferred<void> | null = null;
+let staleValidationStarted: Deferred.Deferred<void> | null = null;
+const suspendedValidationRunner = Layer.succeed(ValidationRunner, {
+  runAll: () =>
+    Effect.gen(function* () {
+      if (staleValidationStarted !== null) {
+        yield* Deferred.succeed(staleValidationStarted, undefined);
+      }
+      if (staleValidationGate !== null) {
+        yield* Deferred.await(staleValidationGate);
+      }
+      return [{ command: "check", status: "passed" as const }];
+    }),
+});
+
+const stalePolicyLayer = it.layer(
+  ExecutionFinalizerLive.pipe(
+    Layer.provideMerge(WorkItemRepositoryLive),
+    Layer.provideMerge(RunAttemptRepositoryLive),
+    Layer.provideMerge(RunEventRepositoryLive),
+    Layer.provideMerge(EvidenceRepositoryLive),
+    Layer.provideMerge(suspendedValidationRunner),
+    Layer.provideMerge(fakeEvidenceService),
+    Layer.provideMerge(fakeModelReviewer()),
+    Layer.provideMerge(countingPullRequestService),
+    Layer.provideMerge(AttentionRepositoryLive),
+    Layer.provideMerge(SqlitePersistenceMemory),
+    Layer.provideMerge(NodeServices.layer),
+  ),
+);
+
 const failingAttemptReadRepositoryLayer = Layer.effect(
   RunAttemptRepository,
   Effect.gen(function* () {
@@ -370,6 +403,8 @@ gatedLayer("ExecutionFinalizer delivery gates", (it) => {
             // The live workflow does not require the gate; the persisted accepted
             // snapshot must still bound publication.
             config: makeConfig(),
+            refreshPublicationPolicy: () =>
+              Effect.succeed({ status: "available" as const, config: makeConfig() }),
             workspacePath: `/ws/${gateCase.id}`,
             branch: `symphony/issue-${gateCase.id}`,
             baseBranch: "main",
@@ -392,6 +427,60 @@ gatedLayer("ExecutionFinalizer delivery gates", (it) => {
         const openAttention = yield* attention.listOpen();
         expect(openAttention.filter((item) => item.kind === "workflow_invalid")).toHaveLength(2);
       }),
+  );
+});
+
+stalePolicyLayer("ExecutionFinalizer publication policy refresh", (it) => {
+  it.effect("refuses publication when the policy tightens during validation", () =>
+    Effect.gen(function* () {
+      gatedPrCreateCalls = 0;
+      const workItem = yield* seedWorkItem("stale-policy-1", "owner-stale");
+      const acceptedGuidance = makeAcceptedGuidanceFor(makeConfig());
+      const runAttemptId = yield* seedAttempt("stale-policy-1", 1, acceptedGuidance);
+      const workItems = yield* WorkItemRepository;
+      yield* workItems.transition(workItem.id, "running", {
+        ownerToken: "owner-stale",
+        generation: 1,
+        from: ["preparing"],
+      });
+
+      const validationGate = yield* Deferred.make<void>();
+      const validationStarted = yield* Deferred.make<void>();
+      staleValidationGate = validationGate;
+      staleValidationStarted = validationStarted;
+      let currentConfig = makeConfig();
+      const finalizer = yield* ExecutionFinalizer;
+
+      const fiber = yield* Effect.forkScoped(
+        finalizer.finalize({
+          workItem,
+          issue: makeIssue("stale-policy-1"),
+          runAttemptId,
+          config: makeConfig(),
+          refreshPublicationPolicy: () =>
+            Effect.succeed({ status: "available" as const, config: currentConfig }),
+          workspacePath: "/ws/stale-policy-1",
+          branch: "symphony/issue-stale-policy-1",
+          baseBranch: "main",
+          ownerToken: "owner-stale",
+          generation: 1,
+          bodyFileDir: "/tmp/neokod",
+        }),
+      );
+
+      yield* Deferred.await(validationStarted);
+      // Tighten publication approval while validation is suspended.
+      currentConfig = makeConfig({ approvalsBeforePush: true });
+      yield* Deferred.succeed(validationGate, undefined);
+      const outcome = yield* Fiber.join(fiber);
+      staleValidationGate = null;
+      staleValidationStarted = null;
+
+      expect(outcome).toBe("delivery_refused");
+      expect(gatedPrCreateCalls).toBe(0);
+      const after = yield* workItems.getById(workItem.id);
+      expect(after?.lifecycle).toBe("failed");
+    }),
   );
 });
 

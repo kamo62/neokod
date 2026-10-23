@@ -305,13 +305,14 @@ export const trackerSourceMismatch = (
   if (issue.id !== source.externalId) {
     return `tracker external id changed from ${source.externalId} to ${issue.id}; explicit rebind required`;
   }
-  if (source.externalUrl.length > 0) {
-    if (issue.url === null || issue.url.length === 0) {
-      return "refreshed tracker issue has no canonical URL; source scope cannot be verified";
-    }
-    if (issue.url !== source.externalUrl) {
-      return "tracker source scope changed; explicit rebind required";
-    }
+  if (source.externalUrl.length === 0) {
+    return "tracker source scope cannot be established from an empty stored URL; explicit rebind required";
+  }
+  if (issue.url === null || issue.url.length === 0) {
+    return "refreshed tracker issue has no canonical URL; source scope cannot be verified";
+  }
+  if (issue.url !== source.externalUrl) {
+    return "tracker source scope changed; explicit rebind required";
   }
   return null;
 };

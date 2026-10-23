@@ -46,6 +46,16 @@ import { narrowAcceptedPermissions, resolveAcceptedPermissions } from "./Accepte
 
 export type FinalizeOutcome = "review_ready" | "validation_failed" | "delivery_refused";
 
+/**
+ * Narrow publication-policy result. `refused` means the owner already recorded
+ * the refusal; the finalizer must not publish and must not duplicate lifecycle
+ * ownership. `null` means the reader was unavailable.
+ */
+export type PublicationPolicyRefresh =
+  | { readonly status: "available"; readonly config: EffectiveWorkflowConfig }
+  | { readonly status: "refused"; readonly reason?: string }
+  | null;
+
 export class ExecutionFinalizer extends Context.Service<
   ExecutionFinalizer,
   {
@@ -60,6 +70,12 @@ export class ExecutionFinalizer extends Context.Service<
       readonly ownerToken: string;
       readonly generation: number;
       readonly bodyFileDir?: string;
+      /**
+       * Re-read the accepted workflow policy immediately before push/PR.
+       * Production Dispatcher supplies this; accepted attempts without it
+       * refuse publication rather than using a stale admission-time config.
+       */
+      readonly refreshPublicationPolicy?: () => Effect.Effect<PublicationPolicyRefresh>;
     }) => Effect.Effect<FinalizeOutcome, never>;
   }
 >()("neokod/symphony/Runner/ExecutionFinalizer") {}
@@ -266,6 +282,45 @@ export const makeExecutionFinalizer = Effect.gen(function* () {
         evidenceFileContent,
       });
 
+      const refusePublication = (
+        reason: string,
+        extra?: Readonly<Record<string, unknown>>,
+      ): Effect.Effect<FinalizeOutcome> =>
+        Effect.gen(function* () {
+          yield* evidenceRepository
+            .upsert(input.workItem.id, evidence)
+            .pipe(Effect.catch(() => Effect.void));
+          yield* runAttempts
+            .updateStatus(input.runAttemptId, "workflow_error", {
+              finishedAt: now,
+              error: { category: "workflow_error", message: reason },
+            })
+            .pipe(Effect.catch(() => Effect.void));
+          yield* settleLifecycle(input, "failed");
+          yield* appendEvent(input.runAttemptId, "delivery_refused", {
+            reason,
+            ...extra,
+          });
+          yield* attention
+            .create({
+              id: AttentionItemId.make(
+                `delivery-gated-${String(input.runAttemptId).replace(/[^a-zA-Z0-9._-]/g, "_")}`,
+              ),
+              workItemId: input.workItem.id,
+              runAttemptId: String(input.runAttemptId),
+              kind: "workflow_invalid",
+              severity: "high",
+              whatHappened: reason,
+              whyHuman:
+                "Publication cannot proceed under the accepted or current workflow policy, and no durable push/pull-request approval authority exists.",
+              recommendedResponse:
+                "Lower the workflow gate or take over the workspace and publish manually. This attempt did not push or open a pull request.",
+              availableActions: ["take-over", "abandon"],
+            })
+            .pipe(Effect.catch(() => Effect.void));
+          return "delivery_refused" as const;
+        });
+
       const failed = validationResults.some(
         (result) => result.status === "failed" || result.status === "unavailable",
       );
@@ -334,57 +389,58 @@ export const makeExecutionFinalizer = Effect.gen(function* () {
         });
       }
 
-      // 6. Publication gate. The accepted snapshot (when recorded) and the
-      //    live workflow are intersected; a required push/PR approval cannot
-      //    be satisfied by prose, prompt text or a missing durable authority.
-      const deliveryGate = resolveDeliveryGate(input.config, attempt?.acceptedGuidance);
-      if (deliveryGate.required) {
+      // 6. Re-read the accepted workflow policy immediately before publication.
+      //    Validation and model review may take long enough for approvals,
+      //    autonomy, target or provider pins to change. A stale admission
+      //    config is never used for an accepted attempt.
+      const refreshPublicationPolicy = input.refreshPublicationPolicy;
+      if (attempt.acceptedGuidance !== undefined && refreshPublicationPolicy === undefined) {
+        return yield* refusePublication(
+          "Publication refused: no fresh accepted-workflow policy reader is available, so the current publication policy cannot be established. No branch was pushed and no pull request was opened.",
+        );
+      }
+      const refreshedPolicy =
+        refreshPublicationPolicy === undefined
+          ? ({ status: "available", config: input.config } as const)
+          : yield* refreshPublicationPolicy().pipe(Effect.catch(() => Effect.succeed(null)));
+      if (refreshedPolicy === null) {
+        return yield* refusePublication(
+          "Publication refused: the current accepted-workflow policy is unavailable after validation and review. No branch was pushed and no pull request was opened.",
+        );
+      }
+      if (refreshedPolicy.status === "refused") {
         yield* evidenceRepository
           .upsert(input.workItem.id, evidence)
           .pipe(Effect.catch(() => Effect.void));
-        yield* runAttempts
-          .updateStatus(input.runAttemptId, "workflow_error", {
-            finishedAt: now,
-            error: {
-              category: "workflow_error",
-              message: deliveryGate.reason,
-            },
-          })
-          .pipe(Effect.catch(() => Effect.void));
-        yield* settleLifecycle(input, "failed");
         yield* appendEvent(input.runAttemptId, "delivery_refused", {
-          reason: deliveryGate.reason,
+          reason:
+            refreshedPolicy.reason ??
+            "Publication refused: the accepted-workflow policy reevaluation refused publication.",
+        });
+        return "delivery_refused" as const;
+      }
+      const publicationConfig = refreshedPolicy.config;
+
+      // 7. Publication gate. The accepted snapshot (when recorded) and the
+      //    refreshed live workflow are intersected; a required push/PR
+      //    approval cannot be satisfied by prose, prompt text or a missing
+      //    durable authority.
+      const deliveryGate = resolveDeliveryGate(publicationConfig, attempt.acceptedGuidance);
+      if (deliveryGate.required) {
+        return yield* refusePublication(deliveryGate.reason, {
           approvalBeforePush: deliveryGate.approvalBeforePush,
           approvalBeforePullRequest: deliveryGate.approvalBeforePullRequest,
         });
-        yield* attention
-          .create({
-            id: AttentionItemId.make(
-              `delivery-gated-${String(input.runAttemptId).replace(/[^a-zA-Z0-9._-]/g, "_")}`,
-            ),
-            workItemId: input.workItem.id,
-            runAttemptId: String(input.runAttemptId),
-            kind: "workflow_invalid",
-            severity: "high",
-            whatHappened: deliveryGate.reason,
-            whyHuman:
-              "The workflow requires approval before publication, but Neokod has no durable push or pull-request approval authority. Publishing without it would fabricate consent.",
-            recommendedResponse:
-              "Lower the workflow push/pull-request gate or take over the workspace and publish manually. This attempt did not push or open a pull request.",
-            availableActions: ["take-over", "abandon"],
-          })
-          .pipe(Effect.catch(() => Effect.void));
-        return "delivery_refused" as const;
       }
 
-      // 7. Review-ready: create the PR and persist the bundle. The evidence
+      // 8. Review-ready: create the PR and persist the bundle. The evidence
       //    survives a provider failure, but the failure itself must be
       //    durably recorded — a run without a PR and without a recorded
       //    reason is indistinguishable from success in review.
       const pullRequestResult = yield* Effect.result(
         pullRequestService.create({
           workItem: input.workItem,
-          config: input.config,
+          config: publicationConfig,
           runAttemptId: input.runAttemptId,
           workspacePath: input.workspacePath,
           branch: input.branch,
