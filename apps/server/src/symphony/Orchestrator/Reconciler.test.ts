@@ -7,8 +7,10 @@ import {
   WorkflowId,
   WorkItemId,
 } from "@neokod/contracts";
+import type { ProcessBirthReader, ProcessGroupSignaller } from "@neokod/shared/processGroup";
 import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Ref from "effect/Ref";
 import * as Layer from "effect/Layer";
 import * as TestClock from "effect/testing/TestClock";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -109,16 +111,28 @@ const seedAttempt = (
 
 const fakeDispatcherActive = Layer.succeed(RunDispatcher, {
   dispatchWorkItem: () => Effect.never,
-  cancelRun: () => Effect.void,
+  cancelRun: (runAttemptId) =>
+    Effect.succeed({
+      status: "confirmed",
+      runAttemptId,
+      evidence: "no_owner_recorded",
+      released: false,
+    } as const),
   isAgentActive: () => Effect.succeed(true),
-  stopAllRuns: () => Effect.succeed(0),
+  stopAllRuns: () => Effect.succeed({ confirmed: 0, held: 0 }),
 } as RunDispatcher["Service"]);
 
 const fakeDispatcherIdle = Layer.succeed(RunDispatcher, {
   dispatchWorkItem: () => Effect.never,
-  cancelRun: () => Effect.void,
+  cancelRun: (runAttemptId) =>
+    Effect.succeed({
+      status: "confirmed",
+      runAttemptId,
+      evidence: "no_owner_recorded",
+      released: false,
+    } as const),
   isAgentActive: () => Effect.succeed(false),
-  stopAllRuns: () => Effect.succeed(0),
+  stopAllRuns: () => Effect.succeed({ confirmed: 0, held: 0 }),
 } as RunDispatcher["Service"]);
 
 const layer = (dispatcher: Layer.Layer<RunDispatcher>) =>
@@ -133,14 +147,29 @@ const layer = (dispatcher: Layer.Layer<RunDispatcher>) =>
     ),
   );
 
-const runReconcile = () =>
+const runReconcile = (input?: {
+  readonly processClosure?: {
+    readonly reader?: ProcessBirthReader;
+    readonly signaller?: ProcessGroupSignaller;
+    readonly platform?: NodeJS.Platform;
+    readonly graceMs?: number;
+  };
+}) =>
   Effect.gen(function* () {
     const workItems = yield* WorkItemRepository;
     const runAttempts = yield* RunAttemptRepository;
     const runEvents = yield* RunEventRepository;
     const workflows = yield* WorkflowRepository;
     const dispatcher = yield* RunDispatcher;
-    yield* reconcileStaleClaims({ workItems, runAttempts, runEvents, workflows, dispatcher });
+    yield* reconcileStaleClaims({
+      workItems,
+      runAttempts,
+      runEvents,
+      workflows,
+      dispatcher,
+      ...(input?.processClosure === undefined ? {} : { processClosure: input.processClosure }),
+      ownPid: 999_999,
+    });
   });
 
 layer(fakeDispatcherIdle)("Reconciler claim release", (it) => {
@@ -199,6 +228,86 @@ layer(fakeDispatcherIdle)("Reconciler claim release", (it) => {
       const runEvents = yield* RunEventRepository;
       const events = yield* runEvents.listForAttempt(attempt.id);
       expect(events.some((event) => event.eventType === "stalled")).toBe(true);
+    }),
+  );
+
+  it.effect("does not release a held Stop claim past the stall timeout", () =>
+    Effect.gen(function* () {
+      yield* seedWorkflow("/repo");
+      const workItem = makeWorkItem("2010", "queued");
+      const repo = yield* WorkItemRepository;
+      yield* repo.upsert(workItem);
+      const claimed = yield* repo.claim(workItem.id, "owner-held");
+      yield* repo.setClaimOwnerPid(workItem.id, "owner-held", claimed.generation, 654_321);
+      yield* repo.transition(workItem.id, "running", {
+        ownerToken: "owner-held",
+        generation: claimed.generation,
+      });
+      yield* seedAttempt(workItem.id, "streaming_turn", "1970-01-01T00:00:00.000Z");
+      yield* TestClock.adjust("600000 millis");
+
+      const signals = yield* Ref.make<ReadonlyArray<number>>([]);
+      const signaller: ProcessGroupSignaller = {
+        signalGroup: (pgid) =>
+          Ref.update(signals, (ids) => [...ids, pgid]).pipe(Effect.as("sent" as const)),
+        isGroupAlive: () => Effect.succeed(false),
+      };
+      const reader: ProcessBirthReader = {
+        readBirthToken: () => Effect.succeed({ kind: "no_such_process" } as const),
+      };
+      yield* runReconcile({
+        processClosure: { reader, signaller, platform: "linux", graceMs: 0 },
+      });
+
+      // A startup/Stop hold survives the sweeper and is never requeued.
+      expect((yield* repo.getById(workItem.id))?.lifecycle).toBe("running");
+      expect(yield* Ref.get(signals)).toEqual([]);
+      const attempts = yield* RunAttemptRepository;
+      const attempt = yield* attempts.latestForWorkItem(workItem.id);
+      expect(attempt?.status).toBe("streaming_turn");
+      const events = yield* RunEventRepository;
+      expect(
+        (yield* events.listForAttempt(attempt?.id ?? RunAttemptId.make("none"))).some(
+          (event) => event.eventType === "reconciliation_hold",
+        ),
+      ).toBe(true);
+    }),
+  );
+
+  it.effect("never requeues a succeeded run whose ownership is unverified", () =>
+    Effect.gen(function* () {
+      yield* seedWorkflow("/repo");
+      const workItem = makeWorkItem("2011", "queued");
+      const repo = yield* WorkItemRepository;
+      yield* repo.upsert(workItem);
+      const claimed = yield* repo.claim(workItem.id, "owner-succeeded");
+      yield* repo.setClaimOwnerPid(workItem.id, "owner-succeeded", claimed.generation, 654_322);
+      yield* repo.transition(workItem.id, "running", {
+        ownerToken: "owner-succeeded",
+        generation: claimed.generation,
+      });
+      yield* seedAttempt(
+        workItem.id,
+        "succeeded",
+        "2026-08-05T00:00:00.000Z",
+        "2026-08-05T00:05:00.000Z",
+      );
+
+      yield* runReconcile({
+        processClosure: {
+          reader: { readBirthToken: () => Effect.succeed({ kind: "no_such_process" } as const) },
+          signaller: {
+            signalGroup: () => Effect.succeed("sent"),
+            isGroupAlive: () => Effect.succeed(false),
+          },
+          platform: "linux",
+          graceMs: 0,
+        },
+      });
+
+      const after = yield* repo.getById(workItem.id);
+      expect(after?.lifecycle).toBe("running");
+      expect(after?.ownerPid).toBe(654_322);
     }),
   );
 

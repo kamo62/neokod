@@ -1564,7 +1564,26 @@ const makeOrchestrator = Effect.gen(function* () {
     orchestratorState.setGlobalPaused(paused).pipe(Effect.catch(() => Effect.void));
 
   const stopAllRuns: SymphonyOrchestratorShape["stopAllRuns"] = () =>
-    dispatcher.stopAllRuns().pipe(Effect.catch(() => Effect.succeed(0)));
+    dispatcher.stopAllRuns().pipe(
+      Effect.flatMap((result) =>
+        Effect.gen(function* () {
+          if (result.held > 0) {
+            yield* notifications
+              .publish({
+                kind: "attention_raised",
+                title: "Some runs could not be confirmed stopped",
+                message: `${result.confirmed} run(s) stopped; ${result.held} run(s) remain held because process closure was not confirmed. Reconcile them before restarting.`,
+                createdAt: yield* nowIso,
+              })
+              .pipe(Effect.catch(() => Effect.void));
+          }
+          // The public count reports only confirmed cancellations. Held runs
+          // are surfaced separately and keep their ownership.
+          return result.confirmed;
+        }),
+      ),
+      Effect.catch(() => Effect.succeed(0)),
+    );
 
   const excludeWorkItem: SymphonyOrchestratorShape["excludeWorkItem"] = (workItemId, exclude) =>
     workItems
@@ -1886,21 +1905,50 @@ const makeOrchestrator = Effect.gen(function* () {
 
   const cancelRun: SymphonyOrchestratorShape["cancelRun"] = (runAttemptId) =>
     Effect.gen(function* () {
-      yield* dispatcher
+      const outcome = yield* dispatcher
         .cancelRun(RunAttemptId.make(runAttemptId))
-        .pipe(Effect.catch(() => Effect.void));
+        .pipe(Effect.catch(() => Effect.succeed(null)));
+      if (outcome !== null && outcome.status === "confirmed") {
+        yield* auditRepository
+          .record({
+            actor: "symphony",
+            eventType: "run_cancelled",
+            runAttemptId,
+            payload: { evidence: outcome.evidence, released: outcome.released },
+          })
+          .pipe(Effect.catch(() => Effect.void));
+        yield* notifications
+          .publish({
+            kind: "run_failed",
+            title: "Run cancelled",
+            message: `Run ${runAttemptId} was cancelled after its process ownership was confirmed closed.`,
+            runAttemptId,
+            createdAt: yield* nowIso,
+          })
+          .pipe(Effect.catch(() => Effect.void));
+        return;
+      }
+      // Held (or the dispatcher call itself failed): never report a
+      // cancellation that ownership does not support.
+      const reason = outcome === null ? "stop_request_failed" : outcome.reason;
       yield* auditRepository
         .record({
           actor: "symphony",
-          eventType: "run_cancelled",
+          eventType: "run_stop_held",
           runAttemptId,
+          payload: {
+            reason,
+            ...(outcome !== null && "detail" in outcome && outcome.detail !== undefined
+              ? { detail: outcome.detail }
+              : {}),
+          },
         })
         .pipe(Effect.catch(() => Effect.void));
       yield* notifications
         .publish({
-          kind: "run_failed",
-          title: "Run cancelled",
-          message: `Run ${runAttemptId} was cancelled.`,
+          kind: "attention_raised",
+          title: "Run stop unconfirmed",
+          message: `Run ${runAttemptId} is still holding its claim: ${reason}. Reconcile the process ownership before restarting it.`,
           runAttemptId,
           createdAt: yield* nowIso,
         })

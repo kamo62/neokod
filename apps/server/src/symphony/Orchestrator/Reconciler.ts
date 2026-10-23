@@ -1,4 +1,9 @@
 import type { EffectiveWorkflowConfig, WorkItem, WorkflowRecord } from "@neokod/contracts";
+import {
+  confirmOwnedProcessClosure,
+  type ProcessClosureDeps,
+  type ProcessClosureResult,
+} from "@neokod/shared/processGroup";
 import * as Effect from "effect/Effect";
 
 import { nowIso } from "../Domain/Time.ts";
@@ -26,6 +31,13 @@ import { WORKFLOW_DEFAULTS } from "../Workflow/Config.ts";
  * A live agent (registered in the dispatcher's `activeAgents`) is never
  * touched, and `releaseClaim` is lifecycle-guarded so a finished item can
  * never be downgraded. Everything here is best-effort and idempotent.
+ *
+ * Terminal status and the stall clock are NOT process closure. Before any
+ * release (and before requeueing a succeeded-but-untransited run) the recorded
+ * owner must resolve closed through the same shared identity policy startup
+ * recovery and Stop use. An unverifiable owner keeps its claim and records a
+ * durable `reconciliation_hold` instead, so a startup/Stop hold is never undone
+ * by the next poll.
  */
 
 const TERMINAL_STATUSES: ReadonlySet<string> = new Set([
@@ -52,7 +64,72 @@ export interface ReconcilerDeps {
   readonly runEvents: RunEventRepository["Service"];
   readonly workflows: WorkflowRepository["Service"];
   readonly dispatcher: RunDispatcher["Service"];
+  /** Process-identity readers/signallers; tests inject fakes. */
+  readonly processClosure?: ProcessClosureDeps;
+  /** The calling server's own pid; never target it. */
+  readonly ownPid?: number;
 }
+
+type ReconcilerHoldReason =
+  | Extract<ProcessClosureResult, { readonly status: "held" }>["reason"]
+  | "claim_changed"
+  | "claim_unreadable";
+
+/**
+ * Resolve the recorded owner's closure with the same policy as recovery and
+ * Stop. The claim is re-read first so a replacement owner is never signalled.
+ */
+const resolveOwnerClosure = (
+  deps: ReconcilerDeps,
+  item: WorkItem,
+  fence: { readonly ownerToken: string | null; readonly generation: number },
+): Effect.Effect<
+  | ProcessClosureResult
+  | {
+      readonly status: "held";
+      readonly reason: ReconcilerHoldReason;
+      readonly detail?: string;
+    }
+> =>
+  Effect.gen(function* () {
+    const currentFence = yield* deps.workItems
+      .getClaimFence(item.id)
+      .pipe(Effect.catch(() => Effect.succeed(null)));
+    if (
+      currentFence === null ||
+      currentFence.ownerToken !== fence.ownerToken ||
+      currentFence.generation !== fence.generation
+    ) {
+      return { status: "held", reason: "claim_changed" } as const;
+    }
+    if (item.ownerPid === null || item.ownerPid === undefined) {
+      return { status: "closed", evidence: "no_owner_recorded" } as const;
+    }
+    const current = yield* deps.workItems
+      .getById(item.id)
+      .pipe(Effect.catch(() => Effect.succeed(null)));
+    if (current === null) {
+      return { status: "held", reason: "claim_unreadable" } as const;
+    }
+    const unchanged =
+      current.lifecycle === item.lifecycle &&
+      (current.claimedAt ?? null) === (item.claimedAt ?? null) &&
+      (current.ownerPid ?? null) === (item.ownerPid ?? null) &&
+      (current.ownerPgid ?? null) === (item.ownerPgid ?? null) &&
+      (current.ownerBirthToken ?? null) === (item.ownerBirthToken ?? null);
+    if (!unchanged) {
+      return { status: "held", reason: "claim_changed" } as const;
+    }
+    return yield* confirmOwnedProcessClosure(
+      {
+        ...(item.ownerPid === undefined ? {} : { ownerPid: item.ownerPid }),
+        ...(item.ownerPgid === undefined ? {} : { ownerPgid: item.ownerPgid }),
+        ...(item.ownerBirthToken === undefined ? {} : { ownerBirthToken: item.ownerBirthToken }),
+        ...(deps.ownPid === undefined ? {} : { ownPid: deps.ownPid }),
+      },
+      deps.processClosure ?? {},
+    );
+  });
 
 /** Stall threshold for an attempt, or null when stall detection is disabled. */
 const stallTimeoutFor = (workflow: WorkflowRecord | undefined): number | null => {
@@ -107,12 +184,54 @@ const reconcileItem = (
       return;
     }
 
+    const fence = yield* deps.workItems
+      .getClaimFence(item.id)
+      .pipe(Effect.catch(() => Effect.succeed(null)));
+    if (fence === null) {
+      return;
+    }
+    const releaseFence =
+      fence.ownerToken === null
+        ? undefined
+        : { ownerToken: fence.ownerToken, generation: fence.generation };
+    const recordHold = (reason: string, detail?: string) =>
+      deps.runEvents
+        .appendOnce(attempt.id, "reconciliation_hold", {
+          workItemId: String(item.id),
+          reason,
+          ...(detail === undefined ? {} : { detail }),
+          ownerPid: item.ownerPid ?? null,
+          terminalAttempt: TERMINAL_STATUSES.has(attempt.status),
+        })
+        .pipe(Effect.catch(() => Effect.succeed(false)));
+
+    // Closure is required before ANY release or requeue, including a terminal
+    // attempt. A startup recovery hold or an unconfirmed Stop stays held here.
+    const closure = yield* resolveOwnerClosure(deps, item, fence);
+    if (closure.status === "held") {
+      yield* recordHold(closure.reason, closure.detail);
+      return;
+    }
+
     if (TERMINAL_STATUSES.has(attempt.status)) {
-      // The run is over but the claim was never released (e.g. the dispatch
-      // process died between the run and the transition, or a cancel raced a
-      // process kill). Release it; a re-dispatch is safe because the attempt
-      // is terminal.
-      yield* deps.workItems.releaseClaim(item.id, "queued").pipe(Effect.catch(() => Effect.void));
+      if (attempt.status === "succeeded") {
+        // Preserve REVIEW P1 #11: a completed agent must land in review, not be
+        // re-dispatched. This is only reached once closure is confirmed.
+        yield* deps.workItems
+          .transition(item.id, "ready_for_review", {
+            from: ["preparing", "running", "testing"],
+            ...(releaseFence === undefined
+              ? {}
+              : { ownerToken: releaseFence.ownerToken, generation: releaseFence.generation }),
+          })
+          .pipe(Effect.catch(() => Effect.void));
+        return;
+      }
+      // The run is over and closure is confirmed: the exact claim can be
+      // released.
+      yield* deps.workItems
+        .releaseClaim(item.id, "queued", releaseFence)
+        .pipe(Effect.catch(() => Effect.void));
       return;
     }
 
@@ -138,5 +257,7 @@ const reconcileItem = (
     yield* deps.runEvents
       .append(attempt.id, "stalled", { workItemId: String(item.id) })
       .pipe(Effect.catch(() => Effect.void));
-    yield* deps.workItems.releaseClaim(item.id, "queued").pipe(Effect.catch(() => Effect.void));
+    yield* deps.workItems
+      .releaseClaim(item.id, "queued", releaseFence)
+      .pipe(Effect.catch(() => Effect.void));
   });

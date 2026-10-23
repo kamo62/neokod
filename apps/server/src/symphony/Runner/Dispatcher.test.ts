@@ -7,6 +7,7 @@ import {
   WorkItemId,
 } from "@neokod/contracts";
 import { expect, it } from "@effect/vitest";
+import type { ProcessGroupIdentity } from "@neokod/shared/processGroup";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -14,7 +15,6 @@ import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
 import * as TestClock from "effect/testing/TestClock";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import { deriveWorkspaceKey } from "../Domain/Keys.ts";
 import { nowIso } from "../Domain/Time.ts";
@@ -38,7 +38,6 @@ import {
   RunDispatcherLive,
   RunDispatcherProcessClosure,
 } from "./Dispatcher.ts";
-import type { WorkItemRepositoryShape } from "../Persistence/Services/WorkItemRepository.ts";
 import { ExecutionFinalizer, type FinalizeOutcome } from "./ExecutionFinalizer.ts";
 import { AgentRuntimeSpawnError, type AgentRuntimeService } from "./AgentRuntime.ts";
 
@@ -298,7 +297,7 @@ layer(
     make: (_config, options) =>
       Effect.succeed({
         runTurn: () =>
-          ((options?.onChildSpawned?.(4321) ?? Effect.void) as Effect.Effect<void>).pipe(
+          (options?.onChildSpawned?.(4321) ?? Effect.void).pipe(
             Effect.as({ turnId: "t1", threadId: "th1", completed: true }),
           ),
         interrupt: () => Effect.void,
@@ -648,38 +647,6 @@ layer(failingCancelFactory)("Dispatcher cancel race", (it) => {
   );
 });
 
-/**
- * Decorate the real repository so a test can expose the persisted owner group
- * id and birth token that the current database schema does not store yet.
- * Claim, release and event writes still go through the real SQLite layer.
- */
-const decoratedWorkItems = (
-  identities: ReadonlyMap<
-    string,
-    Partial<Pick<WorkItem, "ownerPid" | "ownerPgid" | "ownerBirthToken">>
-  >,
-) =>
-  Layer.effect(
-    WorkItemRepository,
-    WorkItemRepository.pipe(
-      Effect.map((base): WorkItemRepositoryShape => {
-        const decorate = (item: WorkItem): WorkItem => ({
-          ...item,
-          ...(identities.get(String(item.id)) ?? {}),
-        });
-        return {
-          ...base,
-          listByLifecycle: (lifecycles, options) =>
-            base
-              .listByLifecycle(lifecycles, options)
-              .pipe(Effect.map((items) => items.map(decorate))),
-          getById: (id) =>
-            base.getById(id).pipe(Effect.map((item) => (item === null ? null : decorate(item)))),
-        };
-      }),
-    ),
-  ).pipe(Layer.provide(WorkItemRepositoryLive));
-
 const stopSignalLog: Array<{ readonly pgid: number; readonly signal: NodeJS.Signals }> = [];
 const stopSignaller = {
   signalGroup: (pgid: number, signal: NodeJS.Signals) =>
@@ -690,8 +657,19 @@ const stopSignaller = {
   isGroupAlive: () => Effect.succeed(false),
 };
 
-/** Agent that records the child pid, then blocks until interrupted. */
-const stopBlockableFactory = (pid: number) =>
+const provenIdentity = (pid: number): ProcessGroupIdentity => ({
+  pid,
+  pgid: pid,
+  spawnedAtMs: 0,
+  platform: "linux",
+  birthToken: `born-${pid}`,
+});
+
+/**
+ * Agent that records child ownership (optionally the full proven identity),
+ * then blocks until interrupted.
+ */
+const stopBlockableFactory = (pid: number, recordIdentity: boolean) =>
   Layer.effect(
     AgentRuntimeFactory,
     Effect.gen(function* () {
@@ -703,7 +681,10 @@ const stopBlockableFactory = (pid: number) =>
             yield* Ref.set(releaseRef, () =>
               Deferred.fail(d, new AgentRuntimeSpawnError("interrupted")).pipe(Effect.asVoid),
             );
-            yield* options?.onChildSpawned?.(pid) ?? Effect.void;
+            yield* (
+              options?.onChildSpawned?.(pid, recordIdentity ? provenIdentity(pid) : undefined) ??
+                Effect.void
+            );
             return {
               runTurn: () =>
                 Deferred.await(d).pipe(
@@ -725,20 +706,31 @@ const stopBlockableFactory = (pid: number) =>
     }),
   );
 
-const stopLayer = (
-  workItems: Layer.Layer<WorkItemRepository, never, SqlClient.SqlClient>,
-  pid: number,
-) =>
+/** Agent that records pid-only ownership and then fails its turn. */
+const stopFailingFactory = (pid: number) =>
+  Layer.succeed(AgentRuntimeFactory, {
+    make: (_config, options) =>
+      Effect.gen(function* () {
+        yield* options?.onChildSpawned?.(pid) ?? Effect.void;
+        return {
+          runTurn: () => Effect.fail(new AgentRuntimeSpawnError("agent turn failed")),
+          interrupt: () => Effect.void,
+          pid: () => Effect.succeed(pid),
+        } satisfies AgentRuntimeService;
+      }),
+  });
+
+const stopLayer = (recordIdentity: boolean, pid: number) =>
   it.layer(
     RunDispatcherLive.pipe(
-      Layer.provideMerge(workItems),
+      Layer.provideMerge(WorkItemRepositoryLive),
       Layer.provideMerge(RunAttemptRepositoryLive),
       Layer.provideMerge(RunEventRepositoryLive),
       Layer.provideMerge(ApprovalRepositoryLive),
       Layer.provideMerge(LiveRequestsLive),
       Layer.provideMerge(fakeWorkspaceManager),
       Layer.provideMerge(fakeFinalizer),
-      Layer.provideMerge(stopBlockableFactory(pid)),
+      Layer.provideMerge(stopBlockableFactory(pid, recordIdentity)),
       Layer.provideMerge(
         Layer.succeed(RunDispatcherProcessClosure, {
           reader: {
@@ -779,65 +771,62 @@ const waitForCancelableAttempt = (workItemId: WorkItemId) =>
     );
   });
 
-stopLayer(decoratedWorkItems(new Map()), 22001)(
-  "Dispatcher stop with an unverifiable legacy owner",
-  (it) => {
-    it.effect("retains the claim and never retries an unconfirmed Stop", () =>
-      Effect.gen(function* () {
-        stopSignalLog.length = 0;
-        const workItem = yield* seedWorkItem("stop-legacy-1");
-        const dispatcher = yield* RunDispatcher;
-        const fiber = yield* Effect.forkScoped(
-          dispatcher.dispatchWorkItem({
-            workItem,
-            issue: makeIssue("stop-legacy-1"),
-            config: makeConfig("/repo"),
-          }),
-        );
-        const runAttemptId = yield* waitForCancelableAttempt(workItem.id);
-        yield* dispatcher.cancelRun(runAttemptId);
-        yield* Fiber.await(fiber).pipe(Effect.catch(() => Effect.void));
+stopLayer(false, 22001)("Dispatcher stop with an unverifiable legacy owner", (it) => {
+  it.effect("retains the claim, never retries, and re-checks on a repeated Stop", () =>
+    Effect.gen(function* () {
+      stopSignalLog.length = 0;
+      const workItem = yield* seedWorkItem("stop-legacy-1");
+      const dispatcher = yield* RunDispatcher;
+      const fiber = yield* Effect.forkScoped(
+        dispatcher.dispatchWorkItem({
+          workItem,
+          issue: makeIssue("stop-legacy-1"),
+          config: makeConfig("/repo"),
+        }),
+      );
+      const runAttemptId = yield* waitForCancelableAttempt(workItem.id);
+      const first = yield* dispatcher.cancelRun(runAttemptId);
+      yield* Fiber.await(fiber).pipe(Effect.catch(() => Effect.void));
 
-        expect(stopSignalLog).toEqual([]);
-        const workItems = yield* WorkItemRepository;
-        const after = yield* workItems.getById(workItem.id).pipe(Effect.flatMap(required));
-        // The held lifecycle is whichever active phase the Stop interrupted:
-        // never a terminal state and never a retry.
-        expect(["preparing", "running"]).toContain(after.lifecycle);
-        expect(after.ownerPid).toBe(22001);
+      expect(first.status).toBe("held");
+      if (first.status === "held") expect(first.reason).toBe("unproven_group_identity");
+      expect(stopSignalLog).toEqual([]);
+      const workItems = yield* WorkItemRepository;
+      const after = yield* workItems.getById(workItem.id).pipe(Effect.flatMap(required));
+      // The held lifecycle is whichever active phase the Stop interrupted:
+      // never a terminal state and never a retry.
+      expect(["preparing", "running"]).toContain(after.lifecycle);
+      expect(after.ownerPid).toBe(22001);
+      expect(after.ownerPgid ?? null).toBeNull();
+      expect(after.ownerBirthToken ?? null).toBeNull();
 
-        const attempts = yield* RunAttemptRepository;
-        const attempt = yield* attempts.getById(runAttemptId).pipe(Effect.flatMap(required));
-        // Stop is not closure: the attempt must not claim a terminal stop.
-        expect([
-          "preparing_workspace",
-          "building_prompt",
-          "launching_agent",
-          "streaming_turn",
-        ]).toContain(attempt.status);
+      const attempts = yield* RunAttemptRepository;
+      const attempt = yield* attempts.getById(runAttemptId).pipe(Effect.flatMap(required));
+      // Stop is not closure: the attempt must not claim a terminal stop.
+      expect([
+        "preparing_workspace",
+        "building_prompt",
+        "launching_agent",
+        "streaming_turn",
+      ]).toContain(attempt.status);
 
-        const runEvents = yield* RunEventRepository;
-        const events = yield* runEvents.listForAttempt(runAttemptId);
-        expect(events.some((event) => event.eventType === "stop_unconfirmed")).toBe(true);
-        expect(events.some((event) => event.eventType === "retry_scheduled")).toBe(false);
-        expect(after.lifecycle).not.toBe("retry_scheduled");
-      }),
-    );
-  },
-);
+      const runEvents = yield* RunEventRepository;
+      const eventsBefore = yield* runEvents.listForAttempt(runAttemptId);
+      expect(eventsBefore.some((event) => event.eventType === "stop_unconfirmed")).toBe(true);
+      expect(eventsBefore.some((event) => event.eventType === "retry_scheduled")).toBe(false);
 
-stopLayer(
-  decoratedWorkItems(
-    new Map([
-      [
-        String(WorkItemId.make("stop-confirmed-1")),
-        { ownerPgid: 22002, ownerBirthToken: "born-22002" },
-      ],
-    ]),
-  ),
-  22002,
-)("Dispatcher stop with a confirmed owner group", (it) => {
-  it.effect("terminates once and releases the claim once after closure", () =>
+      // A repeated Stop must re-check closure, not silently succeed.
+      const second = yield* dispatcher.cancelRun(runAttemptId);
+      expect(second.status).toBe("held");
+      const eventsAfter = yield* runEvents.listForAttempt(runAttemptId);
+      expect(eventsAfter.filter((event) => event.eventType === "stop_unconfirmed").length).toBe(2);
+      expect((yield* workItems.getById(workItem.id))?.lifecycle).not.toBe("cancelled");
+    }),
+  );
+});
+
+stopLayer(true, 22002)("Dispatcher stop with a confirmed owner group", (it) => {
+  it.effect("terminates once and releases the exact claim once after closure", () =>
     Effect.gen(function* () {
       stopSignalLog.length = 0;
       const workItem = yield* seedWorkItem("stop-confirmed-1");
@@ -850,14 +839,17 @@ stopLayer(
         }),
       );
       const runAttemptId = yield* waitForCancelableAttempt(workItem.id);
-      yield* dispatcher.cancelRun(runAttemptId);
+      const outcome = yield* dispatcher.cancelRun(runAttemptId);
       yield* Fiber.await(fiber).pipe(Effect.catch(() => Effect.void));
 
+      expect(outcome.status).toBe("confirmed");
       expect(stopSignalLog).toEqual([{ pgid: 22002, signal: "SIGTERM" }]);
       const workItems = yield* WorkItemRepository;
       const after = yield* workItems.getById(workItem.id).pipe(Effect.flatMap(required));
       expect(after.lifecycle).toBe("cancelled");
       expect(after.ownerPid ?? null).toBeNull();
+      expect(after.ownerPgid ?? null).toBeNull();
+      expect(after.ownerBirthToken ?? null).toBeNull();
 
       const attempts = yield* RunAttemptRepository;
       const attempt = yield* attempts.getById(runAttemptId).pipe(Effect.flatMap(required));
@@ -868,10 +860,95 @@ stopLayer(
       const events = yield* runEvents.listForAttempt(runAttemptId);
       expect(events.some((event) => event.eventType === "stop_confirmed")).toBe(true);
 
-      // A later Stop cannot signal again, and the claim stays released.
-      yield* dispatcher.cancelRun(runAttemptId);
+      // A later Stop cannot signal or release again; it reports the settled
+      // confirmation instead of a fresh cancellation.
+      const repeated = yield* dispatcher.cancelRun(runAttemptId);
+      expect(repeated.status).toBe("confirmed");
+      if (repeated.status === "confirmed") expect(repeated.released).toBe(false);
       expect(stopSignalLog).toEqual([{ pgid: 22002, signal: "SIGTERM" }]);
       expect((yield* workItems.getById(workItem.id))?.lifecycle).toBe("cancelled");
+    }),
+  );
+
+  it.effect(
+    "rejects a Stop for a historical attempt instead of changing the replacement claim",
+    () =>
+      Effect.gen(function* () {
+        stopSignalLog.length = 0;
+        const workItem = yield* seedWorkItem("stop-stale-1");
+        const attempts = yield* RunAttemptRepository;
+        const now = yield* nowIso;
+        const oldAttemptId = RunAttemptId.make("run-stale-old");
+        yield* attempts.create({
+          id: oldAttemptId,
+          workItemId: workItem.id,
+          attemptNumber: 1,
+          workspacePath: "/ws/#stop-stale-1",
+          provider: makeConfig("/repo").agentProvider,
+          status: "streaming_turn",
+          startedAt: now,
+          finishedAt: null,
+          error: null,
+        });
+        const workItems = yield* WorkItemRepository;
+        const claimed = yield* workItems.claim(workItem.id, "owner-replacement");
+        yield* workItems.setClaimOwnerProcessIdentity(
+          workItem.id,
+          "owner-replacement",
+          claimed.generation,
+          { pid: 33003, pgid: 33003, birthToken: "born-33003" },
+        );
+        yield* attempts.create({
+          id: RunAttemptId.make("run-stale-new"),
+          workItemId: workItem.id,
+          attemptNumber: 2,
+          workspacePath: "/ws/#stop-stale-1",
+          provider: makeConfig("/repo").agentProvider,
+          status: "preparing_workspace",
+          startedAt: now,
+          finishedAt: null,
+          error: null,
+        });
+
+        const dispatcher = yield* RunDispatcher;
+        const outcome = yield* dispatcher.cancelRun(oldAttemptId);
+        expect(outcome.status).toBe("held");
+        if (outcome.status === "held") expect(outcome.reason).toBe("stale_attempt");
+        expect(stopSignalLog).toEqual([]);
+
+        const replacement = yield* workItems.getById(workItem.id).pipe(Effect.flatMap(required));
+        expect(replacement.lifecycle).toBe("preparing");
+        expect(replacement.ownerPid).toBe(33003);
+        expect(replacement.ownerPgid).toBe(33003);
+        const replacementAttempt = yield* attempts
+          .getById(RunAttemptId.make("run-stale-new"))
+          .pipe(Effect.flatMap(required));
+        expect(replacementAttempt.status).toBe("preparing_workspace");
+      }),
+  );
+});
+
+layer(stopFailingFactory(44004))("Dispatcher non-Stop failure ownership", (it) => {
+  it.effect("keeps unknown process ownership instead of scheduling a retry", () =>
+    Effect.gen(function* () {
+      const workItem = yield* seedWorkItem("failure-hold-1");
+      const dispatcher = yield* RunDispatcher;
+      yield* dispatcher.dispatchWorkItem({
+        workItem,
+        issue: makeIssue("failure-hold-1"),
+        config: makeConfig("/repo"),
+      });
+      const workItems = yield* WorkItemRepository;
+      const after = yield* workItems.getById(workItem.id).pipe(Effect.flatMap(required));
+      expect(["preparing", "running"]).toContain(after.lifecycle);
+      expect(after.ownerPid).toBe(44004);
+
+      const attempts = yield* RunAttemptRepository;
+      const rows = yield* attempts.listByWorkItem(workItem.id);
+      const runEvents = yield* RunEventRepository;
+      const events = yield* runEvents.listForAttempt(rows[0]!.id);
+      expect(events.some((event) => event.eventType === "failure_hold")).toBe(true);
+      expect(events.some((event) => event.eventType === "retry_scheduled")).toBe(false);
     }),
   );
 });
