@@ -544,24 +544,6 @@ function closureFor(
   );
 }
 
-function hasConfirmedWorkItemClosure(
-  closures: ReadonlyArray<SymphonyWorkClosureEvidence> | undefined,
-  workItemId: WorkItemId,
-  attempts: ReadonlyArray<SymphonyWorkAttempt>,
-): boolean {
-  if (closures === undefined) return false;
-  return closures.some((closure) => {
-    if (String(closure.workItemId) !== String(workItemId)) return false;
-    if (closure.runAttemptId !== undefined) return false;
-    const closureTime = positiveTimestamp(closure.observedAt);
-    if (closureTime === null) return false;
-    return attempts.every((attempt) => {
-      const attemptTime = positiveTimestamp(attempt.startedAt);
-      return attemptTime !== null && attemptTime <= closureTime;
-    });
-  });
-}
-
 function attemptOutcome(input: {
   readonly statuses: ReadonlyArray<RunAttemptStatus>;
   readonly workItemId: WorkItemId;
@@ -1020,9 +1002,7 @@ function startAction(input: {
     { name: "attention", freshness: input.freshness.attention },
   ]);
   if (stale !== null) {
-    return unknown(
-      `The ${stale.name} source is stale after a failed read: ${stale.reason} Refresh before starting.`,
-    );
+    return unknown(`The ${stale.name} source is stale: ${stale.reason} Refresh before starting.`);
   }
   if (input.pendingDispatch !== null) {
     return unknown(
@@ -1095,6 +1075,16 @@ function startAction(input: {
             : `Not eligible: ${input.lifecycle.detail}`,
         );
       case "refused":
+        if (input.lifecycle.lifecycle === "draft") {
+          return blocked("The item is a draft and has not been admitted for execution.");
+        }
+        if (input.lifecycle.lifecycle === "ineligible") {
+          return blocked(
+            input.lifecycle.detail === null
+              ? "The item is not eligible for dispatch."
+              : `Not eligible: ${input.lifecycle.detail}`,
+          );
+        }
         return {
           ...base,
           state: "available",
@@ -1139,7 +1129,7 @@ function cancelActions(input: {
       runAttemptId: attempt.runAttemptId,
       state: stale ? ("unknown" as const) : ("available" as const),
       reason: stale
-        ? "The run history is stale after a failed read; refresh before cancelling."
+        ? "The run history source is stale; refresh before cancelling."
         : "The exact active attempt can be asked to cancel.",
     }));
 }
@@ -1162,7 +1152,7 @@ function attentionActions(input: {
       ...(entry.runAttemptId === null ? {} : { runAttemptId: entry.runAttemptId }),
     } as const;
     const reason = stale
-      ? `The attention source is stale after a failed read: ${input.freshness.state === "stale" ? input.freshness.reason : "unknown"} Refresh before responding.`
+      ? `The attention source is stale: ${input.freshness.state === "stale" ? input.freshness.reason : "unknown"} Refresh before responding.`
       : null;
     if (entry.mode === "question" && entry.item.availableActions.includes("answer")) {
       actions.push({
@@ -1457,13 +1447,12 @@ export function projectSymphonyWorkItem(input: SymphonyWorkItemInput): SymphonyW
     attention: freshnessOf(input.attention, "Attention was not loaded for this item."),
   } as const;
 
-  const hasConfirmedStop =
-    attempts.history.some((attempt) => attempt.outcome.state === "stopped") ||
-    hasConfirmedWorkItemClosure(input.closures, input.workItemId, attempts.history);
+  const currentAttemptConfirmedStop =
+    attempts.currentState === "known" && attempts.current?.outcome.state === "stopped";
   const hasUnconfirmedCancellation =
     resolved.lifecycle.phase === "finished" &&
     resolved.lifecycle.outcome === "cancelled" &&
-    (hasUnresolvedStop || !hasConfirmedStop);
+    (hasUnresolvedStop || !currentAttemptConfirmedStop);
 
   const execution: SymphonyWorkExecution =
     activeAttempts.length > 0

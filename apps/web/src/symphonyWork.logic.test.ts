@@ -405,13 +405,68 @@ describe("stop requests and confirmed closure", () => {
     });
   });
 
-  it("accepts work-item closure for a legacy cancelled record", () => {
+  it("does not confirm a cancellation from a work-item closure without a known current attempt", () => {
     const value = projection({
       card: known(boardCard({ lifecycle: "cancelled" })),
       closures: [{ workItemId, observedAt: createdAt, source: "recovery.stop_confirmed" }],
     });
+    expect(value.ownership.state).toBe("unknown");
+    expect(startAction(value)?.state).toBe("unknown");
+    expect(value.membership).toMatchObject({
+      all: true,
+      needsAttention: true,
+      history: true,
+      reconciliation: true,
+    });
+  });
+
+  it("accepts a work-item closure only when it covers the known current attempt", () => {
+    const value = projection({
+      card: known(boardCard({ lifecycle: "cancelled", latestRunAttemptId: firstRunId })),
+      currentRunAttemptId: firstRunId,
+      runs: known({
+        runs: [attemptFact(firstRunId, "user_cancelled")],
+        coverage: exhaustive,
+      }),
+      closures: [
+        { workItemId, observedAt: "2026-10-23T10:00:00.000Z", source: "recovery.stop_confirmed" },
+      ],
+    });
+    expect(value.attempts.currentState).toBe("known");
+    expect(value.attempts.current?.outcome).toEqual({ state: "stopped" });
     expect(value.ownership.state).toBe("none_observed");
     expect(startAction(value)).toMatchObject({ kind: "run_again", state: "available" });
+  });
+
+  it("keeps a cancellation unconfirmed when the latest attempt is missing from loaded runs", () => {
+    const missingLatest = projection({
+      card: known(boardCard({ lifecycle: "cancelled", latestRunAttemptId: secondRunId })),
+      runs: known({ runs: [], coverage: exhaustive }),
+      closures: [{ workItemId, observedAt: createdAt, source: "recovery.stop_confirmed" }],
+    });
+    const noLatestId = projection({
+      card: known(boardCard({ lifecycle: "cancelled" })),
+      runs: known({
+        runs: [attemptFact(firstRunId, "user_cancelled")],
+        coverage: exhaustive,
+      }),
+      closures: [{ workItemId, observedAt: createdAt, source: "recovery.stop_confirmed" }],
+    });
+    const unavailableRuns = projection({
+      card: known(boardCard({ lifecycle: "cancelled", latestRunAttemptId: secondRunId })),
+      runs: { state: "unavailable", reason: "Run read failed.", retryable: true },
+      closures: [{ workItemId, observedAt: createdAt, source: "recovery.stop_confirmed" }],
+    });
+    for (const value of [missingLatest, noLatestId, unavailableRuns]) {
+      expect(value.attempts.currentState).not.toBe("known");
+      expect(value.ownership.state).toBe("unknown");
+      expect(startAction(value)?.state).toBe("unknown");
+      expect(value.membership).toMatchObject({
+        all: true,
+        needsAttention: true,
+        reconciliation: true,
+      });
+    }
   });
 
   it("does not let another attempt's closure confirm a legacy cancellation", () => {
@@ -559,6 +614,22 @@ describe("refused admission", () => {
     expect(value.lifecycle.phase).toBe("not_started");
     expect(startAction(value)?.state).toBe("unknown");
   });
+
+  it.each(["draft", "ineligible"] as const)(
+    "keeps a refused %s item blocked under affirmative coverage",
+    (lifecycle) => {
+      const value = projection({
+        card: known(boardCard({ lifecycle })),
+        refusal: { reason: "concurrency_cap" },
+      });
+      expect(value.lifecycle).toMatchObject({
+        phase: "not_started",
+        lifecycle,
+        reason: "refused",
+      });
+      expect(startAction(value)?.state).toBe("blocked");
+    },
+  );
 
   it("keeps an already admitted item in progress when a later command is refused", () => {
     const value = projection({
