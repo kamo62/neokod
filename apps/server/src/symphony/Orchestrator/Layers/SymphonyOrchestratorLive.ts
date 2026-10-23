@@ -1100,6 +1100,20 @@ const makeOrchestrator = Effect.gen(function* () {
         ),
       ...(Option.isSome(maybeOwnership) ? { ownership: maybeOwnership.value } : {}),
     }).pipe(Effect.catch(() => Effect.void));
+
+    // Uncertain staged approval deliveries: a restart cannot prove the local
+    // provider response was consumed, so close remaining `delivering` rows as
+    // interrupted without replay, and preserve their delivery-unknown content.
+    // This runs inside authoritative startup recovery before any worker can
+    // answer a current request.
+    const reconciledDeliveries = yield* (
+      approvals.reconcileUncertainDeliveries?.() ?? Effect.succeed(0)
+    ).pipe(Effect.catch(() => Effect.succeed(0)));
+    if (reconciledDeliveries > 0) {
+      yield* Effect.logWarning("symphony.approval.delivering_reconciled", {
+        reconciled: reconciledDeliveries,
+      });
+    }
   });
 
   /** Renew the lease. A refused renewal (another token owns the row) demotes this process.
