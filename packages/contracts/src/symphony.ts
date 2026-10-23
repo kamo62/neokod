@@ -9,6 +9,7 @@ import {
   TrimmedNonEmptyString,
 } from "./baseSchemas.ts";
 import { ProviderInstanceRef } from "./providerInstance.ts";
+import { UserInputQuestion } from "./providerRuntime.ts";
 
 /**
  * Symphony Mode contracts.
@@ -579,6 +580,7 @@ export type ApprovalAction = typeof ApprovalActionSchema.Type;
 
 export const ApprovalRequestStateSchema = Schema.Literals([
   "pending",
+  "answered",
   "approved",
   "rejected",
   "expired",
@@ -601,6 +603,106 @@ export type ApprovalRequestAction = typeof ApprovalRequestActionSchema.Type;
 /** An approval is decided (`approved`/`rejected`); a question is answered. */
 export const ApprovalRequestKindSchema = Schema.Literals(["approval", "user_input"]);
 export type ApprovalRequestKind = typeof ApprovalRequestKindSchema.Type;
+
+/**
+ * The question contract version stored in `ApprovalQuestionPayloadSchema`.
+ *
+ * Version 1 is the provider-neutral shape shared with ordinary provider
+ * questions (`UserInputQuestion`) plus the provider's own `isSecret` marker.
+ * Any future change to that shape must bump the version instead of silently
+ * reinterpreting rows written by an older build.
+ */
+export const ApprovalQuestionSchemaVersion = 1 as const;
+
+/**
+ * One durable Symphony question. It is the shared `UserInputQuestion` shape,
+ * so the thread question interaction and the Symphony surface agree on ids,
+ * options and multi-select, with the provider's secret flag preserved.
+ */
+export const ApprovalQuestionSchema = Schema.Struct({
+  ...UserInputQuestion.fields,
+  /** Provider flagged this answer as secret; history stores a redaction only. */
+  sensitive: Schema.optional(Schema.Boolean),
+});
+export type ApprovalQuestion = typeof ApprovalQuestionSchema.Type;
+
+/**
+ * The durable question payload for a user-input request.
+ *
+ * Structured questions are versioned. Rows written before questions were
+ * persisted fall back to their flattened prompt text (`legacy_text`), and a
+ * request whose provider shape could not be preserved is explicitly
+ * `unsupported` rather than guessed at.
+ */
+export const ApprovalQuestionPayloadSchema = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("structured"),
+    version: Schema.Literal(ApprovalQuestionSchemaVersion),
+    questions: Schema.Array(ApprovalQuestionSchema),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("legacy_text"),
+    text: TrimmedNonEmptyString,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("unsupported"),
+    providerMethod: Schema.String,
+    detail: Schema.optional(Schema.String),
+  }),
+]);
+export type ApprovalQuestionPayload = typeof ApprovalQuestionPayloadSchema.Type;
+
+/** A single-provider answer value: one label/custom text, or several for multi-select. */
+export const ApprovalAnswerValueSchema = Schema.Union([
+  TrimmedNonEmptyString,
+  Schema.Array(TrimmedNonEmptyString).check(Schema.isMinLength(1)),
+]);
+export type ApprovalAnswerValue = typeof ApprovalAnswerValueSchema.Type;
+
+/** One answer in an RPC submission, keyed by its provider question id. */
+export const ApprovalAnswerInputSchema = Schema.Struct({
+  questionId: TrimmedNonEmptyString,
+  answer: ApprovalAnswerValueSchema,
+});
+export type ApprovalAnswerInput = typeof ApprovalAnswerInputSchema.Type;
+
+/** Stored answer content. `redacted` replaces the value for a secret question. */
+export const ApprovalAnswerEntrySchema = Schema.Struct({
+  questionId: TrimmedNonEmptyString,
+  answer: ApprovalAnswerValueSchema,
+  redacted: Schema.optional(Schema.Boolean),
+});
+export type ApprovalAnswerEntry = typeof ApprovalAnswerEntrySchema.Type;
+
+/**
+ * Durable answer history.
+ *
+ * `delivery` is `unknown` because writing a response to the provider stream is
+ * not provider acknowledgement: the UI must not present durable history as
+ * proof that the agent received it.
+ */
+export const ApprovalAnswerRecordSchema = Schema.Struct({
+  answers: Schema.Array(ApprovalAnswerEntrySchema),
+  /** Free text for a legacy request whose question ids were never persisted. */
+  legacyText: Schema.optional(TrimmedNonEmptyString),
+  delivery: Schema.Literal("unknown"),
+  actor: Schema.Literal("local_operator"),
+  recordedAt: IsoDateTime,
+});
+export type ApprovalAnswerRecord = typeof ApprovalAnswerRecordSchema.Type;
+
+/**
+ * An approval/rejection note. The Codex approval response carries only a
+ * decision, so a note is saved to history and is explicitly not delivered to
+ * the agent.
+ */
+export const ApprovalDecisionNoteSchema = Schema.Struct({
+  text: TrimmedNonEmptyString,
+  delivery: Schema.Literal("history_only"),
+  actor: Schema.Literal("local_operator"),
+  recordedAt: IsoDateTime,
+});
+export type ApprovalDecisionNote = typeof ApprovalDecisionNoteSchema.Type;
 
 export const ApprovalRequestSchema = Schema.Struct({
   id: SymphonyApprovalRequestId,
@@ -629,11 +731,23 @@ export const ApprovalRequestSchema = Schema.Struct({
   createdAt: IsoDateTime,
   decidedAt: Schema.NullOr(IsoDateTime),
   /**
+   * The preserved question shape for a user-input request. Official rows carry
+   * a versioned structured payload; older rows decode as `legacy_text` so
+   * their flattened prompt stays readable without invented choices.
+   */
+  questionPayload: Schema.optional(ApprovalQuestionPayloadSchema),
+  /** What the operator submitted, for answered questions only. */
+  answer: Schema.optional(ApprovalAnswerRecordSchema),
+  /** History-only note attached to an approval or rejection. */
+  decisionNote: Schema.optional(ApprovalDecisionNoteSchema),
+  /**
    * How the request closed. The durable column records the same value as
    * `state` on every close, including `interrupted` (the run died while the
    * request was pending), so an interrupted row stays decodable.
    */
-  decision: Schema.optional(Schema.Literals(["approved", "rejected", "expired", "interrupted"])),
+  decision: Schema.optional(
+    Schema.Literals(["answered", "approved", "rejected", "expired", "interrupted"]),
+  ),
 });
 export type ApprovalRequest = typeof ApprovalRequestSchema.Type;
 
@@ -1212,14 +1326,26 @@ export const SymphonyResumeAutonomousInput = Schema.Struct({
 export const SymphonyApproveInput = Schema.Struct({
   requestId: TrimmedNonEmptyString,
   scope: ApprovalScopeSchema,
+  /** Saved to history only; Codex approval responses carry no note. */
+  note: Schema.optional(TrimmedNonEmptyString),
+  /** Optional exact run/attempt check; rejects a stale record id. */
+  runAttemptId: Schema.optional(RunAttemptId),
 });
 export const SymphonyRejectInput = Schema.Struct({
   requestId: TrimmedNonEmptyString,
+  /** Backward-compatible alias for `note`. */
   reason: Schema.optional(Schema.String),
+  /** Saved to history only; Codex approval responses carry no note. */
+  note: Schema.optional(TrimmedNonEmptyString),
+  runAttemptId: Schema.optional(RunAttemptId),
 });
 export const SymphonyRespondToUserInputInput = Schema.Struct({
   requestId: TrimmedNonEmptyString,
-  text: Schema.String,
+  /** Structured answers, one per provider question id. */
+  answers: Schema.optional(Schema.Array(ApprovalAnswerInputSchema)),
+  /** Legacy free text, accepted only for a legacy-text request. */
+  text: Schema.optional(Schema.String),
+  runAttemptId: Schema.optional(RunAttemptId),
 });
 export const SymphonyResolveAttentionInput = Schema.Struct({
   attentionItemId: AttentionItemId,
