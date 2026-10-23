@@ -1,0 +1,330 @@
+[
+  {
+    "repo": "aicodeking/pandacode",
+    "pr": 79,
+    "title": "feat: apply one lead guidance setting to every team",
+    "mergeSha": "872de551185da710dd959cd43c3fbd04a68029d9",
+    "mergedAt": "2026-10-22T18:57:00Z",
+    "headSha": "800b879680bc89fda1189f726864ca1a4ed61e2a",
+    "channels": {
+      "head": {
+        "targetSha": "800b879680bc89fda1189f726864ca1a4ed61e2a",
+        "ahead_by": 6,
+        "behind_by": 0,
+        "mergeBase": "872de551185da710dd959cd43c3fbd04a68029d9",
+        "status": "ahead",
+        "included": true
+      },
+      "v0.3.26": {
+        "targetSha": "800b879680bc89fda1189f726864ca1a4ed61e2a",
+        "ahead_by": 6,
+        "behind_by": 0,
+        "mergeBase": "872de551185da710dd959cd43c3fbd04a68029d9",
+        "status": "ahead",
+        "included": true
+      }
+    }
+  },
+  {
+    "repo": "aicodeking/pandacode",
+    "pr": 84,
+    "title": "fix: keep agent team model names and the model filter intact",
+    "mergeSha": "e91b0cedac2a65d5240ef07caa0d8976be85ca08",
+    "mergedAt": "2026-10-22T18:57:00Z",
+    "headSha": "800b879680bc89fda1189f726864ca1a4ed61e2a",
+    "channels": {
+      "head": {
+        "targetSha": "800b879680bc89fda1189f726864ca1a4ed61e2a",
+        "ahead_by": 8,
+        "behind_by": 0,
+        "mergeBase": "e91b0cedac2a65d5240ef07caa0d8976be85ca08",
+        "status": "ahead",
+        "included": true
+      },
+      "v0.3.26": {
+        "targetSha": "800b879680bc89fda1189f726864ca1a4ed61e2a",
+        "ahead_by": 8,
+        "behind_by": 0,
+        "mergeBase": "e91b0cedac2a65d5240ef07caa0d8976be85ca08",
+        "status": "ahead",
+        "included": true
+      }
+    }
+  },
+  {
+    "repo": "aicodeking/pandacode",
+    "pr": 68,
+    "title": "feat: optional turn-end project checks with one queued repair",
+    "mergeSha": "07614dc1f514fdb0c79cdb2f9f4d87ae3c600da8",
+    "mergedAt": "2026-10-22T17:59:35Z",
+    "headSha": "800b879680bc89fda1189f726864ca1a4ed61e2a",
+    "channels": {
+      "head": {
+        "targetSha": "800b879680bc89fda1189f726864ca1a4ed61e2a",
+        "ahead_by": 22,
+        "behind_by": 0,
+        "mergeBase": "07614dc1f514fdb0c79cdb2f9f4d87ae3c600da8",
+        "status": "ahead",
+        "included": true
+      },
+      "v0.3.26": {
+        "targetSha": "800b879680bc89fda1189f726864ca1a4ed61e2a",
+        "ahead_by": 22,
+        "behind_by": 0,
+        "mergeBase": "07614dc1f514fdb0c79cdb2f9f4d87ae3c600da8",
+        "status": "ahead",
+        "included": true
+      }
+    }
+  },
+  {
+    "repo": "aicodeking/pandacode",
+    "pr": 73,
+    "title": "feat: add GitHub Copilot CLI provider",
+    "mergeSha": "0f349ee2b94c0dad82a36e3f104637ad6b7d0cd2",
+    "mergedAt": "2026-10-22T17:59:35Z",
+    "headSha": "800b879680bc89fda1189f726864ca1a4ed61e2a",
+    "channels": {
+      "head": {
+        "targetSha": "800b879680bc89fda1189f726864ca1a4ed61e2a",
+        "ahead_by": 27,
+        "behind_by": 0,
+        "mergeBase": "0f349ee2b94c0dad82a36e3f104637ad6b7d0cd2",
+        "status": "ahead",
+        "included": true
+      },
+      "v0.3.26": {
+        "targetSha": "800b879680bc89fda1189f726864ca1a4ed61e2a",
+        "ahead_by": 27,
+        "behind_by": 0,
+        "mergeBase": "0f349ee2b94c0dad82a36e3f104637ad6b7d0cd2",
+        "status": "ahead",
+        "included": true
+      }
+    }
+  },
+  {
+    "repo": "superset-sh/superset",
+    "pr": 8772,
+    "title": "fix(desktop): show the Queued heading only when 2+ prompts are queued",
+    "mergeSha": "47c7a1cd3cb2f60c11ead8187780c9c03c7d15ca",
+    "mergedAt": "2026-10-22T08:35:41Z",
+    "headSha": "bdf1e2e4fc7b960f79e8cefde87e0d7d62505f18",
+    "channels": {
+      "head": {
+        "targetSha": "bdf1e2e4fc7b960f79e8cefde87e0d7d62505f18",
+        "ahead_by": 3,
+        "behind_by": 0,
+        "mergeBase": "47c7a1cd3cb2f60c11ead8187780c9c03c7d15ca",
+        "status": "ahead",
+        "included": true
+      },
+      "desktop-v1.39.0": {
+        "targetSha": "0fd0f9663122023b9fbdfec898224bde0efb772c",
+        "ahead_by": 1,
+        "behind_by": 100,
+        "mergeBase": "8bc96462cc6b08c5fff5f812305c2cf29ea826cf",
+        "status": "diverged",
+        "included": false
+      },
+      "desktop-canary": {
+        "targetSha": "bdf1e2e4fc7b960f79e8cefde87e0d7d62505f18",
+        "ahead_by": 3,
+        "behind_by": 0,
+        "mergeBase": "47c7a1cd3cb2f60c11ead8187780c9c03c7d15ca",
+        "status": "ahead",
+        "included": true
+      }
+    }
+  },
+  {
+    "repo": "githubnext/chopin",
+    "pr": 719,
+    "title": "Combine saved decision answers into one Planner turn and keep them across a restart",
+    "mergeSha": "98385123b4829f583e7f72f2376a7b2a8824fbf0",
+    "mergedAt": "2026-10-21T22:03:08Z",
+    "headSha": "2f180dfdecaf1a69e1279aa91a8b9d8b7ec2bdf9",
+    "channels": {
+      "head": {
+        "targetSha": "2f180dfdecaf1a69e1279aa91a8b9d8b7ec2bdf9",
+        "ahead_by": 3,
+        "behind_by": 0,
+        "mergeBase": "98385123b4829f583e7f72f2376a7b2a8824fbf0",
+        "status": "ahead",
+        "included": true
+      },
+      "cli-v0.0.20": {
+        "targetSha": "c36cf59db9d2d994ea6195ee373c85a3d77a2935",
+        "ahead_by": 2,
+        "behind_by": 0,
+        "mergeBase": "98385123b4829f583e7f72f2376a7b2a8824fbf0",
+        "status": "ahead",
+        "included": true
+      }
+    }
+  },
+  {
+    "repo": "githubnext/chopin",
+    "pr": 713,
+    "title": "Wait ten minutes for a build's machine after a Chopin restart",
+    "mergeSha": "cc4c548d4f469e55b05e43e2ef83f1328c15f89d",
+    "mergedAt": "2026-10-21T17:51:52Z",
+    "headSha": "2f180dfdecaf1a69e1279aa91a8b9d8b7ec2bdf9",
+    "channels": {
+      "head": {
+        "targetSha": "2f180dfdecaf1a69e1279aa91a8b9d8b7ec2bdf9",
+        "ahead_by": 10,
+        "behind_by": 0,
+        "mergeBase": "cc4c548d4f469e55b05e43e2ef83f1328c15f89d",
+        "status": "ahead",
+        "included": true
+      },
+      "cli-v0.0.20": {
+        "targetSha": "c36cf59db9d2d994ea6195ee373c85a3d77a2935",
+        "ahead_by": 9,
+        "behind_by": 0,
+        "mergeBase": "cc4c548d4f469e55b05e43e2ef83f1328c15f89d",
+        "status": "ahead",
+        "included": true
+      }
+    }
+  },
+  {
+    "repo": "githubnext/chopin",
+    "pr": 716,
+    "title": "Say why a run retries and keep its connection when the run ends",
+    "mergeSha": "5195fb60e9427f87a345e117823e97dbe69b5a7a",
+    "mergedAt": "2026-10-21T20:24:43Z",
+    "headSha": "2f180dfdecaf1a69e1279aa91a8b9d8b7ec2bdf9",
+    "channels": {
+      "head": {
+        "targetSha": "2f180dfdecaf1a69e1279aa91a8b9d8b7ec2bdf9",
+        "ahead_by": 7,
+        "behind_by": 0,
+        "mergeBase": "5195fb60e9427f87a345e117823e97dbe69b5a7a",
+        "status": "ahead",
+        "included": true
+      },
+      "cli-v0.0.20": {
+        "targetSha": "c36cf59db9d2d994ea6195ee373c85a3d77a2935",
+        "ahead_by": 6,
+        "behind_by": 0,
+        "mergeBase": "5195fb60e9427f87a345e117823e97dbe69b5a7a",
+        "status": "ahead",
+        "included": true
+      }
+    }
+  },
+  {
+    "repo": "githubnext/chopin",
+    "pr": 718,
+    "title": "Report an empty gateway answer in chopin status and name task rows without a stray space",
+    "mergeSha": "4a7f08ef83ea12e5e6d358f382cbc03e103df062",
+    "mergedAt": "2026-10-21T22:02:40Z",
+    "headSha": "2f180dfdecaf1a69e1279aa91a8b9d8b7ec2bdf9",
+    "channels": {
+      "head": {
+        "targetSha": "2f180dfdecaf1a69e1279aa91a8b9d8b7ec2bdf9",
+        "ahead_by": 4,
+        "behind_by": 0,
+        "mergeBase": "4a7f08ef83ea12e5e6d358f382cbc03e103df062",
+        "status": "ahead",
+        "included": true
+      },
+      "cli-v0.0.20": {
+        "targetSha": "c36cf59db9d2d994ea6195ee373c85a3d77a2935",
+        "ahead_by": 3,
+        "behind_by": 0,
+        "mergeBase": "4a7f08ef83ea12e5e6d358f382cbc03e103df062",
+        "status": "ahead",
+        "included": true
+      }
+    }
+  },
+  {
+    "repo": "goat-si/goat",
+    "pr": 789,
+    "title": "docs(internals): revise the agent surface design after an adversarial review",
+    "mergeSha": "4aef08083a2afd5ff1457d0fdbe8df302b0b4098",
+    "mergedAt": "2026-10-22T19:37:05Z",
+    "headSha": "587dd610db8761542f0af0f517c89296672f6ba8",
+    "channels": {
+      "head": {
+        "targetSha": "587dd610db8761542f0af0f517c89296672f6ba8",
+        "ahead_by": 6,
+        "behind_by": 262,
+        "mergeBase": "37a8e386254608d61a2230922069844cfbbcd81b",
+        "status": "diverged",
+        "included": false
+      }
+    }
+  },
+  {
+    "repo": "OrchestratorInc/agent-orchestrator",
+    "pr": 6799,
+    "title": "feat(daemon): hold an exclusive data-dir lock so two daemons never share ao.db",
+    "mergeSha": "6e4860deba648a4ca252548458ce7bd47eb362f4",
+    "mergedAt": "2026-10-22T18:37:54Z",
+    "headSha": "35b406f150c97e9779222c961bd8eb14af634a58",
+    "channels": {
+      "head": {
+        "targetSha": "35b406f150c97e9779222c961bd8eb14af634a58",
+        "ahead_by": 1,
+        "behind_by": 0,
+        "mergeBase": "6e4860deba648a4ca252548458ce7bd47eb362f4",
+        "status": "ahead",
+        "included": true
+      },
+      "v0.14.5": {
+        "targetSha": "7b176b7ad3b166c7227cfe4a6bb03673ca4bea2b",
+        "ahead_by": 1,
+        "behind_by": 33,
+        "mergeBase": "9db690843dec90ed448e4f072d1d187a26baa4c7",
+        "status": "diverged",
+        "included": false
+      },
+      "v0.14.5-nightly.202610220502": {
+        "targetSha": "18315f06398fb8b7c191d53122eaee7fe77496af",
+        "ahead_by": 0,
+        "behind_by": 11,
+        "mergeBase": "18315f06398fb8b7c191d53122eaee7fe77496af",
+        "status": "behind",
+        "included": false
+      }
+    }
+  },
+  {
+    "repo": "OrchestratorInc/agent-orchestrator",
+    "pr": 6806,
+    "title": "perf(chat): batch streamed text deltas into one SQLite write per flush",
+    "mergeSha": "deff9b1efdd21f9de4d21485d413d06b7b26614e",
+    "mergedAt": "2026-10-22T17:57:14Z",
+    "headSha": "35b406f150c97e9779222c961bd8eb14af634a58",
+    "channels": {
+      "head": {
+        "targetSha": "35b406f150c97e9779222c961bd8eb14af634a58",
+        "ahead_by": 2,
+        "behind_by": 0,
+        "mergeBase": "deff9b1efdd21f9de4d21485d413d06b7b26614e",
+        "status": "ahead",
+        "included": true
+      },
+      "v0.14.5": {
+        "targetSha": "7b176b7ad3b166c7227cfe4a6bb03673ca4bea2b",
+        "ahead_by": 1,
+        "behind_by": 32,
+        "mergeBase": "9db690843dec90ed448e4f072d1d187a26baa4c7",
+        "status": "diverged",
+        "included": false
+      },
+      "v0.14.5-nightly.202610220502": {
+        "targetSha": "18315f06398fb8b7c191d53122eaee7fe77496af",
+        "ahead_by": 0,
+        "behind_by": 10,
+        "mergeBase": "18315f06398fb8b7c191d53122eaee7fe77496af",
+        "status": "behind",
+        "included": false
+      }
+    }
+  }
+]

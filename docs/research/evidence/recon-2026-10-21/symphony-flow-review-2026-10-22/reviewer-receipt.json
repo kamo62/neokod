@@ -1,0 +1,13 @@
+{
+  "sessionId": "5a272ccf-6a04-48dc-9de9-d701562cc161",
+  "success": true,
+  "subtype": "success",
+  "models": ["claude-opus-5-5"],
+  "provider": "firstParty",
+  "requestedEffort": "high",
+  "numTurns": 64,
+  "durationMs": 385431,
+  "reviewedCommit": "d89c4f3aacfeb7925dee9d05f5ea2233f5e457f6",
+  "allowedTools": ["Read", "Glob", "Grep"],
+  "coreRuntimeAvailable": false
+}

@@ -1,0 +1,196 @@
+Browser tab: 326104976, Title: "Symphony plan and decisions · Concept C · Neokod design prototype", URL: "http://127.0.0.1:63035/planning.html".
+1 AXWebArea Symphony plan and decisions · Concept C · Neokod design prototype, URL: 127.0.0.1:63035/planning.html
+	2 container
+		3 link Description: Skip to plan, Value: 127.0.0.1:63035/planning.html#workspace
+		4 link Description: N Neokod, Value: 127.0.0.1:63035/index.html
+		5 container Location
+			6 text Symphony NEO-4821
+			7 text Plan and decisions
+		8 container Symphony prototype
+			9 link Description: Work, Value: 127.0.0.1:63035/work.html
+			10 link Description: Runs, Value: 127.0.0.1:63035/runs.html
+			11 link Description: Workflow map, Value: 127.0.0.1:63035/workflow.html
+			12 link Description: Plan and decisions, Value: 127.0.0.1:63035/planning.html
+		13 text Design prototype · Sample data
+		14 button Reset demo, ID: reset-demo
+		15 checkbox Description: Switch to light theme, Value: 1
+		16 tab group Workspace
+			17 tab (selected, settable, boolean) Plan, Value: 1, ID: tab-plan
+			18 tab (selectable, settable, boolean) Decisions 1 open, Description: 1 open, ID: tab-decisions, Value: 0
+Decisions
+1
+			19 tab (selectable, settable, boolean) Evidence, Value: 0, ID: tab-evidence
+		20 container plan-ident
+			21 container Sample Mac (mac), Connected. Sample machine.
+				22 text Sample Mac mac
+			23 text NEO-4821, attempt 3
+		24 container Selected item detail
+			25 link Description: Summary, Value: 127.0.0.1:63035/runs.html?item=NEO-4821&attempt=3#NEO-4821
+			26 link Description: Execution, Value: 127.0.0.1:63035/workflow.html?item=NEO-4821&attempt=3#NEO-4821
+			27 link Description: Plan and decisions, Value: 127.0.0.1:63035/planning.html?item=NEO-4821&attempt=3&tab=decisions#NEO-4821
+			28 link Description: Evidence, Value: 127.0.0.1:63035/planning.html?item=NEO-4821&attempt=3&tab=evidence#NEO-4821
+		29 container plan-status
+			30 text Plan r5, saved 13:42
+			31 container Sample Mac (mac), Connected. Sample machine.
+				32 text Sample Mac mac
+			33 text NEO-4821 attempt 3 Execution approved: r5, attempt 3
+		34 container Description: Plan outline, decisions and revisions, ID: outline
+			35 text Plan
+			36 button Goal
+			37 button Current behaviour
+			38 button Send lifecycle
+			39 button Work packages
+			40 button Validation
+			41 button Out of scope
+			42 text Decisions
+			43 button D-3 How should a send with an unknown acknowledgement be handled?
+				44 text D-3 How should a send with an unknown acknowledgement be handled?
+			45 button D-2 How long does the server keep send receipts?
+				46 text D-2 How long does the server keep send receipts?
+			47 button D-1 Where do queued sends persist?
+				48 text D-1 Where do queued sends persist?
+			49 button D-0 Show a queued-send count in the composer? Unresolved
+				50 text D-0 Show a queued-send count in the composer?
+				51 text Unresolved
+			52 text Revisions
+			53 text r5 You Current
+			54 button r4 You 13:31
+				55 text r4 You
+				56 text 13:31
+			57 text r3 You Not in sample r2 R, root run Not in sample r1 R, root run Not in sample
+		58 container Description: Plan, ID: workspace
+			59 container
+				60 text Canonical plan, r5, saved by You at 13:42. Pinned to NEO-4821 attempt 3 on Sample Mac (mac).
+				61 button Edit plan
+			62 container
+				63 heading Preserve queued sends across reconnects, Value: 1
+					64 text Preserve queued sends across reconnects
+				65 heading Goal, Value: 2, ID: sec-goal
+					66 text Goal
+				67 text Messages queued while the socket is down must survive a reconnect and a reload, and must never be delivered twice.
+				68 heading Current behaviour, Value: 2, ID: sec-current-behaviour
+					69 text Current behaviour
+				70 text A dropped socket during send clears the composer queue. Reconnect restores the thread but not the queued messages. Issue #4821 has the reproduction.
+				71 heading Send lifecycle, Value: 2, ID: sec-send-lifecycle
+					72 text Send lifecycle
+				73 text Each queued send keeps one message ID for its whole life. The server keeps send receipts for 24 hours 
+				74 button D-2 saved
+				75 text .
+				76 container Send lifecycle Queued, then Sending, then Acknowledged. If the socket drops before the acknowledgement, the send becomes Delivery unknown. What happens next is decision D-3, still open., Help: Queued, then Sending, then Acknowledged. If the socket drops before the acknowledgement, the send becomes Delivery unknown. What happens next is decision D-3, still open.
+				77 text The branch after Delivery unknown follows decision D-3, which is still open.
+				78 content list
+					79 container
+						80 AXListMarker • 
+						81 text Queued: stored in the outbox before any network call.
+					82 container
+						83 AXListMarker • 
+						84 text Sending: written to the socket, waiting for acknowledgement.
+					85 container
+						86 AXListMarker • 
+						87 text Acknowledged: removed from the outbox.
+					88 container
+						89 AXListMarker • 
+						90 text Delivery unknown: the socket dropped before the acknowledgement arrived. Handling is not decided yet 
+						91 button D-3 open
+						92 text .
+				93 heading Work packages, Value: 2, ID: sec-work-packages
+					94 text Work packages
+				95 content list
+					96 container
+						97 AXListMarker • 
+						98 text Package A, client outbox: persist queued sends in IndexedDB keyed by message ID 
+						99 button D-1 saved
+						100 text . Owner 
+						101 button C1
+						102 text , result 
+						103 button E-2
+						104 text .
+					105 container
+						106 AXListMarker • 
+						107 text Package B, server receipts: record receipts by message ID so a repeated send is idempotent. Owner 
+						108 button C2
+						109 text , result 
+						110 button E-3
+						111 text .
+				112 heading Validation, Value: 2, ID: sec-validation
+					113 text Validation
+				114 content list
+					115 container
+						116 AXListMarker • 
+						117 text vp run typecheck
+					118 container
+						119 AXListMarker • 
+						120 text vp test apps/web/src/outbox
+					121 container
+						122 AXListMarker • 
+						123 text vp test apps/server/src/reconnect
+					124 container
+						125 AXListMarker • 
+						126 text End-to-end fixture that drops the acknowledgement mid-send 
+						127 button E-4
+						128 text .
+				129 heading Out of scope, Value: 2, ID: sec-out-of-scope
+					130 text Out of scope
+				131 text Cross-device queues. Changing message ordering.
+		132 container Description: Run context, ID: rail
+			133 container
+				134 text NEO-4821, Core reliability Preserve queued sends across reconnects Waiting on D-3
+				135 container Sample Mac (mac), Connected. Sample machine.
+					136 text Sample Mac mac
+				137 text Attempt 3 of 4, head 
+				138 text 7f3a9c2
+				139 text , base 
+				140 text e19c4d0
+				141 text , machine Sample Mac (mac)
+			142 container
+				143 heading Stages, Value: 3
+					144 text Stages
+				145 content list
+					146 container
+						147 text Intake Issue #4821
+					148 container
+						149 text Design v2 approved in round 2
+					150 container
+						151 text Build Package B waiting on D-3
+					152 container
+						153 text Integrate Failed at 7f3a9c2
+					154 container
+						155 text Review Round 1 of 2 sent back
+					156 container
+						157 text PR Not opened, merge locked
+			158 container
+				159 heading Agents, Value: 3
+					160 text Agents
+				161 content list
+					162 button R Root run Waiting for input, Waiting since 14:26
+						163 text R Root run
+						164 text Waiting for input, Waiting since 14:26
+					165 button C1 Implementer, package A Completed, 18m 04s
+						166 text C1 Implementer, package A
+						167 text Completed, 18m 04s
+					168 button C2 Implementer, package B Asked a question, Waiting since 14:26
+						169 text C2 Implementer, package B
+						170 text Asked a question, Waiting since 14:26
+					171 button N1 Tester subagent Observed Tracking lost, Last observed 14:21:07 · 3m 12s
+						172 text N1 Tester subagent 
+						173 text Observed
+						174 text Tracking lost, Last observed 14:21:07 · 3m 12s
+					175 button C3 Critic and reviewer Round 1 complete, 6m 40s
+						176 text C3 Critic and reviewer
+						177 text Round 1 complete, 6m 40s
+				178 text On Sample Mac (mac). Cost: not reported for any agent.
+			179 container
+				180 heading Approvals, Value: 3
+					181 text Approvals
+				182 content list
+					183 container
+						184 text Plan execution r5 approved for attempt 3 on Sample Mac (mac) at 13:43 by You
+					185 container
+						186 text Resume package B Locked: D-3 must be saved first.
+					187 container
+						188 text Merge Locked. Yours under the merge policy, in GitHub.
+			189 container
+				190 link Description:  Open in runs view, Value: 127.0.0.1:63035/runs.html?item=NEO-4821&attempt=3#NEO-4821
+				191 link Description:  Open in workflow map, Value: 127.0.0.1:63035/workflow.html?item=NEO-4821&attempt=3#NEO-4821
+
+The focused UI element is 1 AXWebArea Symphony plan and decisions · Concept C · Neokod design prototype, URL: 127.0.0.1:63035/planning.html

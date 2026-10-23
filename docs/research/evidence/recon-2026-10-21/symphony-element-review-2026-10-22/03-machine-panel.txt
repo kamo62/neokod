@@ -1,0 +1,334 @@
+Browser tab: 326104976, Title: "Symphony work · Neokod design prototype", URL: "http://127.0.0.1:63035/work.html".
+0 AXWebArea Symphony work · Neokod design prototype, URL: 127.0.0.1:63035/work.html
+	1 container
+		2 link Description: Skip to content, Value: 127.0.0.1:63035/work.html#wk-content
+		3 link Description: N Neokod, Value: 127.0.0.1:63035/index.html
+		4 container Location
+			5 text Symphony
+			6 text Work
+		7 container Symphony pages
+			8 link Description: Work, Value: 127.0.0.1:63035/work.html
+			9 link Description: Runs, Value: 127.0.0.1:63035/runs.html
+			10 link Description: Workflow map, Value: 127.0.0.1:63035/workflow.html
+			11 link Description: Plan and decisions, Value: 127.0.0.1:63035/planning.html
+		12 text Design prototype · Sample data
+		13 button (collapsed) Reset demo, ID: wk-reset, Secondary Actions: Expand
+		14 checkbox Description: Switch to light theme, Value: 1
+		15 container Description: Work flow, ID: wk-steps
+			236 button Select and assign Nothing selected, ID: step-work
+				237 text Select and assign
+				238 text Nothing selected
+			239 button Preview Not created, ID: step-preview
+				240 text Preview
+				241 text Not created
+			242 button Saved requests 2 active (demo), ID: step-runs
+				243 text Saved requests
+				244 text 2 active (demo)
+		25 text Unsaved changes
+		26 container wk-view-work
+			27 container Description: Project, tracker and machines, ID: wk-side
+				245 container
+					246 text Neokod Connection
+					247 pop up button (collapsed, settable) Connection, Value: GitHub — sample workspace, ID: wk-conn, Secondary Actions: Expand
+						248 menu
+							249 (selected) GitHub — sample workspace
+							250 GitHub mirror — sample org
+							251 Linear — sample engineering (sample error)
+					252 text Project scope
+					253 pop up button (collapsed, settable) Project scope, Value: NEO · Open issues labelled agent-ready, ID: wk-scope, Secondary Actions: Expand
+						254 menu
+							255 (selected) NEO · Open issues labelled agent-ready
+							256 DOC · Documentation follow-ups
+							257 NEO · Issues awaiting triage (none) (empty)
+					258 text Repository
+					259 pop up button (collapsed, settable) Repository, Value: neokod/neokod, ID: wk-repo, Secondary Actions: Expand
+						260 menu
+							261 (selected) neokod/neokod
+							262 neokod/neokod-docs
+					263 text Complete Complete: loaded 9 of 9 matching issues, fetched 22 Oct 2026, 14:38 (sample time). No remaining page.
+					264 definition list
+						265 container Connection ID
+							266 text Connection ID
+						267 text conn_gh_main
+						268 container Scope ID
+							269 text Scope ID
+						270 text scope_neo_open / scope_gh_main_neo_open
+						271 container Revision
+							272 text Revision
+						273 text 3 (sample source)
+					274 button Refresh sample source
+					275 text Fixture connection. No network request is made and no token is read or stored. Only label filters are supported here; team and iteration filters are not offered.
+				276 container Start mode
+					277 heading Start mode, Value: 2, ID: wk-mode-h
+						278 text Start mode
+					279 container
+						280 radio button (settable, integer) Description: Selected only Only issues you select, preview and start will run., Value: 1
+						281 text Selected only Only issues you select, preview and start will run.
+					282 container
+						283 radio button (disabled, settable, integer) Value: 0, Description: Automatic Would start matching issues without a click. It needs an explicit project policy and is not offered in this prototype. Nothing here starts on its own.
+						284 text Automatic Would start matching issues without a click. It needs an explicit project policy and is not offered in this prototype. Nothing here starts on its own.
+				285 container Machines
+					286 heading Machines, Value: 2, ID: wk-mach-h
+						287 text Machines
+					288 content list
+						289 checkbox Sample Mac Connected macOS 26, 5 provider models, Value: 1, ID: mb-mac
+							290 text Sample Mac
+							291 text Connected
+							292 text macOS 26, 5 provider models
+						293 checkbox Work PC Connected Windows 11, 5 provider models, Value: 0, ID: mb-work
+							294 text Work PC
+							295 text Connected
+							296 text Windows 11, 5 provider models
+						297 checkbox Build host Offline, sign-in failed Ubuntu 24.04, agents unknown, Value: 0, ID: mb-build
+							298 text Build host
+							299 text Offline, sign-in failed
+							300 text Ubuntu 24.04, agents unknown
+					301 text Saved in Settings, Connections, Machines. These are sample machines, not machines detected on this computer. Open one for its scoped sample Settings, Connections panel.
+				302 container Keyboard
+					303 text Keyboard
+					304 container
+						305 text /  Search issues
+					306 container
+						307 text ↑ ↓  Move between issues
+					308 container
+						309 text ← →  Checkbox or title
+					310 container
+						311 text X  Select or clear issue
+					312 container
+						313 text Enter  Show details
+					314 container
+						315 text ⌘  or  Ctrl S  Save draft or plan
+					316 container
+						317 text Esc  Clear search or close
+			101 container Description: Issues, ID: wk-main
+				102 heading Open issues labelled agent-ready, Value: 1, ID: wk-h1
+					318 text Open issues labelled agent-ready
+				319 text Complete: loaded 9 of 9 matching issues, fetched 22 Oct 2026, 14:38 (sample time). No remaining page. Canonical scope scope_gh_main_neo_open on GitHub — sample workspace. Selecting visible never includes unseen matches or another scope.
+				320 container
+					321 text Recovered unsaved work.
+					322 text  Edits and an unsaved draft from 22 Oct 2026, 20:57 (demo time) were restored from this browser. Review them, save explicitly, or discard the recovery.
+					323 button Discard recovered edits, ID: wk-recovered-discard
+				109 container
+					110 text Search loaded issues
+					111 search text field (settable) Search loaded issues, ID: wk-q
+				112 container wk-labelsel
+					113 text Filter by label
+					114 pop up button (collapsed, settable) Filter by label, Value: Any label, ID: wk-label, Secondary Actions: Expand
+						115 menu
+							324 (selected) Any label
+							325 acp
+							326 diff
+							327 git
+							328 installer
+							329 machines
+							330 providers
+							331 reliability
+							332 safety
+							333 terminal
+							334 tracker
+							335 ui
+							336 web
+							337 windows
+				130 container Description: Filter by workflow, ID: wk-chips
+					338 checkbox All workflows 9, Value: 1, ID: wf-all
+					339 checkbox Core reliability 4, Value: 0, ID: wf-core
+					340 checkbox Provider adapters 3, Value: 0, ID: wf-providers
+					341 checkbox Settings and safety 2, Value: 0, ID: wf-settings
+				342 text Not offered by this connection: team and iteration filters. Search only covers the 9 loaded issues.
+				136 container wk-listhead
+					343 container
+						344 checkbox (settable, integer) Description: Select visible (6), Value: 0, ID: wk-selvis
+						345 text Select visible (6)
+					346 text Run on Readiness
+				141 content list Description: Loaded issues, ID: wk-list
+					347 container
+						348 checkbox (disabled, settable, integer) Description: NEO-4821 is already recorded in the demo, Value: 0, ID: cb-e85f9695
+						349 text NEO-4821
+						350 button ID: tt-e85f9695, Preserve queued sends across reconnects Core reliability reliability, web Edited 22 Oct 2026, 13:40 (sample time) Shared sample
+							351 text Preserve queued sends across reconnects
+							352 text Core reliability
+							353 text reliability, web
+							354 text Edited 22 Oct 2026, 13:40 (sample time)
+							355 text Shared sample
+						356 text Sample Mac Queued (demo)
+						357 button Open request, ID: or-e85f9695
+					358 container
+						359 checkbox (disabled, settable, integer) Description: NEO-4830 is already recorded in the demo, Value: 0, ID: cb-ed61dd0b
+						360 text NEO-4830
+						361 button ID: tt-ed61dd0b, Flag ACP sessions that go silent mid-turn Provider adapters providers, acp Edited 22 Oct 2026, 12:58 (sample time)
+							362 text Flag ACP sessions that go silent mid-turn
+							363 text Provider adapters
+							364 text providers, acp
+							365 text Edited 22 Oct 2026, 12:58 (sample time)
+						366 text Sample Mac Unknown acknowledgement; not closure
+						367 button Open request, ID: or-ed61dd0b
+					368 container
+						369 checkbox (settable, integer) Description: Select NEO-4833, Keep terminal scrollback when a thread is reopened, Value: 0, ID: cb-ee61de9e
+						370 text NEO-4833
+						371 button ID: tt-ee61de9e, Keep terminal scrollback when a thread is reopened Core reliability terminal Edited 22 Oct 2026, 11:20 (sample time)
+							372 text Keep terminal scrollback when a thread is reopened
+							373 text Core reliability
+							374 text terminal
+							375 text Edited 22 Oct 2026, 11:20 (sample time)
+						376 text Not selected
+					377 container
+						378 checkbox (disabled, settable, integer) Description: NEO-4838 already has an existing run and cannot be selected as new work, Value: 0, ID: cb-e561d073
+						379 text NEO-4838
+						380 button ID: tt-e561d073, Warn before removing a worktree with uncommitted changes Settings and safety git, safety Edited 22 Oct 2026, 10:47 (sample time)
+							381 text Warn before removing a worktree with uncommitted changes
+							382 text Settings and safety
+							383 text git, safety
+							384 text Edited 22 Oct 2026, 10:47 (sample time)
+						385 text Work PC Not selectable
+						386 link Description: Open existing run: Work PC, NEO-4838, accepted record A-2, Value: 127.0.0.1:63035/runs.html#NEO-4838, ID: ex-e561d073
+					387 container
+						388 checkbox (settable, integer) Description: Select NEO-4842, Show which machine each thread runs on, Value: 0, ID: cb-f564283a
+						389 text NEO-4842
+						390 button ID: tt-f564283a, Show which machine each thread runs on Core reliability machines, ui Edited 22 Oct 2026, 10:05 (sample time)
+							391 text Show which machine each thread runs on
+							392 text Core reliability
+							393 text machines, ui
+							394 text Edited 22 Oct 2026, 10:05 (sample time)
+						395 text Not selected
+					396 container
+						397 checkbox (settable, integer) Description: Select NEO-4846, Normalise Windows paths in diff headers, Value: 0, ID: cb-f16421ee
+						398 text NEO-4846
+						399 button ID: tt-f16421ee, Normalise Windows paths in diff headers Core reliability windows, diff Edited 22 Oct 2026, 09:31 (sample time)
+							400 text Normalise Windows paths in diff headers
+							401 text Core reliability
+							402 text windows, diff
+							403 text Edited 22 Oct 2026, 09:31 (sample time)
+						404 text Not selected
+					405 container
+						406 checkbox (settable, integer) Description: Select NEO-4851, Back off when the tracker rate-limits issue fetches, Value: 0, ID: cb-f8666b8a
+						407 text NEO-4851
+						408 button ID: tt-f8666b8a, Back off when the tracker rate-limits issue fetches Provider adapters tracker Edited 22 Oct 2026, 08:55 (sample time)
+							409 text Back off when the tracker rate-limits issue fetches
+							410 text Provider adapters
+							411 text tracker
+							412 text Edited 22 Oct 2026, 08:55 (sample time)
+						413 text Not selected
+					414 container
+						415 checkbox (settable, integer) Description: Select NEO-4857, Check the Windows installer shortcut after an in-place upgrade, Value: 0, ID: cb-f2666218
+						416 text NEO-4857
+						417 button ID: tt-f2666218, Check the Windows installer shortcut after an in-place upgrade Settings and safety windows, installer Edited 22 Oct 2026, 14:12 (sample time) Requires windows-host
+							418 text Check the Windows installer shortcut after an in-place upgrade
+							419 text Settings and safety
+							420 text windows, installer
+							421 text Edited 22 Oct 2026, 14:12 (sample time)
+							422 text Requires windows-host
+						423 text Not selected
+					424 container
+						425 checkbox (settable, integer) Description: Select NEO-4861, Show when the issue list was last fetched, Value: 0, ID: cb-60694dd9
+						426 text NEO-4861
+						427 button ID: tt-60694dd9, Show when the issue list was last fetched Provider adapters tracker, ui Edited 22 Oct 2026, 14:05 (sample time)
+							428 text Show when the issue list was last fetched
+							429 text Provider adapters
+							430 text tracker, ui
+							431 text Edited 22 Oct 2026, 14:05 (sample time)
+						432 text Not selected
+				228 container Description: Selected work, ID: wk-batch
+					433 text 0
+					434 text  selected Defaults: Sample Mac, DeepSeek V4.1 Flash · High
+					435 button (disabled) Clear selection, ID: act-clear
+					436 button (disabled) Assign, ID: act-assign
+					437 button Save draft, ID: act-save
+					438 button (disabled) Preview selected, ID: act-preview
+			235 container Description: Inspector, ID: wk-insp
+				439 container
+					440 button Back, ID: mach-close
+					441 text Saved machine
+				442 heading Sample Mac, Value: 2
+					443 text Sample Mac
+				444 text Connected (sample status)
+				445 text Sample facts for this prototype. Nothing was detected, and this page makes no connection.
+				446 definition list
+					447 container Machine ID
+						448 text Machine ID
+					449 text mac
+					450 container Address
+						451 text Address
+					452 text sample-mac.tailnet.example:3773
+					453 container Connection
+						454 text Connection
+					455 text Direct, over Tailscale
+					456 container System
+						457 text System
+					458 text macOS 26
+					459 container Last check
+						460 text Last check
+					461 text 22 Oct 2026, 14:36 (sample time)
+					462 container Access
+						463 text Access
+					464 text Token kept in Settings, Connections, Machines. It is never shown here, entered here or copied into a draft.
+					465 container Capabilities
+						466 text Capabilities
+					467 text posix-host, macos
+					468 container Queue
+						469 text Queue
+					470 text Up to 2 runs at once (machine setting)
+				471 container
+					472 heading Agents on this machine, Value: 3
+						473 text Agents on this machine
+					474 table
+						475 row
+							476 cell
+								477 text Agent
+							478 cell
+								479 text Status
+							480 cell
+								481 text Effort
+							482 cell
+								483 text Role
+						484 row
+							485 cell
+								486 text DeepSeek V4.1 Flash OpenCode (ACP)
+							487 cell
+								488 text Available
+							489 cell
+								490 text high, medium
+							491 cell
+								492 text Project default implementer
+						493 row
+							494 cell
+								495 text Sol 6.1 Codex
+							496 cell
+								497 text Available
+							498 cell
+								499 text high, medium
+							500 cell
+								501 text Project reviewer
+						502 row
+							503 cell
+								504 text Opus 5.5 Claude
+							505 cell
+								506 text Available
+							507 cell
+								508 text high, low
+							509 cell
+								510 text Project reviewer
+						511 row
+							512 cell
+								513 text Sample model G GitHub Copilot
+							514 cell
+								515 text Available
+							516 cell
+								517 text No effort setting offered
+							518 cell
+								519 text Optional, by your choice
+				520 container wk-settings-fixture
+					521 heading Settings, Connections (fixture), Value: 3
+						522 text Settings, Connections (fixture)
+					523 text Scoped to Sample Mac. This is a sample panel: no token field, no token read, no token storage, and no real connection. A repair keeps your draft intact and requires a new preview; it never starts work.
+					524 text After a demo repair, return to Work: your selection stays, and Preview is required again because the approved inputs changed.
+					525 button Back to Work with draft intact
+				526 container
+					527 heading Used by this draft, Value: 3
+						528 text Used by this draft
+					529 text No selected issue runs here. Recorded here in this demo: 
+					530 button NEO-4821, ID: mq-e85f9695
+					531 text  (Accepted (demo)), 
+					532 button NEO-4830, ID: mq-ed61dd0b
+					533 text  (Acknowledgement unknown (demo)).
+
+The focused UI element is 440 button Back, ID: mach-close

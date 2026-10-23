@@ -1,0 +1,26 @@
+{
+  "checkedAtUtc": "2026-10-22T20:24:03.161467+00:00",
+  "scope": "Research documentation and evidence only",
+  "localMarkdownLinks": {
+    "checked": 38,
+    "missing": 0
+  },
+  "mergedCensus": {
+    "records": 1395,
+    "uniqueRepoAndPr": 1395
+  },
+  "verbatimOpusResultTexts": 4,
+  "solFrozenReportHashMatches": true,
+  "independentSearchCalls": 299,
+  "prematureSolReportReadCalls": 0,
+  "format": "vp fmt --check passed for canonical report, plan and all evidence Markdown/JSON present at check",
+  "diffWhitespace": "git diff --check passed",
+  "notRun": [
+    "compiler builds",
+    "vp check full application checks",
+    "vp run typecheck",
+    "application test suites",
+    "competitor runtime",
+    "Neokod provider or tracker runtime"
+  ]
+}

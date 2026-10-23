@@ -1,0 +1,47 @@
+# Final reconciliation: Opus
+
+I agree with all seven points. One clarification each on points 3 and 7, neither a disagreement. Nothing is left unresolved.
+
+## AGREED
+
+1. **Recovery PID risk (reviewed by Sol).** Recorded under the existing Phase 1E / X-7 restart and stop acceptance, not as a new card. It is backed by source and has not been reproduced at runtime.
+   - A process may be terminated only on strong identity: the same PID plus its start time, executable, and attempt ownership, as far as the platform supports them. A command line alone is not identity.
+   - A null or legacy owner that cannot be verified is never signalled, and its possibly live workspace and claim are not freed until reconciled. The consequence is that such an item stays in attention until a human resolves it.
+   - The claim is released only after the old process is confirmed gone.
+   - No rename migration. The honest label comes from the existing state projection.
+
+2. **Cap refusal.** The refusal returns `{activeCount, limit}`, the reason, and which dimension was hit (per parent or per environment). "End the turn" is guidance to the model; the engine never forces an interrupt.
+
+3. **Late background work.** Accepted.
+   - The pinned result is immutable and never reopens.
+   - Later work that is known stays visible, triggers reconciliation and attention, and keeps the workspace lease and capacity while it could still change files.
+   - Capacity is never released just because a result was pinned.
+   - Clarification: "known" means positively observed (`observed_live`). A provider with coverage `not_reported` does not hold capacity on that basis alone. Capacity is released on positive settlement or an explicit human Stop.
+
+4. **One capability truth.** Agreed at the separately gated H/D boundary, as per-target capabilities, with no early migration of the whole runner.
+
+5. **Work list acceptance, corrected.**
+   - A refused admission leaves the story in Not started, with the refusal reason and Retry inline. The refused-attempt event itself goes to History.
+   - An unknown older owner stays visible under In progress and attention.
+   - A finished attempt with a required PR approval still pending stays under Needs attention.
+   - The top filters overlap, as agreed. This replaces my line "Refused and finished records appear only in History".
+
+6. **W6 scope.**
+   - Plan-mode refusal stays as settled in 16.6.
+   - Parent base commit and dirty-state evidence stay in.
+   - Diff evidence is not a C1 gate. The first slice explicitly excludes the parent's uncommitted edits.
+   - Optional bounded, immutable evidence stays later, within the existing brief, only with a real need and the user's authority. No automatic commit or snapshot, and no new framework.
+
+7. **Builds and authorisation.**
+   - No compiler builds now, and none automatically in a future smoke run.
+   - Clarification: Symphony runs whatever the fixture `WORKFLOW.md` lists under `validation.required`, so that list must contain no compiler build. The smoke acceptance should state this.
+   - I withdraw "Nothing in this order is authorised yet". The execution authorisation in 16.6 stands, subject to its gates. This research turn launches nothing.
+   - The formal core exit gates W6. The source feedback fixes and the UI can proceed within their previous scope when work resumes.
+   - Static review is not live proof.
+   - No credential gap is claimed as implemented. Neokod's shipped registry covers `preview` credentials only, and the W6 delegation authority rule (live parent session, active turn, same provider instance) is design only.
+
+## UNRESOLVED
+
+None. When the joint decision is written into the plan and report, two things should be carried as acceptance criteria, not open questions:
+- An item held by an unverifiable owner must surface as attention with a human reconcile action, so it cannot sit stuck without anyone seeing it.
+- The no-build rule for the fixture's validation commands.

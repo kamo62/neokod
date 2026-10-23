@@ -1,0 +1,229 @@
+{
+  "captured_at": "2026-10-22T19:56:53Z",
+  "repo": "pingdotgg/t3code",
+  "default_branch": "main",
+  "head": "22840ab943b8418744b48223411e46ba4fdcef1a",
+  "head_commit_date": "2026-10-22T19:46:56Z",
+  "previous_pin": "1688f965682d331da16a8c39f049592361f69c8d",
+  "nightly": {
+    "tag": "v0.1.2-nightly.20261022.3541",
+    "sha": "044f07257c9684ae4543bd1e1ebf9c394e9e3830",
+    "published_at": "2026-10-22T19:28:24Z"
+  },
+  "stable": {
+    "tag": "v0.1.1",
+    "sha": "fe27e8e3dc12dcbb108e9a28fd9b8cb65f34ae92",
+    "published_at": "2026-10-21T02:29:41Z"
+  },
+  "census": {
+    "query": "repo:pingdotgg/t3code is:pr is:merged merged:>=2026-10-21T00:00:00Z",
+    "cutoff": "2026-10-22T19:56:53Z snapshot; newest returned merge 19:46:57Z",
+    "count": 255,
+    "unique": 255,
+    "incomplete_results": false,
+    "merged_22_oct": 51,
+    "after_previous_nightly_publication": 137
+  },
+  "selected_pr_inclusion": [
+    {
+      "number": 23783,
+      "title": "fix(server): keep subagent transcript updates off shell stream",
+      "merged_at": "2026-10-22T19:40:26Z",
+      "head": "31ba091acd459e80e07844f93f303564763afe21",
+      "merge": "fd1063ba7c452e2a938484277235afebf0639119",
+      "nightly_status": "behind",
+      "included": false
+    },
+    {
+      "number": 23729,
+      "title": "fix(usage): count initial Codex requests with inherited totals",
+      "merged_at": "2026-10-22T17:56:17Z",
+      "head": "e8229311ba4996dee8cccae94f7947126c0a4dce",
+      "merge": "5e8c5eb75aa43f4ef673255abe7cc4ed9b1d19b9",
+      "nightly_status": "ahead",
+      "included": true
+    },
+    {
+      "number": 23389,
+      "title": "fix(server): a Claude agent stops when the server that started it dies",
+      "merged_at": "2026-10-22T08:16:01Z",
+      "head": "e32b11ca12cf7e49624f1e7da53b2ff9f18ec8a6",
+      "merge": "5ffe04593166870d3ada2a83eb5fe55f0d192fc7",
+      "nightly_status": "ahead",
+      "included": true
+    },
+    {
+      "number": 23169,
+      "title": "fix(server): stop abandoned turns before continuing threads",
+      "merged_at": "2026-10-22T01:47:11Z",
+      "head": "92cafceae30423d1276407c28d6850b48707ba74",
+      "merge": "6f6f68ad2d8044b3322ec738b9d371fcaaa783cf",
+      "nightly_status": "ahead",
+      "included": true
+    },
+    {
+      "number": 22850,
+      "title": "fix(server): answered questions say \"already answered\" instead of \"not found\"",
+      "merged_at": "2026-10-21T13:19:03Z",
+      "head": "5f7620ff94d5a13547eab663b0bc068ca75f9680",
+      "merge": "e822ba78ea23612f57093235f84813f385cf6431",
+      "nightly_status": "ahead",
+      "included": true
+    },
+    {
+      "number": 22889,
+      "title": "fix(server): agents get a short, current model list instead of a 55k-character catalog dump",
+      "merged_at": "2026-10-21T13:40:44Z",
+      "head": "509c8ea0422cb9c4f220852a92f6a67f9ff41bb3",
+      "merge": "680152e27b2a961686389ca69a1557cbb2c55f08",
+      "nightly_status": "ahead",
+      "included": true
+    },
+    {
+      "number": 22841,
+      "title": "fix(server): delegated Claude children follow your subagent cache TTL setting",
+      "merged_at": "2026-10-21T11:49:50Z",
+      "head": "7ad8fdfbc6efc63ce88217c9d8a496ac314a6b25",
+      "merge": "066c8fc0cd04c97988ff8892e440189545ac6994",
+      "nightly_status": "ahead",
+      "included": true
+    },
+    {
+      "number": 22938,
+      "title": "fix(opencode): cancelled todos no longer keep the todo list running",
+      "merged_at": "2026-10-21T22:14:42Z",
+      "head": "b27bd8b9658ece739e2e97dd5003c3f94ed92bdf",
+      "merge": "2333f168845f853f9ef358d1c4e6cf75189f4e8b",
+      "nightly_status": "ahead",
+      "included": true
+    },
+    {
+      "number": 22596,
+      "title": "fix(opencode): out-of-funds failures show OpenCode's message instead of a usage limit",
+      "merged_at": "2026-10-21T13:18:05Z",
+      "head": "88957910290288b916ae956e1a419c76ab4a424a",
+      "merge": "2f021ee7d3fd0130ceebeac00ef2d161a916f6d4",
+      "nightly_status": "ahead",
+      "included": true
+    },
+    {
+      "number": 22019,
+      "title": "fix(server): keep Antigravity question options and no-custom-answer flag in V2",
+      "merged_at": "2026-10-21T13:16:58Z",
+      "head": "fa8b306a248b5bddc66b08a6367062b4f81c8d84",
+      "merge": "2d408943287b7f9e7cdc8ba6379a617569b21afd",
+      "nightly_status": "ahead",
+      "included": true
+    },
+    {
+      "number": 22546,
+      "title": "feat(server,web,mobile): approvals in full access say why Claude asked",
+      "merged_at": "2026-10-21T19:45:33Z",
+      "head": "7fd37f0a8dfce58d26a883158458252c225c724c",
+      "merge": "e74924538705d774e2e1c56616485351d33d38db",
+      "nightly_status": "ahead",
+      "included": true
+    },
+    {
+      "number": 22790,
+      "title": "fix(queue): send selected held messages when a thread is stopped",
+      "merged_at": "2026-10-21T11:21:25Z",
+      "head": "7b48ba2f733957c0635536e1cec496fb714ec9e1",
+      "merge": "96f09c6558b098f05ad0c027afa3846209c03d4f",
+      "nightly_status": "ahead",
+      "included": true
+    },
+    {
+      "number": 22094,
+      "title": "feat(server): export how long runs take and how they end",
+      "merged_at": "2026-10-22T01:49:29Z",
+      "head": "70716941064ed49bb4a93a42714197ce49387cb1",
+      "merge": "f8e4834861d255f58c44fc1b5f57c34c49f5384d",
+      "nightly_status": "ahead",
+      "included": true
+    }
+  ],
+  "proof": "Source and GitHub API inspection only. No competitor execution, provider run, build, live tracker or runtime benchmark. PR author runtime/test claims retained separately as claims.",
+  "source_files": [
+    {
+      "path": "packages/provider-core/src/server/orchestrationInstructions.ts",
+      "sha256": "a1f095bc1cb7c54b7195c86ff263bb6b34a9cb7d55e3afaa56f16b2570493e30",
+      "url": "https://github.com/pingdotgg/t3code/blob/22840ab943b8418744b48223411e46ba4fdcef1a/packages/provider-core/src/server/orchestrationInstructions.ts"
+    },
+    {
+      "path": "packages/contracts/src/orchestratorMcp.ts",
+      "sha256": "db4c6ceef0dcf45051ce060c9d79e94407503250cfb42f71ab842e545bcfebd6",
+      "url": "https://github.com/pingdotgg/t3code/blob/22840ab943b8418744b48223411e46ba4fdcef1a/packages/contracts/src/orchestratorMcp.ts"
+    },
+    {
+      "path": "apps/server/src/mcp/OrchestratorMcpService.ts",
+      "sha256": "2daee104175debb5e543c7fe2e6a7912b0d576b5a732d148fc6f670c181bdac8",
+      "url": "https://github.com/pingdotgg/t3code/blob/22840ab943b8418744b48223411e46ba4fdcef1a/apps/server/src/mcp/OrchestratorMcpService.ts"
+    },
+    {
+      "path": "apps/server/src/mcp/McpToolAccess.ts",
+      "sha256": "8551e32d6522c1b2ae8b9f253f1d81f1e5d1b236f55c5c1e0fa9c217422af029",
+      "url": "https://github.com/pingdotgg/t3code/blob/22840ab943b8418744b48223411e46ba4fdcef1a/apps/server/src/mcp/McpToolAccess.ts"
+    },
+    {
+      "path": "apps/server/src/mcp/threadAccess.ts",
+      "sha256": "52c9c5b860e3365b5f92b10568adcd12b52e4ebd795452759ceebe00a382aeee",
+      "url": "https://github.com/pingdotgg/t3code/blob/22840ab943b8418744b48223411e46ba4fdcef1a/apps/server/src/mcp/threadAccess.ts"
+    },
+    {
+      "path": "apps/server/src/mcp/toolkits/thread/handlers.ts",
+      "sha256": "75ea6ff20ea79416f632013cab6a79f8f4b0e426ef5749eb797df26162489976",
+      "url": "https://github.com/pingdotgg/t3code/blob/22840ab943b8418744b48223411e46ba4fdcef1a/apps/server/src/mcp/toolkits/thread/handlers.ts"
+    },
+    {
+      "path": "apps/server/src/orchestration-v2/Orchestrator.ts",
+      "sha256": "bb0741f1adb2ec934f1ef74d420f5849730b58dad21de54fc96516b28331fce1",
+      "url": "https://github.com/pingdotgg/t3code/blob/22840ab943b8418744b48223411e46ba4fdcef1a/apps/server/src/orchestration-v2/Orchestrator.ts"
+    },
+    {
+      "path": "apps/server/src/orchestration-v2/ProviderSessionManager.ts",
+      "sha256": "7cb7cde77cfb6477ac121df1c0982638cab15e414890b4970bb801ab7db47bf0",
+      "url": "https://github.com/pingdotgg/t3code/blob/22840ab943b8418744b48223411e46ba4fdcef1a/apps/server/src/orchestration-v2/ProviderSessionManager.ts"
+    },
+    {
+      "path": "apps/server/src/provider/CodexDeveloperInstructions.ts",
+      "sha256": "d7fa4e284681ee48cc7bc460b35151913497954599782f9ccc115fcca2cf3fb6",
+      "url": "https://github.com/pingdotgg/t3code/blob/22840ab943b8418744b48223411e46ba4fdcef1a/apps/server/src/provider/CodexDeveloperInstructions.ts"
+    },
+    {
+      "path": "packages/provider-opencode/src/server/v2/adapter.ts",
+      "sha256": "35744f7c477f2450ee1a6503f2a335bd6a25ccb7793a579b5c91a0e20ebb9ea8",
+      "url": "https://github.com/pingdotgg/t3code/blob/22840ab943b8418744b48223411e46ba4fdcef1a/packages/provider-opencode/src/server/v2/adapter.ts"
+    },
+    {
+      "path": "apps/server/src/orchestration-v2/ProviderTurnStartService.ts",
+      "sha256": "288505f6d8474fd8a2ffdd5a5ed25bd93d97efabc9bf3978e80e6240124fb9ef",
+      "url": "https://github.com/pingdotgg/t3code/blob/22840ab943b8418744b48223411e46ba4fdcef1a/apps/server/src/orchestration-v2/ProviderTurnStartService.ts"
+    },
+    {
+      "path": "apps/server/src/orchestration-v2/RunExecutionService.ts",
+      "sha256": "f4b61652e266b89e52c91da6f7b82401cb6fcc04e549271c3375430b58db9b90",
+      "url": "https://github.com/pingdotgg/t3code/blob/22840ab943b8418744b48223411e46ba4fdcef1a/apps/server/src/orchestration-v2/RunExecutionService.ts"
+    },
+    {
+      "path": "apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts",
+      "sha256": "a2056a06a10733aaa958e47c25820f899cec05b35bdb18de2f62ad70d0334109",
+      "url": "https://github.com/pingdotgg/t3code/blob/22840ab943b8418744b48223411e46ba4fdcef1a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts"
+    },
+    {
+      "path": "apps/server/src/orchestration-v2/ShellStream.ts",
+      "sha256": "1c0f621161f2a66bcbdda4870569210915bd1931b364e231b0693636afb133fe",
+      "url": "https://github.com/pingdotgg/t3code/blob/22840ab943b8418744b48223411e46ba4fdcef1a/apps/server/src/orchestration-v2/ShellStream.ts"
+    },
+    {
+      "path": "apps/server/src/orchestration-v2/RunMetrics.ts",
+      "sha256": "32190f3ae2a90c0c13f37b9da1f2aeb03943eca0319d6cd65931a73e3686c90a",
+      "url": "https://github.com/pingdotgg/t3code/blob/22840ab943b8418744b48223411e46ba4fdcef1a/apps/server/src/orchestration-v2/RunMetrics.ts"
+    },
+    {
+      "path": "apps/web/src/components/chat/usePendingThreadRequests.ts",
+      "sha256": "1fa3144d03993ba0b3c00f741616ac6eddd4f585e7a3a142d7fa17a02a0d3e8d",
+      "url": "https://github.com/pingdotgg/t3code/blob/22840ab943b8418744b48223411e46ba4fdcef1a/apps/web/src/components/chat/usePendingThreadRequests.ts"
+    }
+  ]
+}

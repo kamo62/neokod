@@ -1,0 +1,254 @@
+[
+  {
+    "pr": 1975,
+    "channel": "main",
+    "status": "identical",
+    "merge_is_ancestor": true
+  },
+  {
+    "pr": 1975,
+    "channel": "prerelease",
+    "status": "ahead",
+    "merge_is_ancestor": true
+  },
+  {
+    "pr": 1975,
+    "channel": "stable",
+    "status": "behind",
+    "merge_is_ancestor": false
+  },
+  {
+    "pr": 1971,
+    "channel": "main",
+    "status": "ahead",
+    "merge_is_ancestor": true
+  },
+  {
+    "pr": 1971,
+    "channel": "prerelease",
+    "status": "ahead",
+    "merge_is_ancestor": true
+  },
+  {
+    "pr": 1971,
+    "channel": "stable",
+    "status": "behind",
+    "merge_is_ancestor": false
+  },
+  {
+    "pr": 1861,
+    "channel": "main",
+    "status": "ahead",
+    "merge_is_ancestor": true
+  },
+  {
+    "pr": 1861,
+    "channel": "prerelease",
+    "status": "ahead",
+    "merge_is_ancestor": true
+  },
+  {
+    "pr": 1861,
+    "channel": "stable",
+    "status": "ahead",
+    "merge_is_ancestor": true
+  },
+  {
+    "pr": 1704,
+    "channel": "main",
+    "status": "ahead",
+    "merge_is_ancestor": true
+  },
+  {
+    "pr": 1704,
+    "channel": "prerelease",
+    "status": "ahead",
+    "merge_is_ancestor": true
+  },
+  {
+    "pr": 1704,
+    "channel": "stable",
+    "status": "ahead",
+    "merge_is_ancestor": true
+  },
+  {
+    "pr": 1741,
+    "channel": "main",
+    "status": "ahead",
+    "merge_is_ancestor": true
+  },
+  {
+    "pr": 1741,
+    "channel": "prerelease",
+    "status": "ahead",
+    "merge_is_ancestor": true
+  },
+  {
+    "pr": 1741,
+    "channel": "stable",
+    "status": "ahead",
+    "merge_is_ancestor": true
+  },
+  {
+    "pr": 1926,
+    "channel": "main",
+    "status": "ahead",
+    "merge_is_ancestor": true
+  },
+  {
+    "pr": 1926,
+    "channel": "prerelease",
+    "status": "ahead",
+    "merge_is_ancestor": true
+  },
+  {
+    "pr": 1926,
+    "channel": "stable",
+    "status": "ahead",
+    "merge_is_ancestor": true
+  },
+  {
+    "pr": 1929,
+    "channel": "main",
+    "status": "ahead",
+    "merge_is_ancestor": true
+  },
+  {
+    "pr": 1929,
+    "channel": "prerelease",
+    "status": "ahead",
+    "merge_is_ancestor": true
+  },
+  {
+    "pr": 1929,
+    "channel": "stable",
+    "status": "ahead",
+    "merge_is_ancestor": true
+  },
+  {
+    "pr": 1833,
+    "channel": "main",
+    "status": "ahead",
+    "merge_is_ancestor": true
+  },
+  {
+    "pr": 1833,
+    "channel": "prerelease",
+    "status": "ahead",
+    "merge_is_ancestor": true
+  },
+  {
+    "pr": 1833,
+    "channel": "stable",
+    "status": "ahead",
+    "merge_is_ancestor": true
+  },
+  {
+    "pr": 1797,
+    "channel": "main",
+    "status": "ahead",
+    "merge_is_ancestor": true
+  },
+  {
+    "pr": 1797,
+    "channel": "prerelease",
+    "status": "ahead",
+    "merge_is_ancestor": true
+  },
+  {
+    "pr": 1797,
+    "channel": "stable",
+    "status": "ahead",
+    "merge_is_ancestor": true
+  },
+  {
+    "pr": 1934,
+    "channel": "main",
+    "status": "ahead",
+    "merge_is_ancestor": true
+  },
+  {
+    "pr": 1934,
+    "channel": "prerelease",
+    "status": "ahead",
+    "merge_is_ancestor": true
+  },
+  {
+    "pr": 1934,
+    "channel": "stable",
+    "status": "ahead",
+    "merge_is_ancestor": true
+  },
+  {
+    "pr": 1866,
+    "channel": "main",
+    "status": "ahead",
+    "merge_is_ancestor": true
+  },
+  {
+    "pr": 1866,
+    "channel": "prerelease",
+    "status": "ahead",
+    "merge_is_ancestor": true
+  },
+  {
+    "pr": 1866,
+    "channel": "stable",
+    "status": "ahead",
+    "merge_is_ancestor": true
+  },
+  {
+    "pr": 1945,
+    "channel": "main",
+    "status": "ahead",
+    "merge_is_ancestor": true
+  },
+  {
+    "pr": 1945,
+    "channel": "prerelease",
+    "status": "ahead",
+    "merge_is_ancestor": true
+  },
+  {
+    "pr": 1945,
+    "channel": "stable",
+    "status": "ahead",
+    "merge_is_ancestor": true
+  },
+  {
+    "pr": 1946,
+    "channel": "main",
+    "status": "ahead",
+    "merge_is_ancestor": true
+  },
+  {
+    "pr": 1946,
+    "channel": "prerelease",
+    "status": "ahead",
+    "merge_is_ancestor": true
+  },
+  {
+    "pr": 1946,
+    "channel": "stable",
+    "status": "ahead",
+    "merge_is_ancestor": true
+  },
+  {
+    "pr": 1947,
+    "channel": "main",
+    "status": "ahead",
+    "merge_is_ancestor": true
+  },
+  {
+    "pr": 1947,
+    "channel": "prerelease",
+    "status": "ahead",
+    "merge_is_ancestor": true
+  },
+  {
+    "pr": 1947,
+    "channel": "stable",
+    "status": "ahead",
+    "merge_is_ancestor": true
+  }
+]

@@ -1,0 +1,33 @@
+{
+  "type": "result",
+  "subtype": "success",
+  "is_error": false,
+  "session_id": "0bba1ad3-92a7-422e-8a22-f80ba321063b",
+  "terminal_reason": "completed",
+  "stop_reason": "end_turn",
+  "duration_ms": 414171,
+  "duration_api_ms": 520924,
+  "num_turns": 40,
+  "permission_denials": [],
+  "modelUsage": {
+    "claude-opus-5-5": {
+      "inputTokens": 110,
+      "outputTokens": 45866,
+      "thinkingTokens": 19228,
+      "cacheReadInputTokens": 7534200,
+      "cacheCreationInputTokens": 241554,
+      "webSearchRequests": 0,
+      "costUSD": 4.357032,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "canonicalModel": "claude-opus-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "requestedModel": "claude-opus-5-5",
+  "requestedEffort": "high",
+  "toolsAllowed": ["Read", "Glob", "Grep"],
+  "correction": "Same session interrupted and resumed with owner clarification; final result only.",
+  "readOnly": true
+}

@@ -1,0 +1,145 @@
+# Consultation decision: Opus and Sol, 22 October 2026
+
+Sol and I now agree on a way forward. I conceded three points after checking the source (the background-roster rule, batching live answers, and my proposal to reroute Symphony's runner now). I added one new restart-safety finding that Sol has not yet reviewed. That finding and three smaller design questions remain unresolved. Everything here was read-only: no implementation, builds, commits, repository or GitHub changes, or coding lanes, and no competitor was run.
+
+## Verification done for this consultation
+
+| Claim | What I checked (captured 22 October, UTC) | Outcome |
+|---|---|---|
+| 3. T3 child closure | At nightly `044f072`: [`subagentProjection.ts#L257-L266`](https://github.com/pingdotgg/t3code/blob/044f07257c9684ae4543bd1e1ebf9c394e9e3830/packages/provider-core/src/server/subagentProjection.ts#L257-L266) reports `waiting_for_children` only when `pendingBackgroundTasks` is non-empty. [`Orchestrator.ts#L11881-L11893`](https://github.com/pingdotgg/t3code/blob/044f07257c9684ae4543bd1e1ebf9c394e9e3830/apps/server/src/orchestration-v2/Orchestrator.ts#L11881-L11893) re-checks a child only after its roster was seen non-empty and then emptied | Sol is correct. A provider that reports no roster still completes on its terminal run outcome |
+| 5. Chopin batching | [`answer-turns.ts#L1-L14`](https://github.com/githubnext/chopin/blob/2f180dfdecaf1a69e1279aa91a8b9d8b7ec2bdf9/apps/server/src/questions/answer-turns.ts#L1-L14): "A blocking `ask` … returns its answer to whoever is waiting". Only saved answers with no waiter use the 5 s quiet / 30 s maximum batching | Sol is correct |
+| 7. MCP credentials | Neokod [`McpSessionRegistry.ts:55-56, :99, :117`](apps/server/src/mcp/McpSessionRegistry.ts): the 30-minute idle and 8-hour lifetime apply to `preview` credentials only. No delegation credential exists | My wording was wrong; corrected below |
+| 8. Empryo | `GET repos/proxysoul/Empryo` at 20:14:08Z returned HTTP 200: public, `main`, pushed 2026-10-16T01:37:27Z. My earlier head pin was `c27dac1`; I did not re-fetch the head | Sol's earlier 404 was not reproduced. It proves nothing about deletion |
+| 8. GOAT | [`goat-si/goat-releases`](https://github.com/goat-si/goat-releases) has nightly `v0.1.2-nightly.20261022.236` (published 18:46:55Z; its target is the name `main`, so it moves). Sol's runtime-JSON source `2390114` has diverged from goat `main` (6 ahead, 249 behind). PR 789 merged to `dev` at 19:37:05Z as `4aef080`, and the nightly source is 13 commits behind it | Sol's addendum confirmed. I withdraw "no releases" and replace it with "no releases in the source repo" |
+| 8. bb | Re-pinned `main` = `6e5fb6e` (commit time 19:58:41Z), the same as my first pin | Any later head Sol saw is valid drift |
+| 9. OpenAI Symphony | Sol's local copy of the pinned README and SPEC at `be10a1b`. README line 11: "a low-key engineering preview for testing in trusted environments". Closed PRs #83, #82, #81, #78, #77, #76, #60 and #58 are unmerged | Use the primary text. Press sources are dropped |
+
+**New finding: Symphony restart recovery and PIDs**
+- Neokod inherited the SPEC's `stall_timeout_ms` (300,000 ms, SPEC lines 489-491 and 722-723: "Kill worker and schedule retry"). It appears at [`Config.ts:45`](apps/server/src/symphony/Workflow/Config.ts) and [`Reconciler.ts:119-141`](apps/server/src/symphony/Orchestrator/Reconciler.ts).
+- During normal running this is not "age as proof of death". The reconciler acts only when the dispatcher's in-memory active map lacks the attempt (`Dispatcher.ts:695`), which means the dispatch fiber has already ended. The age is a grace window. The status label `stalled` is misleading, though, because the fiber ended without a terminal status.
+- The real risk is in startup recovery: [`Recovery.ts:74-82`](apps/server/src/symphony/Orchestrator/Recovery.ts) signals the stored `ownerPid` without confirming it is still the same process. After a reboot that PID can belong to an unrelated process. It then releases the claim without confirming the old process exited, and the workspace is reused across retries.
+- This is the failure [Agent Orchestrator #6801](https://github.com/OrchestratorInc/agent-orchestrator/pull/6801) fixed. I have traced it in source only; I have not observed it at runtime.
+
+## Adjudication of Sol's ten points
+
+**1. Separate planes and filters.** AGREED, with one condition.
+- The top filters are the owner's: Not started, In progress, Needs attention, All, with History secondary. My longer filter list becomes contextual refinements inside a filter.
+- Condition: attention overlaps lifecycle, so filter counts must never be shown as summing to All. Each row shows its lifecycle plus a separate attention badge.
+- Review F2 (two competing status projections) and F5 (incomplete attention projection) must be fixed first. Otherwise the filters break the single-projection rule in `docs/architecture/state-and-evidence.md`.
+- The graph shows only observed stages and children, later.
+
+**2. Caps, queue-only delivery and isolated worktrees.** AGREED, with additions.
+- Settled bounds stay: depth 1, caps of 3 per parent and 6 per environment, refusal at cap, queue-only delivery to the parent, isolated worktrees.
+- Additions: the admission receipt and the pinned result both state `baseCommit`. They also record the parent's dirty state at admission as positive git evidence, either "N uncommitted paths, not included" or "unknown".
+- Explicit diff evidence is a content-hashed, byte-capped artefact. Only read-only review children may receive it, and the review result cites its hash. Applying it needs separate scoped authorisation.
+- Admission is never refused or widened based on prompt text, since text is not permission.
+
+**3. Child closure.** CHANGED AFTER CONSULTATION. I concede.
+- Agreed rule: a child is complete when there is positive terminal evidence for the original managed request and turn, and no known live admitted work.
+- An absent roster capability is recorded as `backgroundCoverage: not_reported`. It does not block completion and does not imply coverage.
+- Extra closure is required only when relevant admitted activity is positively observed (`observed_live`), or when the provider's turn semantics cannot prove the turn closed.
+- Background work observed after the result is pinned appears as "later activity" on the child and never reopens the task (T3 does the same).
+- No universal background-work engine is built.
+
+**4. Shared contracts; Symphony keeps its runner.** CHANGED AFTER CONSULTATION. I withdraw C4 as a near-term plan.
+- Symphony's Codex runtime stays. A W6 child task never stands in for a Symphony run.
+- The provider-neutral runner remains the separately gated H/D follow-up. No second engine is built.
+- I keep one bounded ask: when that follow-up starts, Symphony's review-agent eligibility and W6's `providerSupport.ts` should read one capability truth, so there are not two tables. Until then they stay separate and that is disclosed.
+
+**5. Live answers and batching.** CHANGED AFTER CONSULTATION. I concede.
+- A live blocking answer goes through immediately, with no batch delay and no Resume click.
+- Batching applies only to waiting results with no waiter, and to result roll-ups, keyed by durable request IDs and generations.
+- Approvals stay human-only. Pause and scope changes keep their own independent holds.
+
+**6. Guidance snapshots and repair.** AGREED.
+- The effective workflow and story guidance is snapshotted as a digest at admission and recorded per attempt.
+- Later edits apply only to new attempts, never to accepted work, and can never widen permission. This closes review F6 (preview records no workflow digest or permission snapshot).
+- Repair is a finite policy: existing `max_attempts` and `max_turns` plus the workflow's own budget. There is no universal "one repair" rule and no automatic builds.
+
+**7. Delegation authority.** AGREED, wording corrected.
+- Desired rule: delegation authority holds only while the issuing parent session has an active turn on the same provider instance. 16.6's call-time re-check already specifies this; T3's equivalent is `assertLiveCaller`.
+- Idle time alone neither revokes nor proves anything about autonomous work. A lifetime bound may stay as defence in depth.
+- Nothing about child credentials is claimed as shipped.
+
+**8. Channel records.** AGREED. Corrected in the verification table above.
+
+**9. OpenAI Symphony sources.** AGREED. The new restart-recovery finding came from this primary SPEC read.
+
+**10. Order of work.** AGREED, with one ordering detail.
+- S1 to S6 and F1 to F6 come first, and stay open until their acceptance passes.
+- Calm Codex Symphony UI may proceed in disjoint files. It is not blocked by W6, but inline questions wait for S1 to S5, and the filters wait for F2 and F5.
+- The formal core exit still gates W6-C1 to C3.
+- No feature-completion claim is made, 16.15 is preserved, and no new general audit is required.
+
+## Unresolved, for the next round
+
+1. **Recovery PID handling.** Sol has not reviewed the new finding. My proposal is to attach it to the existing Phase 1E restart/stop cards (X-5/X-7 per 16.4), not a new card. Recovery would terminate a process only after confirming its identity (PID plus start time or command line). It would re-queue only after confirmed exit; otherwise it records an unconfirmed interruption as attention. The `stalled` label would be renamed "worker ended without terminal status".
+2. **Cap refusal payload.** I propose `{activeCount, limit}` with an instruction to end the turn. Sol has not objected; this needs confirmation.
+3. **Late background activity after the result is pinned.** Shown on the child without reopening the task (point 3). Needs Sol's confirmation.
+4. **Single capability truth (point 4).** Deferred to the H/D follow-up's design gate.
+
+## Exact roadmap amendments
+
+| Item | Amendment |
+|---|---|
+| W6-C1 contract | Add `baseCommit`, `parentDirtyAtAdmission` (known count or unknown), `backgroundCoverage` (`observed_empty`, `not_reported` or `observed_live`) and an optional read-only `evidence {kind: diff, sha256, bytes}` |
+| W6-C2 | Authority is tied to the live parent session and active turn with a matching provider instance; the preview credential's idle rule is not reused as the authority test. Cap refusal returns `activeCount` and `limit` |
+| W6-C3 | Replace "first settlement of the original child turn" with the agreed rule in point 3. Late activity never reopens the task |
+| W6-C4 | Live child questions are answered immediately through the existing feedback component. The question wake uses a deterministic ID and is cancelled when the question is answered elsewhere. Only results and non-waited items are coalesced. Approvals stay human-only |
+| W6-C5 | Child rows show the base commit and "uncommitted parent edits not included" whenever that is known to be true |
+| W6-C6 | Unchanged |
+| W5 | Deferral stands. A child may target another machine only after W5 slice 3 and W6-C3. The address is (environmentId, threadId), the durable row stays on the parent's server, routing is one hop, and there is never a fallback machine |
+| W4 | Steps 4.2 to 4.4 and 4.8 are superseded by the owner's filters (16.15). Keep 4.1, 4.5, 4.6 (as an on-demand drawer) and 4.9 |
+| H/D | The provider-neutral runner stays separately gated, the Codex runtime stays, and contracts are shared one demonstrated boundary at a time |
+| Symphony admission | Store the workflow-revision digest and story-guidance digest per attempt (F6) |
+| Phase 1E | Recovery PID identity check (unresolved item 1) |
+
+## Delivery order
+
+Nothing in this order is authorised yet.
+
+1. Finish Phase 1D, then Phase 1E including the PID fix. In the same window, fix S1 to S6 and the F2/F5 single projection.
+2. In disjoint web files, build the calm Work UI against the current Codex runtime: the owner's filters, History, and details on demand.
+3. Run the live `SMOKE.md` fixture with one observed Codex continuation after a question.
+4. Pass the formal core exit (14.2 / 16.12).
+5. W6-C1, then C2, then C3, including the live OpenCode run.
+6. W6-C4, C5 and C6.
+7. Gated H/D runner work, W5 machines and the graph.
+
+## Measurable acceptance
+
+**Feedback (S1 to S6)**
+- Two distinct answers survive a reload.
+- A timeout produces no synthetic answer.
+- Note text is persisted (or the unsupported entry is removed).
+- A live answer continues with no Resume click.
+- An old request cannot reach a replacement attempt.
+
+**Work list**
+- Filter counts never claim to partition All.
+- An item can be In progress and Needs attention at the same time.
+- Refused and finished records appear only in History.
+
+**W6-C2**
+- Same key and payload replays one admission; a changed payload conflicts.
+- Requests at cap, beyond depth or in plan mode are refused.
+- No command omits `runtimeMode`.
+
+**W6-C3**
+- A `not_reported` provider completes with that coverage shown.
+- An `observed_live` child stays waiting until its work settles.
+- A crash after the result is pinned and before delivery yields exactly one delivered result.
+- Stop or restart never frees an uncertain child.
+- One live OpenCode run returns its result durably.
+
+**Recovery**
+- A reused PID belonging to an unrelated process is left alone. This must be shown by a test that fails on revert.
+
+## Proof limits
+
+- Every competitor fact here is static source or channel reading. No competitor runtime was run.
+- The T3 facts are pinned to nightly `044f072`.
+- The GOAT nightly source comes from Sol's downloaded runtime JSON; I did not re-download it.
+- The Neokod Recovery risk is traced in source only, not observed at runtime.
+- The S1 to S5 findings are Sol's.
+- I did not re-read the 16.10 to 16.14 linked reviews beyond F1 to F6 and 16.15.

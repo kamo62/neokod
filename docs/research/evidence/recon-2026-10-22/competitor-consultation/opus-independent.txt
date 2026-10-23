@@ -1,0 +1,185 @@
+# Independent Opus assessment: thread delegation and Symphony (22 October 2026)
+
+My recommendation is to keep the roadmap's W6 design for ordinary-thread children. It needs four changes, all backed by T3's newest merged code. For Symphony, the W4 Kanban plan should become one Work list with filters, and new runner providers should go through the same launch path as children. Everything below was read-only. I did not run any competitor, build anything, or read Sol's new files or plan sections 16.9 to 16.15.
+
+## A. What I searched and pinned
+
+**How I searched.** I used read-only `gh api` GET calls for repository metadata, default heads, releases, tag refs, merged-PR searches, compares, file contents and code search. I used WebFetch for Conductor, Maestri and the Chopin concept page, and one WebSearch for OpenAI Symphony. Locally I read `docs/architecture/symphony.md` and the W4, W5, W6 and 16.1 to 16.6 sections of `plan.md`, and grepped `apps/server/src` for MCP and delegation code. The PR lists are a census of titles; I did not semantically review every PR.
+
+**Moving tags.** bb's `desktop-nightly` release reports a published date of 30 July, but the tag resolves to [`9c3c56f`](https://github.com/get-bb/bb/commit/9c3c56fa2b864b45104080a3a89ed39fb3196f0a), a 22 October commit. Superset's `desktop-canary` resolves to `bdf1e2e`, which is the current main head. Annotated tags (Synara, Paseo) were dereferenced to their commits.
+
+**Pins and depth**
+
+| Repo | Default head | Newest channel | Depth |
+|---|---|---|---|
+| pingdotgg/t3code | `22840ab` | nightly `v0.1.2-nightly.20261022.3541` → `044f072` (lightweight tag). The key delegation files are byte-identical at head and nightly | Deep source |
+| Emanuele-web04/synara | `299fd57` | `v1.0.6-remote.26` → `39a745f`, which contains main plus 431 extra commits. Stable is `v1.0.7` | Deep source and docs |
+| getpaseo/paseo | `d972f67` | `v0.13.0-beta.1` → `3fa6257`. It contains #7370 (12 ahead, 0 behind). Stable v0.12.0 predates it | PR bodies and ancestry |
+| OrchestratorInc/agent-orchestrator | `35b406f` | `v0.14.5` → `7b176b7`, plus a nightly | README and PR bodies |
+| get-bb/bb | `6e5fb6e` | `desktop-nightly` → `9c3c56f` | PR bodies |
+| traycerai/traycer | `0104d4a` | `host-v1.5.1` → `0aef435` | PR body |
+| NousResearch/hermes-agent | `a01edde` | `v0.22.4` → `4d04303` | PR body |
+| githubnext/chopin | `2f180df` | `cli-v0.0.20` | PR body and concept page |
+| aicodeking/pandacode | `800b879` | `v0.3.26` (same SHA) | PR body |
+| dominikmartn/harp | `bad92b3` | `v0.1.3` (same SHA). No merged PRs; commits go direct | Commit message |
+| goat-si/goat | `587dd61` | No releases | Metadata and PR census |
+| stablyai/orca | `e710e89` | `v1.4.237` → `0717478` | Metadata and PR census (Jira/Linear refactors) |
+| superset-sh/superset | `bdf1e2e` | canary = head | Metadata and PR census (cloud-heavy) |
+| omnigent-ai/omnigent | `777c4ae` | `v0.19.1` (target is `main`, unresolved) | Metadata and PR census |
+| HarnessRouter/harnessrouter | `7f036ed` | `v0.36.0-rc.3` → `fa542ad` | Metadata and PR census |
+| can1357/oh-my-pi | `0b5c27a` | `v18.12.6` (target is `main`) | Metadata and PR census |
+| earendil-works/pi | `8c03fef` | `v1.4.0` (target is `main`) | Metadata and PR census |
+| lidge-jun/opencodex | `83ec4f7` | `v2.91.0` (same SHA) | Metadata and PR census |
+| hardbeat920/monocode | `74b8139` | `v0.16.0` (target is `main`) | Metadata and PR census |
+| BytePioneer-AI/codex-host | `758a8f3` | `v0.13.3` (target is `main`) | Metadata and PR census |
+| proxysoul/Empryo | `c27dac1` | `v2.20.25` (12 July) | Metadata only. No merged PRs |
+| Dimillian/CodexMonitor | `dd61b9a` (26 March) | `v0.7.67` (March) | Metadata only. Dormant since March |
+| openai/symphony | `be10a1b` (15 September) | Not checked | Head pin plus press coverage |
+
+**Official-only products**
+- **Conductor:** the [changelog](https://www.conductor.build/changelog) page exposed entry titles only, newest 0.91.0 on 15 October. I could not read entry bodies, so I can't confirm any feature from it.
+- **Maestri:** the [changelog](https://www.themaestri.app/en/changelog) is newest at 0.55.2 on 22 October. It mentions "Bands" (terminals grouped as one canvas node) and `maestri notify` (agents send notifications only when asked). I read the first 100,000 characters of the page.
+- **Chopin:** the [concept page](https://githubnext.com/projects/chopin/) describes itself as "a very small, early research prototype", not a product.
+
+**Key permalinks**
+- T3 delegate tools: [`tools.ts`](https://github.com/pingdotgg/t3code/blob/22840ab943b8418744b48223411e46ba4fdcef1a/apps/server/src/mcp/toolkits/orchestrator/tools.ts)
+- T3 delegate contract: [`orchestratorMcp.ts#L160-L231`](https://github.com/pingdotgg/t3code/blob/22840ab943b8418744b48223411e46ba4fdcef1a/packages/contracts/src/orchestratorMcp.ts#L160-L231)
+- T3 live-caller check: [`threadAccess.ts`](https://github.com/pingdotgg/t3code/blob/22840ab943b8418744b48223411e46ba4fdcef1a/apps/server/src/mcp/threadAccess.ts)
+- T3 escalation refusal: [`McpToolAccess.ts`](https://github.com/pingdotgg/t3code/blob/22840ab943b8418744b48223411e46ba4fdcef1a/apps/server/src/mcp/McpToolAccess.ts)
+- T3 question wake: [`DelegatedTaskQuestionReactor.ts`](https://github.com/pingdotgg/t3code/blob/22840ab943b8418744b48223411e46ba4fdcef1a/apps/server/src/orchestration-v2/DelegatedTaskQuestionReactor.ts)
+- Synara Hubs: [`docs/hubs.md`](https://github.com/Emanuele-web04/synara/blob/299fd573b1d6520c323a87c78d30be74e87e53e1/docs/hubs.md), [`workerHealth.ts`](https://github.com/Emanuele-web04/synara/blob/299fd573b1d6520c323a87c78d30be74e87e53e1/apps/server/src/projectAgent/workerHealth.ts), [`projectAgentTools.ts#L160-L190`](https://github.com/Emanuele-web04/synara/blob/299fd573b1d6520c323a87c78d30be74e87e53e1/apps/server/src/agentGateway/projectAgentTools.ts#L160-L190)
+
+**Newest PRs inspected in depth**
+- T3: [#22117](https://github.com/pingdotgg/t3code/pull/22117) (in nightly 3541), [#22709](https://github.com/pingdotgg/t3code/pull/22709) (in nightly 3541), [#23135](https://github.com/pingdotgg/t3code/pull/23135) (merge SHA equals nightly 3526's target)
+- Synara: [#1704](https://github.com/Emanuele-web04/synara/pull/1704), [#1861](https://github.com/Emanuele-web04/synara/pull/1861), [#1065](https://github.com/Emanuele-web04/synara/pull/1065) (open draft)
+- Paseo: [#7370](https://github.com/getpaseo/paseo/pull/7370), [#7507](https://github.com/getpaseo/paseo/pull/7507)
+- bb: [#6120](https://github.com/get-bb/bb/pull/6120), [#6054](https://github.com/get-bb/bb/pull/6054)
+- Traycer: [#2713](https://github.com/traycerai/traycer/pull/2713)
+- Agent Orchestrator: [#5603](https://github.com/OrchestratorInc/agent-orchestrator/pull/5603), [#6801](https://github.com/OrchestratorInc/agent-orchestrator/pull/6801)
+- Hermes: [#141944](https://github.com/NousResearch/hermes-agent/pull/141944)
+- Chopin: [#719](https://github.com/githubnext/chopin/pull/719)
+- Pandacode: [#79](https://github.com/aicodeking/pandacode/pull/79)
+
+I did not check channel ancestry for Paseo #7507 itself, or for the bb, Traycer, Agent Orchestrator, Hermes, Chopin and Pandacode PRs. Those are source-merged facts only.
+
+## B. Adopt, adapt or drop
+
+### Ordinary thread delegation
+
+| Mechanism | Source | Strength | Limitation | Verdict |
+|---|---|---|---|---|
+| Agent-called `delegate_task`, `task_status` and `task_cancel` with `clientRequestId` idempotency and a live model catalogue | T3 `tools.ts` | No button or mode needed; replays are safe | There is no machine target in `OrchestratorMcpTarget`. I found no fan-out or depth cap in `OrchestratorMcpService.ts` (searched for depth and limit constants), and nesting is allowed (`waiting_for_children`) | Adopt the shape. Keep Neokod's depth 1 and caps |
+| Authority bound to a live run: a provider token acts only while its thread owns a live run (`assertLiveCaller`) | T3 `threadAccess.ts` | Authority ends with the run, so an expired credential cannot act | It is tied to T3's thread model | Adopt. Replace Neokod's 30-minute idle / 8-hour credential expiry (gap 3) with run-bound validity |
+| Mode ceiling re-checked under the target's lock; escalation is refused | T3 `McpToolAccess.ts` `writesThreads` | Closes the race where the user changes modes during a call | T3's own text says the rank does not prove the provider's permissions are narrower | Adopt. This matches 16.4's "rank is not a guarantee" |
+| A child is settled only when its leftover background work settles, via a re-check listener | T3 #22709 | Fixes children that stay "running" forever, and parents that never wake | Depends on a provider exposing a background roster | Adopt. This changes W6-C3 (section D) |
+| Results delivered by a queued message with a 16 KB inline budget; larger results stay intact behind a status pointer | T3 #22117 | Avoids context-budget failures on long parents | T3 also steers into active turns | Adopt the budget plus a pointer. Keep queue-only delivery |
+| Question wake: server tells the parent about a child's pending question, with a deterministic command ID, and cancels the queued wake once the question is answered | T3 `DelegatedTaskQuestionReactor.ts` | Idempotent, and the parent never answers a stale question | The text instructs the agent; it grants no approval | Adopt into W6-C4 |
+| Child approvals shown in the parent, human-only, answered in either place | Synara #1704, `hubs.md` | Fewer clicks, and agents get no approval tool | I saw no lifecycle-generation fencing in the PR | Adopt with Neokod's fencing, as 16.4 already says |
+| Inherit the parent's provider, model and effort only when the provider matches | bb #6120 | Predictable defaults | None significant | Adopt (it is the W6 permission rule) |
+| Automatic machine placement onto whichever host has a checkout | bb #6054 | Convenient | Violates "machines explicit" | Drop |
+| Child address of (serverId, agentId); one-hop routing; existing RPCs | Paseo #7370, #7507 | A clean address model for owner machines later | The PR's non-goals list durable notifications and host-aware permissions | Adapt for later. Neokod keeps the durable record on the parent's server |
+| Owner-side child reservation with caps from a frozen root policy, bound to the parent's verified pid and birth | Hermes #141944 | Server-owned admission; no worker self-spawn | Kanban-specific | Adopt the frozen-policy idea (already in the W6 policy snapshot) |
+| Short model list for agents | T3 #22889 (title only) | Keeps capability discovery cheap | None | Adopt in `child_capabilities` |
+
+### Autonomous Symphony
+
+| Mechanism | Source | Strength | Limitation | Verdict |
+|---|---|---|---|---|
+| Server-rule monitoring with compact status rows and one roll-up per request ("All 3 threads finished") | Synara `workerHealth.ts` | Calm; does not depend on the model remembering to check | Status is chat-shaped | Adopt roll-ups and rows. Drop the chat-only shape |
+| "Disconnected" means the projection says running and the session is absent from the live provider list after a 90 s grace | Synara `WORKER_DISCONNECT_GRACE_MS` | Absence from a live list is positive evidence | The grace window is time-based | Adopt with an identity check |
+| Silence ladder: nudge after 10 minutes quiet, then interrupt and re-send | Synara | Recovers stuck runs | Quiet is not proof the run is dead, and it interrupts real work | Drop the automatic interrupt. Report silence as attention |
+| Kill only an identity-confirmed process; protects against PID reuse | Agent Orchestrator #6801 | Prevents killing unrelated processes | None | Adopt for restart reconciliation |
+| Reap an agent only with positive idle evidence tied to a spawn token and turn ID | Traycer #2713 | A clear rule for not treating age as proof of death | It is a cross-repo pair; the internal host half is not public | Adopt the principle |
+| Heartbeat ping/pong to detect a wedged runtime | Agent Orchestrator #5603 | Fails fast with a typed error | Needs a protocol version | Adapt for the machine link later |
+| Board position derived from session, PR, CI and review facts | Agent Orchestrator README | Status cannot be faked | It is drawn as a Kanban | Adopt the fact derivation as list filters. Drop columns |
+| Worker reports move a task to review; reporting does not mark it done | Synara `report_result` | Separates evidence from completion | None | Already matches Neokod's evidence bundle. Stands |
+| Human answers stored durably with a generation number and batched into one resume turn (after 5 s quiet or a 30 s cap, at most 20 answers) | Chopin #719 | Fewer turns, and answers survive a restart | Planner-specific | Adopt for Symphony escalations |
+| Guidance layered app-wide → per-team override, fallback at read time, 2,000-byte cap | Pandacode #79 | Simple precedence | Plain text only | Adopt for per-story guidance |
+| Bounded context packet (32,000 characters) that truncates by priority | Synara Hubs | Predictable | It is a separate Hub mode | Adapt the cap. Drop the mode |
+| A "needs you" state that stays until resolved | Harp 0.1.3 commit | Stops attention from flickering away | None | Adopt as a requirement |
+| Webhook-triggered schedules | T3 `schedule_task` | Rich filters and dedupe | Its public URL needs T3 Connect | Drop the hosted part |
+| Accounts, relay and public profiles | Synara #1065 and its Remote channel | Not applicable | Excluded by the local-first policy | Drop |
+
+## C. Proposed designs
+
+**C1. Delegation that settles honestly, in an ordinary thread**
+- Normal journey: the human types "have a reviewer on Opus check this and a tester write cases". The parent calls `child_capabilities`, then `child_start` twice. Each child appears as one attributed row in the parent transcript ("Review · Opus 5.5 · working"), which expands on request. Each child's result is pinned. When both have settled, the parent receives one queued roll-up turn after its current turn ends.
+- Unknown and error states:
+  - `cap_reached` returns the active count and tells the agent to end its turn.
+  - An unsupported provider returns the reason.
+  - A turn that has ended while background work continues shows "waiting for background work". A provider with no background roster shows "background work unknown", which is never shown as complete.
+  - A launch that fails after the turn may have started stays `launch_unknown`.
+  - A stop that is never confirmed shows "may still be running".
+- Value: T3's tool shape and background-settle fix, combined with Neokod's queue-only delivery and evidence-typed states.
+- Not to implement: steering into active turns, nested children, a Delegate button, or cost figures before usage data exists.
+
+**C2. Answer in place, without a third page**
+- Normal journey: a child or Symphony run asks a question. A card appears inline in the parent thread, or under the "Needs you" filter of the Work list. Answers given in either place clear both. Several answers saved close together become one resume turn (the Chopin rule). Approvals are answered only by the human, through a fenced action carrying a lifecycle generation.
+- Unknown and error states: a stale generation is refused with "this request has ended". A question answered first by the human cancels the queued parent wake, as T3's reactor does. An answer arriving after a restart is delivered from storage. The human's own turns are never nudged or interrupted.
+- Not to implement: a separate inbox page, agent-callable approval, or treating text such as "approved" as permission.
+
+**C3. One calm Symphony Work list**
+- The list has one row per work item, with filters: Needs you, Running, Queued, Ready for review, Done, Failed. Rows sit in the filter that the server lifecycle derives; no row can be moved by hand.
+- The detail drawer opens on demand and closes. It holds the evidence bundle, attempts, PR state, the execution graph (only stages and children that actually exist) and a per-story guidance box.
+- Guidance precedence is workflow, then story. It is capped in bytes, recorded as a hash per attempt, and can never widen autonomy or approvals.
+- The model selector reuses the composer's thread picker. A manual batch means selecting rows and choosing Run, with no wizard.
+- Error states: tracker read failure shows the last good data with a banner. A refused dispatch shows its reason in the row. An item that is not eligible shows why.
+- Not to implement: Kanban columns, drag and drop, a column-layout editor, a permanent detail panel, or a separate Board page.
+
+**C4. Symphony runners through the ordinary provider engine**
+- Journey: a workflow names an OpenCode/DeepSeek runner. The run attempt launches a managed thread through W6's launch path: deterministic command IDs, the permission ceiling, and positive-evidence states. Approvals, stop and restart therefore share one implementation with children.
+- The Codex `AgentRuntime` stays until the new path passes the `SMOKE.md` live run.
+- Unknown state: the provider-support table marks a provider "unverified" until a live probe is recorded.
+- Value: removes the Codex-only limit without building a second runtime.
+- Not to implement: claiming non-Codex Symphony support before a probe, or deleting the Codex runtime early.
+
+**C5 (later, after W5 slice 3). Explicit machine targets for children**
+- Journey: `child_capabilities` lists only connected, enabled machines. The human or agent names the machine, and it is shown and pinned on the child row before the child is admitted. Routing is one hop. The durable task row and result mailbox live on the parent's server.
+- Unknown state: an unreachable machine shows "unreachable, last seen at …". The child keeps its unknown state and is never moved automatically. Non-loopback connections require a token.
+- Not to implement: automatic placement, multi-hop routing, relay, or account linking.
+
+## D. Roadmap changes and delivery order
+
+**Should change**
+1. **W4 4.2 to 4.4 and 4.8 (column layout, presets, drag and drop):** replace them with C3's filters. Keep 4.1 (merged-PR detector), 4.5 (honest status), 4.6 (actions, moved into the on-demand drawer) and 4.9 (accessibility). I have not read 16.10, which may already cover this; Sol should reconcile.
+2. **W6-C3 result pin "on first settlement of the original child turn":** pin only once the turn has settled and there is no live background work. Otherwise use `waiting_for_background`, or a "background work unknown" flag for providers with no roster. Add a re-check listener, per T3 #22709.
+3. **Gap 3 (MCP credential expiry):** bind delegation authority to the live parent run and issue credentials per turn, so idle time is not treated as proof.
+4. **W6-C4:** add cancellation of the queued question wake and a pointer for truncated results.
+5. **Symphony parsed-but-unenforced approval keys:** fail closed. A workflow at `deliver` autonomy that sets them should refuse to activate, or at least require an explicit "not enforced" acknowledgement shown in its detail.
+6. **Symphony Codex-only:** add C4 as the planned path after W6-C3.
+
+**Should stand:** depth 1, caps of 3 per parent and 6 per environment, no hidden queue, queue-only delivery, worktree-only isolation in C1 to C3, the OpenCode-first allowlist, the 16.4 approval rule, W5 staying deferred, the merge gate, and the core-first order.
+
+**Delivery order**
+1. Finish Phase 1D and 1E (stands).
+2. W6-C1 to C3 with amendments 2 to 4. Acceptance:
+   - Fake-provider closure test: exactly one wake.
+   - Kill during launch and during delivery: no duplicate.
+   - Background-settle regression that fails on revert.
+   - Live layer-boot probe.
+   - One observed live OpenCode run with the result returned durably.
+3. C3 Work list UI in disjoint `apps/web` files, using fixtures after C1. Acceptance: logic tests plus a visual check against the human's references.
+4. Symphony `SMOKE.md` live run with Codex against a throwaway tracker.
+5. W6-C4 plus C2. Acceptance: a stale approval is refused, the parent cannot approve, and answers survive a restart.
+6. C4 OpenCode runner probe.
+7. Machines (W5), then C5.
+
+**Boundaries that hold throughout:** unit and integration tests are not live proof. A tree UI alone does not count as the feature. Competitor facts are static reads.
+
+## E. Points to put to Sol
+
+1. **Reject at cap or queue durably.** Synara holds excess tasks in a visible persistent queue (default 3, maximum 8). I prefer rejection for children, because it keeps fan-out explicit and the next wake re-enters the parent naturally. A queue suits Symphony, which already has one.
+2. **Steer or queue.** T3 steers results into active turns where the provider supports it. I would keep queue-only, including for question wakes.
+3. **Silence recovery in unattended Symphony.** I would never interrupt on silence alone, and retry only after positive death evidence: absent from the live session list and the process identity is gone. Sol may argue an unattended run needs one automatic nudge. I could accept a nudge, but not an interrupt.
+4. **One runner engine (C4) or two.** Unifying reduces duplicated approval and stop logic, but it adds migration risk to a path that has never had a live run.
+5. **Worktree-only children.** Reviewers cannot see the parent's uncommitted edits (T3 documents the same limit). This conflicts with "review my current changes". Options are a later read-only shared mode with plan mode enforced, or a snapshot commit. I'd defer, and the child result must state the limit plainly.
+6. **The execution graph.** It should only draw nodes for real child rows and real stage events. Is a graph worth building before C3 exists?
+7. **Per-story guidance.** It is text, so it must never change autonomy or approvals. We should agree that it is versioned per attempt.
+
+Sources:
+- [Better Stack: OpenAI Symphony guide](https://betterstack.com/community/guides/ai/openai-symphony/)
+- [IT Brief: OpenAI launches Symphony](https://itbrief.co.uk/story/openai-launches-symphony-for-coding-agent-workflows)
+- [The Decoder on Symphony](https://the-decoder.com/openai-says-human-attention-is-the-bottleneck-so-it-built-a-system-to-let-agents-manage-themselves/)
+- [Conductor changelog](https://www.conductor.build/changelog)
+- [Maestri changelog](https://www.themaestri.app/en/changelog)
+- [Chopin concept](https://githubnext.com/projects/chopin/)

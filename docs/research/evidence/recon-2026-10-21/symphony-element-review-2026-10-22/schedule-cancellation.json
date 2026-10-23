@@ -1,0 +1,7 @@
+{
+  "automationId": "claude-review-of-symphony-ux-fixes",
+  "mode": "delete",
+  "deleteStatus": "not_found",
+  "message": "Automation already does not exist in the app.",
+  "replacementCreated": false
+}

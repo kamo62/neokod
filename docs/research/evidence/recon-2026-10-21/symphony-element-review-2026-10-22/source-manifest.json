@@ -1,0 +1,28 @@
+{
+  "implementationCommit": "d89c4f3aacfeb7925dee9d05f5ea2233f5e457f6",
+  "files": {
+    "docs/design/symphony-exploration-2026-10-21/fixtures.js": "91a26634744acec08baeb5a1407fd382484c79a010b43e8f9d3b6585b380b333",
+    "docs/design/symphony-exploration-2026-10-21/index.html": "173a994f23a83cafedf057960ea654f6ae9171a9d5f444570d75423fdee964cd",
+    "docs/design/symphony-exploration-2026-10-21/planning-data.js": "52ffa423c8ea3ee451304433c0c958b5ad1cbd631d8d01515c394bad9c4470b2",
+    "docs/design/symphony-exploration-2026-10-21/planning.css": "398207845b1254ab4da0a124f514f84d4f8a5a7700d35b66cd4f7b58fca23ae1",
+    "docs/design/symphony-exploration-2026-10-21/planning.html": "d1cc8dac1aa699b0aece7078ddc8d473b128a2630ea602c2edcdb4cf7059848b",
+    "docs/design/symphony-exploration-2026-10-21/planning.js": "31d4711c1f451ac8f972e46b14f77d657ec11c84a6d0f02a738c52d46ba7b1b0",
+    "docs/design/symphony-exploration-2026-10-21/runs.css": "28a6fdab42b5e7aea71b9f508c48ebc804e35df72e6f20b89bed1c987ff1bf2a",
+    "docs/design/symphony-exploration-2026-10-21/runs.html": "0f4157d1b68df55f06077bd8ab142111ee16702164aa1281b3a051ffa233afca",
+    "docs/design/symphony-exploration-2026-10-21/runs.js": "98977d303c2275f6399b0d1e14593c8f6cdc186813a311e1cb73f5d38ea7a1cb",
+    "docs/design/symphony-exploration-2026-10-21/shared.js": "3faf8fe2b91f4a6875dbfbff4120d65587e8e6d9b4559250323159085e2b3566",
+    "docs/design/symphony-exploration-2026-10-21/style.css": "fabf32f4471b37cc81fa91a09908b675be605f654341333f547e520415ed94bf",
+    "docs/design/symphony-exploration-2026-10-21/work-data.js": "ca23646ba055a9064e49896121cc8dd57b1671e2f19ebecfdf20d9827c5e07ed",
+    "docs/design/symphony-exploration-2026-10-21/work.css": "de2bb0dab3c632749d40672cad72580174195cfc9fc31d6b1181a086bcc0121d",
+    "docs/design/symphony-exploration-2026-10-21/work.html": "3bc11eccfb8270f9b04cee12a288743b3d54ac3b999b9fe08ae6ff6a9d676dc9",
+    "docs/design/symphony-exploration-2026-10-21/work.js": "ffdd407c232ac1e3ccafcd2d4422ce9b25db0446f83ee727516e729fedf6bc68",
+    "docs/design/symphony-exploration-2026-10-21/workflow-data.js": "44f44976d29bf1e54fd2e4b4703f9e75048c7f88c9af4f46c2343adbd2cba928",
+    "docs/design/symphony-exploration-2026-10-21/workflow.css": "776ad41cbcaccf46b72ab1491783dbe1b1bc532bcbeb60c6fc92451861184409",
+    "docs/design/symphony-exploration-2026-10-21/workflow.html": "9d067e592a54aee69902a03e403abe8dda6fad283360733bacea711392fadb46",
+    "docs/design/symphony-exploration-2026-10-21/workflow.js": "c5ae02fbc0df35ae07a3e12c69dbb02949330643b6dd4ec28d1273bdaa3d1fe7"
+  },
+  "capturedPages": ["index", "work", "runs", "workflow", "planning"],
+  "extraPanels": ["machine", "decisions", "evidence"],
+  "sourceOnlyConditionalControls": true,
+  "applicationCodeChanged": false
+}

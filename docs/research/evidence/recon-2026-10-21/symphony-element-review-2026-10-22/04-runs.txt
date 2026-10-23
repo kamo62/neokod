@@ -1,0 +1,399 @@
+Browser tab: 326104976, Title: "Symphony runs · Concept A · Neokod design prototype", URL: "http://127.0.0.1:63035/runs.html?item=NEO-4821&attempt=3#NEO-4821".
+0 AXWebArea Symphony runs · Concept A · Neokod design prototype, URL: 127.0.0.1:63035/runs.html?item=NEO-4821&attempt=3#NEO-4821
+	1 container
+		2 link Description: Skip to runs, Value: 127.0.0.1:63035/runs.html?item=NEO-4821&attempt=3#run-list
+		3 link Description: N Neokod, Value: 127.0.0.1:63035/index.html
+		4 container Location
+			5 text Symphony
+			6 text Runs
+		7 container Symphony prototype
+			8 link Description: Work, Value: 127.0.0.1:63035/work.html
+			9 link Description: Runs, Value: 127.0.0.1:63035/runs.html
+			10 link Description: Workflow map, Value: 127.0.0.1:63035/workflow.html
+			11 link Description: Plan and decisions, Value: 127.0.0.1:63035/planning.html
+		12 text Design prototype · Sample data
+		13 button Reset demo, ID: reset-demo
+		14 checkbox Description: Switch to light theme, Value: 1
+		15 container layout
+			16 container Project and workflows
+				17 text Neokod
+				18 text Workflows
+				19 container Description: Workflows, ID: workflows
+					20 checkbox All workflows , 5 need you, 5 runs: 14, Value: 1
+						21 text All workflows
+						22 container 5 need you
+							23 text , 5 need you, 5
+						24 text runs:
+						25 text 14
+					26 checkbox Core reliability , 3 need you, 3 runs: 7, Value: 0
+						27 text Core reliability
+						28 container 3 need you
+							29 text , 3 need you, 3
+						30 text runs:
+						31 text 7
+					32 checkbox Provider adapters , 1 need you, 1 runs: 4, Value: 0
+						33 text Provider adapters
+						34 container 1 need you
+							35 text , 1 need you, 1
+						36 text runs:
+						37 text 4
+					38 checkbox Settings and safety , 1 need you, 1 runs: 3, Value: 0
+						39 text Settings and safety
+						40 container 1 need you
+							41 text , 1 need you, 1
+						42 text runs:
+						43 text 3
+				44 text Keyboard
+				45 container
+					46 text /  Search
+				47 container
+					48 text ↑ ↓  Move between runs
+				49 container
+					50 text Esc  Clear search or close
+			51 container main
+				52 container
+					53 text Search runs
+					54 search text field (settable) Search runs, ID: search
+				55 container Show
+					56 checkbox Active, Value: 1
+					57 checkbox History, Value: 0
+					58 checkbox All, Value: 0
+				59 container Description: Filter by status, ID: chips
+					60 checkbox All 14, Value: 1
+					61 checkbox Needs you 5, Value: 0
+					62 checkbox Running 1, Value: 0
+					63 checkbox Paused 1, Value: 0
+					64 checkbox Failed 1, Value: 0
+					65 checkbox Tracking lost 1, Value: 0
+					66 checkbox Queued 2, Value: 0
+					67 checkbox Accepted, not running 1, Value: 0
+				68 container Description: Filter by machine, ID: machines
+					69 text Machine
+					70 checkbox All machines 14, Value: 1
+					71 checkbox Sample Mac 7 mac, Help: Sample Mac (mac), Connected, Value: 0
+						72 text Sample Mac
+						73 text 7
+						74 text mac
+					75 checkbox Work PC 6 work, Help: Work PC (work), Connected, Value: 0
+						76 text Work PC
+						77 text 6
+						78 text work
+					79 checkbox Build host 1 build, Help: Build host (build), Offline, sign-in failed, Value: 0
+						80 text Build host
+						81 text 1
+						82 text build
+				83 container Needs you 5, ID: attention
+					84 heading Needs you 5, Value: 2, ID: attn-title
+						85 text Needs you  5
+					86 content list
+						87 button NEO-4830 R-da1deed1 Acknowledgement unknownReceipt R-da1deed1-d7b8-405e-aadf-ac1da3436af5 has no authoritative result This is a Work request, not attempt 3. Sample Mac mac Provider adapters
+							88 text NEO-4830 
+							89 text R-da1deed1
+							90 text Acknowledgement unknown
+							91 text Receipt R-da1deed1-d7b8-405e-aadf-ac1da3436af5 has no authoritative result 
+							92 text This is a Work request, not attempt 3.
+							93 container Sample Mac (mac), Connected. Sample machine.
+								94 text Sample Mac mac
+							95 text Provider adapters
+						96 button NEO-4821 Decision neededUnknown send acknowledgement after reconnect Sample Mac mac Core reliability
+							97 text NEO-4821
+							98 text Decision needed
+							99 text Unknown send acknowledgement after reconnect
+							100 container Sample Mac (mac), Connected. Sample machine.
+								101 text Sample Mac mac
+							102 text Core reliability
+						103 button NEO-4790 Tracking lostAgent may still be writing to the worktree Build host build offline Core reliability
+							104 text NEO-4790
+							105 text Tracking lost
+							106 text Agent may still be writing to the worktree
+							107 container Build host (build), Offline, sign-in failed. Sample machine.
+								108 text Build host build offline
+							109 text Core reliability
+						110 button NEO-4785 Same failure twiceENOENT in review tests on attempts 1 and 2 Sample Mac mac Core reliability
+							111 text NEO-4785
+							112 text Same failure twice
+							113 text ENOENT in review tests on attempts 1 and 2
+							114 container Sample Mac (mac), Connected. Sample machine.
+								115 text Sample Mac mac
+							116 text Core reliability
+						117 button NEO-4776 Merge approvalPR #1279: all gates pass at 0b7d2f6 Work PC work Settings and safety
+							118 text NEO-4776
+							119 text Merge approval
+							120 text PR #1279: all gates pass at 0b7d2f6
+							121 container Work PC (work), Connected. Sample machine.
+								122 text Work PC work
+							123 text Settings and safety
+				124 list Description: Runs, ID: run-list
+					125 container Demo requests from Work
+						126 text Demo requests from Work
+						127 text 6
+						128 ID: opt-q-R-da1deed1-d7b8-405e-aadf-ac1da3436af5-NEO-4830, Value: NEO-4830 Flag ACP sessions that go silent mid-turn Acknowledgement unknown · R-da1deed1-d7b8-405e-aadf-ac1da3436af5, recorded 22 Oct 2026, 20:54 · Sample Mac (mac) Receipt R-da1deed1 Sample Mac mac
+							129 text NEO-4830
+							130 text Flag ACP sessions that go silent mid-turn
+							131 text Acknowledgement unknown 
+							132 text · R-da1deed1-d7b8-405e-aadf-ac1da3436af5, recorded 22 Oct 2026, 20:54 · Sample Mac (mac)
+							133 text Receipt R-da1deed1
+							134 container Sample Mac (mac), Connected. Sample machine.
+								135 text Sample Mac mac
+						136 ID: opt-q-R-da1deed1-d7b8-405e-aadf-ac1da3436af5-NEO-4846, Value: NEO-4846 Normalise Windows paths in diff headers Blocked, not started · R-da1deed1-d7b8-405e-aadf-ac1da3436af5, recorded 22 Oct 2026, 20:54 · Work PC (work) Receipt R-da1deed1 Work PC work
+							137 text NEO-4846
+							138 text Normalise Windows paths in diff headers
+							139 text Blocked, not started 
+							140 text · R-da1deed1-d7b8-405e-aadf-ac1da3436af5, recorded 22 Oct 2026, 20:54 · Work PC (work)
+							141 text Receipt R-da1deed1
+							142 container Work PC (work), Connected. Sample machine.
+								143 text Work PC work
+						144 ID: opt-q-R-4b691410-9720-4b26-bf66-dab9e84d190c-NEO-4846, Value: NEO-4846 diff headers use one path style on every platform. Blocked, not started · R-4b691410-9720-4b26-bf66-dab9e84d190c, recorded 22 Oct 2026, 20:29 · Work PC (work) Receipt R-4b691410 Work PC work
+							145 text NEO-4846
+							146 text diff headers use one path style on every platform.
+							147 text Blocked, not started 
+							148 text · R-4b691410-9720-4b26-bf66-dab9e84d190c, recorded 22 Oct 2026, 20:29 · Work PC (work)
+							149 text Receipt R-4b691410
+							150 container Work PC (work), Connected. Sample machine.
+								151 text Work PC work
+						152 ID: opt-q-R-4b691410-9720-4b26-bf66-dab9e84d190c-NEO-4861, Value: NEO-4861 make the age and coverage of the loaded issue list explicit. Closed in the demo, not running · R-4b691410-9720-4b26-bf66-dab9e84d190c, recorded 22 Oct 2026, 20:29 · Sample Mac (mac) Receipt R-4b691410 Sample Mac mac
+							153 text NEO-4861
+							154 text make the age and coverage of the loaded issue list explicit.
+							155 text Closed in the demo, not running 
+							156 text · R-4b691410-9720-4b26-bf66-dab9e84d190c, recorded 22 Oct 2026, 20:29 · Sample Mac (mac)
+							157 text Receipt R-4b691410
+							158 container Sample Mac (mac), Connected. Sample machine.
+								159 text Sample Mac mac
+						160 ID: opt-q-R-1-NEO-4821, Value: NEO-4821 queued sends survive a reconnect and a reload, and are never delivered twice. Queued in the demo, not running · R-1, recorded 04:34 PM · Sample Mac (mac) Receipt R-1 Sample Mac mac
+							161 text NEO-4821
+							162 text queued sends survive a reconnect and a reload, and are never delivered twice.
+							163 text Queued in the demo, not running 
+							164 text · R-1, recorded 04:34 PM · Sample Mac (mac)
+							165 text Receipt R-1
+							166 container Sample Mac (mac), Connected. Sample machine.
+								167 text Sample Mac mac
+						168 ID: opt-q-R-1-NEO-4846, Value: NEO-4846 diff headers use one path style on every platform. Blocked, not started · R-1, recorded 04:34 PM · Work PC (work) Receipt R-1 Work PC work
+							169 text NEO-4846
+							170 text diff headers use one path style on every platform.
+							171 text Blocked, not started 
+							172 text · R-1, recorded 04:34 PM · Work PC (work)
+							173 text Receipt R-1
+							174 container Work PC (work), Connected. Sample machine.
+								175 text Work PC work
+					176 container Active
+						177 text Active
+						178 text 8
+						179 (selected) ID: opt-r-NEO-4821, Value: NEO-4821 Preserve queued sends across reconnects Waiting for your decision · Build, attempt 3, Core reliability Stages: Intake done, Design done, Build needs you, Integrate failed, Review sent back, PR not run Sample Mac mac
+							180 text NEO-4821
+							181 text Preserve queued sends across reconnects
+							182 text Waiting for your decision 
+							183 text · Build, attempt 3, Core reliability
+							184 container Stages: Intake done, Design done, Build needs you, Integrate failed, Review sent back, PR not run
+							185 container Sample Mac (mac), Connected. Sample machine.
+								186 text Sample Mac mac
+						187 ID: opt-r-NEO-4807, Value: NEO-4807 Retry provider handshake after socket reset Running · Build, attempt 1, Provider adapters Stages: Intake done, Design skipped, Build running, Integrate not run, Review not run, PR not run Work PC work
+							188 text NEO-4807
+							189 text Retry provider handshake after socket reset
+							190 text Running 
+							191 text · Build, attempt 1, Provider adapters
+							192 container Stages: Intake done, Design skipped, Build running, Integrate not run, Review not run, PR not run
+							193 container Work PC (work), Connected. Sample machine.
+								194 text Work PC work
+						195 ID: opt-r-NEO-4799, Value: NEO-4799 Settle Copilot sessions before runtime replacement Paused by you · Integrate, attempt 2, Provider adapters Stages: Intake done, Design done, Build done, Integrate paused, Review not run, PR not run Sample Mac mac
+							196 text NEO-4799
+							197 text Settle Copilot sessions before runtime replacement
+							198 text Paused by you 
+							199 text · Integrate, attempt 2, Provider adapters
+							200 container Stages: Intake done, Design done, Build done, Integrate paused, Review not run, PR not run
+							201 container Sample Mac (mac), Connected. Sample machine.
+								202 text Sample Mac mac
+						203 ID: opt-r-NEO-4790, Value: NEO-4790 Reap terminal process groups on server exit Tracking lost · Build, attempt 1, Core reliability Stages: Intake done, Design done, Build tracking lost, Integrate not run, Review not run, PR not run Build host build offline
+							204 text NEO-4790
+							205 text Reap terminal process groups on server exit
+							206 text Tracking lost 
+							207 text · Build, attempt 1, Core reliability
+							208 container Stages: Intake done, Design done, Build tracking lost, Integrate not run, Review not run, PR not run
+							209 container Build host (build), Offline, sign-in failed. Sample machine.
+								210 text Build host build offline
+						211 ID: opt-r-NEO-4785, Value: NEO-4785 Validate diff cwd against worktree roots Validation failed twice · Integrate, attempt 2, Core reliability Stages: Intake done, Design done, Build done, Integrate failed, Review not run, PR not run Sample Mac mac
+							212 text NEO-4785
+							213 text Validate diff cwd against worktree roots
+							214 text Validation failed twice 
+							215 text · Integrate, attempt 2, Core reliability
+							216 container Stages: Intake done, Design done, Build done, Integrate failed, Review not run, PR not run
+							217 container Sample Mac (mac), Connected. Sample machine.
+								218 text Sample Mac mac
+						219 ID: opt-r-NEO-4776, Value: NEO-4776 Clamp UTF-8 writes at 10 MiB Ready to merge · PR, attempt 1, Settings and safety Stages: Intake done, Design done, Build done, Integrate passed, Review done, PR needs you Work PC work
+							220 text NEO-4776
+							221 text Clamp UTF-8 writes at 10 MiB
+							222 text Ready to merge 
+							223 text · PR, attempt 1, Settings and safety
+							224 container Stages: Intake done, Design done, Build done, Integrate passed, Review done, PR needs you
+							225 container Work PC (work), Connected. Sample machine.
+								226 text Work PC work
+						227 ID: opt-r-NEO-4770, Value: NEO-4770 Debounce Symphony settings commits Queued · Not started, Settings and safety Stages: Intake queued, Design not run, Build not run, Integrate not run, Review not run, PR not run Sample Mac mac
+							228 text NEO-4770
+							229 text Debounce Symphony settings commits
+							230 text Queued 
+							231 text · Not started, Settings and safety
+							232 container Stages: Intake queued, Design not run, Build not run, Integrate not run, Review not run, PR not run
+							233 container Sample Mac (mac), Connected. Sample machine.
+								234 text Sample Mac mac
+						235 ID: opt-r-NEO-4838, Value: NEO-4838 Warn before removing a worktree with uncommitted changes Accepted on Work PC, not running · Existing accepted record · Work PC (work) · not running Reference Work PC work
+							236 text NEO-4838
+							237 text Warn before removing a worktree with uncommitted changes
+							238 text Accepted on Work PC, not running 
+							239 text · Existing accepted record · Work PC (work) · not running
+							240 text Reference
+							241 container Work PC (work), Connected. Sample machine.
+								242 text Work PC work
+			243 container Description: Selected run, ID: detail
+				244 container
+					245 text NEO-4821 Core reliability Waiting for your decision
+					246 heading Preserve queued sends across reconnects, Value: 2, ID: detail-title
+						247 text Preserve queued sends across reconnects
+					248 container Sample Mac (mac), Connected. Sample machine.
+						249 text Sample Mac mac
+					250 text Immutable machine id  mac
+					251 container Selected item detail
+						252 link Description: Summary, Value: 127.0.0.1:63035/runs.html?item=NEO-4821&attempt=3#NEO-4821
+						253 link Description: Execution, Value: 127.0.0.1:63035/workflow.html?item=NEO-4821&attempt=3#NEO-4821
+						254 link Description: Plan and decisions, Value: 127.0.0.1:63035/planning.html?item=NEO-4821&attempt=3&tab=decisions#NEO-4821
+						255 link Description: Evidence, Value: 127.0.0.1:63035/planning.html?item=NEO-4821&attempt=3&tab=evidence#NEO-4821
+					256 link Description:  Open in workflow map, Value: 127.0.0.1:63035/workflow.html?item=NEO-4821&attempt=3#NEO-4821
+					257 link Description:  Open plan and decisions, Value: 127.0.0.1:63035/planning.html?item=NEO-4821&attempt=3#NEO-4821
+				258 text Current blocker
+				259 text Package B is paused. Its implementer cannot finish the repair until someone decides what happens to a send whose acknowledgement was lost.
+				260 container
+					261 text Next:  Answer decision D-3. Saving the answer does not resume work; resuming is a separate step.
+				262 text D-3: How should a send with an unknown acknowledgement be handled?
+				263 text The socket dropped after the client sent message m-81f2 and before the server's acknowledgement arrived. On reconnect the client cannot tell whether the server stored it. The server keeps send receipts for 24 hours (D-2).
+				264 text Applies to NEO-4821, attempt 3 on Sample Mac (mac), head 7f3a9c2.
+				265 D-3: How should a send with an unknown acknowledgement be handled?
+					266 container
+						267 radio button (settable, integer) Value: 0, Description: Resend automatically with the same message ID Relies on server receipts to drop the duplicate. Silent if the receipt has expired.
+						268 text Resend automatically with the same message ID Relies on server receipts to drop the duplicate. Silent if the receipt has expired.
+					269 container
+						270 radio button (settable, integer) Value: 0, Description: Keep the message identity and ask for an explicit retry Suggested by C2 Mark delivery as unknown, keep m-81f2 in the outbox and show Retry. No send happens until someone retries.
+						271 text Keep the message identity and ask for an explicit retry  Suggested by C2 Mark delivery as unknown, keep m-81f2 in the outbox and show Retry. No send happens until someone retries.
+					272 container
+						273 radio button (settable, integer) Value: 0, Description: Mark the send as failed and drop it from the outbox Simplest. The user retypes the message and loses the original identity.
+						274 text Mark the send as failed and drop it from the outbox Simplest. The user retypes the message and loses the original identity.
+				275 text Note for the record (optional)
+				276 text entry area (settable) Note for the record (optional), ID: d3-note
+				277 button (disabled) Save decision
+				278 text Choose an option first.
+				279 text Saving records your answer for this attempt on this machine. It does not resume package B, approve the plan, or merge anything.
+				280 container
+					281 heading Root task, Value: 3
+						282 text Root task
+					283 text Messages queued while the socket is down are dropped when it reconnects mid-send. Keep them, and never deliver one twice.
+					284 content list
+						285 container
+							286 AXListMarker • 
+							287 text A queued send survives a reconnect and a page reload.
+						288 container
+							289 AXListMarker • 
+							290 text A send with a lost acknowledgement is never delivered twice.
+						291 container
+							292 AXListMarker • 
+							293 text The user can see which sends are not yet confirmed.
+					294 text GitHub issue #4821 · imported 13:40. Plan r5, plan execution approval recorded for attempt 3; resume approval is separate.
+				295 container
+					296 heading Attempt and head, Value: 3
+						297 text Attempt and head
+					298 definition list
+						299 container Machine
+							300 text Machine
+						301 container
+							302 container Sample Mac (mac), Connected. Sample machine.
+								303 text Sample Mac mac
+							304 text Immutable machine id  mac . Sample machine; no server is contacted.
+						305 container Item
+							306 text Item
+						307 text NEO-4821, attempt 3 of 4
+						308 container Head
+							309 text Head
+						310 text 7f3a9c2
+						311 container Base
+							312 text Base
+						313 text e19c4d0
+						314 container Branch
+							315 text Branch
+						316 text symphony/neo-4821-queued-sends
+						317 container Worktree
+							318 text Worktree
+						319 text ~/.neokod/worktrees/neokod/neo-4821-a3
+						320 container Provider
+							321 text Provider
+						322 text OpenCode, Sample model A (sample label)
+						323 container Elapsed
+							324 text Elapsed
+						325 text Waiting since 14:26
+						326 container Cost
+							327 text Cost
+						328 text Not reported
+				329 container
+					330 heading Validation on Sample Mac (mac), Value: 3
+						331 text Validation on Sample Mac (mac)
+					332 content list
+						333 container
+							334 text vp run typecheck Host · clean tree Passed
+						335 container
+							336 text vp test apps/web/src/outbox Host · 38 tests Passed
+						337 container
+							338 text vp test apps/server/src/reconnect Host · 1 of 12 failed: duplicate after ack loss Failed
+						339 container
+							340 text e2e: reconnect-mid-send Waiting on package B Not run
+						341 container
+							342 text vp test apps/server/src/reconnect Earlier head Superseded
+					343 text Only a host check at the current head can pass. Agent reports, unknown and superseded results never show green.
+				344 container
+					345 heading Review on Sample Mac (mac), Value: 3
+						346 text Review on Sample Mac (mac)
+					347 text Changes requested
+					348 text Round 1 of 2 at 
+					349 text 3b18e40
+					350 text , an earlier head
+					351 content list
+						352 container
+							353 text blocking A lost acknowledgement can deliver the same message twice. open
+						354 container
+							355 text blocking Outbox is not cleared on sign-out. fixed at 7f3a9c2, not re-reviewed
+				356 container
+					357 heading Agents on Sample Mac (mac), Value: 3
+						358 text Agents on Sample Mac (mac)
+					359 content list
+						360 container
+							361 text R Root run Sample model A (sample label) Waiting for input
+							362 text Waiting since 14:26
+							363 text Cost not reported
+						364 container
+							365 text C1 Implementer, package A Managed Sample model B (sample label) Completed
+							366 text 18m 04s
+							367 text Cost not reported
+						368 container
+							369 text C2 Implementer, package B Managed Sample model B (sample label) Asked a question
+							370 text Waiting since 14:26
+							371 text Cost not reported
+						372 container
+							373 text N1 Tester subagent Observed native Not reported Tracking lost
+							374 text Last observed 14:21:07 · 3m 12s
+							375 text Cost not reported
+						376 container
+							377 text C3 Critic and reviewer Managed Sample model C (sample label) Round 1 complete
+							378 text 6m 40s
+							379 text Cost not reported
+				380 container
+					381 heading Recent events, Value: 3
+						382 text Recent events
+					383 content list
+						384 container
+							385 text 14:26 C2 asked D-3: unknown send acknowledgement
+						386 container
+							387 text 14:24 Validation at 7f3a9c2: 3 passed, 1 failed, 1 not run
+						388 container
+							389 text 14:21 Tracking lost for N1 after C2's turn settled
+						390 container
+							391 text 14:16 Repair round 1 started on package B
+						392 container
+							393 text 14:15 Review round 1 at 3b18e40: changes requested
+						394 container
+							395 text 13:44 Attempt 3 dispatched from e19c4d0
+
+The focused UI element is 0 AXWebArea Symphony runs · Concept A · Neokod design prototype, URL: 127.0.0.1:63035/runs.html?item=NEO-4821&attempt=3#NEO-4821
