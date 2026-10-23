@@ -338,11 +338,18 @@ function toCanonicalUserInputAnswers(
 function toUserInputQuestions(questions: ReadonlyArray<CodexToolUserInputQuestion>) {
   const parsedQuestions = questions
     .map((question) => {
+      // Codex permits `options` to be omitted, null, or empty. Those are
+      // free-text questions: the canonical question keeps an empty options
+      // array and the composer's custom answer resolves the request, so
+      // `isOther` is already supported. Requests containing `isSecret` are
+      // rejected in `mapToRuntimeEvents` before they reach this normalizer.
       const options =
         question.options
           ?.map((option) => {
             const label = trimText(option.label);
-            const description = trimText(option.description);
+            // A label is required. When Codex sends no description, reuse the
+            // label instead of losing the option (and possibly the question).
+            const description = trimText(option.description) ?? label;
             if (!label || !description) {
               return undefined;
             }
@@ -353,7 +360,7 @@ function toUserInputQuestions(questions: ReadonlyArray<CodexToolUserInputQuestio
       const id = trimText(question.id);
       const header = trimText(question.header);
       const prompt = trimText(question.question);
-      if (!id || !header || !prompt || options.length === 0) {
+      if (!id || !header || !prompt) {
         return undefined;
       }
       return {
@@ -669,6 +676,22 @@ function mapToRuntimeEvents(
       const payload =
         readPayload(EffectCodexSchema.ServerRequest__ToolRequestUserInputParams, event.payload) ??
         readPayload(EffectCodexSchema.ToolRequestUserInputParams, event.payload);
+      // A secret question cannot be represented by the canonical question
+      // contract, so the ordinary composer would collect plaintext. Reject the
+      // whole request (including mixed requests) instead of dropping only the
+      // secret question or submitting a partial answer map.
+      if (payload?.questions.some((question) => question.isSecret === true)) {
+        return [
+          {
+            ...runtimeEventBase(event, canonicalThreadId),
+            type: "runtime.warning",
+            payload: {
+              message:
+                "Codex requested secret input, which Neokod does not support. Interrupt the turn or answer directly through Codex.",
+            },
+          },
+        ];
+      }
       const questions = payload ? toUserInputQuestions(payload.questions) : undefined;
       if (!questions) {
         return [];

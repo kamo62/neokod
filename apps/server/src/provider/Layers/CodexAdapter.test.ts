@@ -1273,6 +1273,186 @@ lifecycleLayer("CodexAdapterLive lifecycle", (it) => {
       }),
   );
 
+  it.effect(
+    "preserves no-option and label-only user-input questions in mixed and all-free-text requests",
+    () =>
+      Effect.gen(function* () {
+        const { adapter, runtime } = yield* startLifecycleRuntime();
+        const eventsFiber = yield* Stream.runCollect(Stream.take(adapter.streamEvents, 2)).pipe(
+          Effect.forkChild,
+        );
+
+        yield* runtime.emit({
+          id: asEventId("evt-user-input-mixed"),
+          kind: "request",
+          provider: ProviderDriverKind.make("codex"),
+          threadId: asThreadId("thread-1"),
+          createdAt: "2026-01-01T00:00:00.000Z",
+          method: "item/tool/requestUserInput",
+          requestId: ApprovalRequestId.make("req-user-input-mixed"),
+          payload: {
+            itemId: "item-user-input-mixed",
+            threadId: "thread-1",
+            turnId: "turn-1",
+            questions: [
+              {
+                id: "choice",
+                header: "Choice",
+                question: "Pick one",
+                options: [{ label: "Allow", description: "" }],
+              },
+              {
+                id: "details",
+                header: "Details",
+                question: "Explain the change",
+                options: null,
+              },
+              {
+                id: "notes",
+                header: "Notes",
+                question: "Add any notes",
+                options: [],
+              },
+            ],
+          },
+        } satisfies ProviderEvent);
+        yield* runtime.emit({
+          id: asEventId("evt-user-input-free-text"),
+          kind: "request",
+          provider: ProviderDriverKind.make("codex"),
+          threadId: asThreadId("thread-1"),
+          createdAt: "2026-01-01T00:00:01.000Z",
+          method: "item/tool/requestUserInput",
+          requestId: ApprovalRequestId.make("req-user-input-free-text"),
+          payload: {
+            itemId: "item-user-input-free-text",
+            threadId: "thread-1",
+            turnId: "turn-1",
+            questions: [
+              {
+                id: "free_a",
+                header: "First",
+                question: "What should happen first?",
+                options: null,
+              },
+              {
+                id: "free_b",
+                header: "Second",
+                question: "What should happen next?",
+              },
+            ],
+          },
+        } satisfies ProviderEvent);
+
+        const events = Array.from(yield* Fiber.join(eventsFiber));
+        NodeAssert.equal(events.length, 2);
+
+        NodeAssert.equal(events[0]?.type, "user-input.requested");
+        if (events[0]?.type === "user-input.requested") {
+          NodeAssert.deepStrictEqual(
+            events[0].payload.questions.map((question) => question.id),
+            ["choice", "details", "notes"],
+          );
+          NodeAssert.deepStrictEqual(events[0].payload.questions[0]?.options, [
+            { label: "Allow", description: "Allow" },
+          ]);
+          NodeAssert.deepStrictEqual(events[0].payload.questions[1]?.options, []);
+          NodeAssert.deepStrictEqual(events[0].payload.questions[2]?.options, []);
+        }
+
+        NodeAssert.equal(events[1]?.type, "user-input.requested");
+        if (events[1]?.type === "user-input.requested") {
+          NodeAssert.deepStrictEqual(
+            events[1].payload.questions.map((question) => question.id),
+            ["free_a", "free_b"],
+          );
+          NodeAssert.deepStrictEqual(
+            events[1].payload.questions.map((question) => question.options),
+            [[], []],
+          );
+        }
+      }),
+  );
+
+  it.effect("rejects all-secret and mixed secret user-input requests with a visible warning", () =>
+    Effect.gen(function* () {
+      const { adapter, runtime } = yield* startLifecycleRuntime();
+      const eventsFiber = yield* Stream.runCollect(Stream.take(adapter.streamEvents, 2)).pipe(
+        Effect.forkChild,
+      );
+
+      yield* runtime.emit({
+        id: asEventId("evt-user-input-secret-only"),
+        kind: "request",
+        provider: ProviderDriverKind.make("codex"),
+        threadId: asThreadId("thread-1"),
+        createdAt: "2026-01-01T00:00:00.000Z",
+        method: "item/tool/requestUserInput",
+        requestId: ApprovalRequestId.make("req-user-input-secret-only"),
+        payload: {
+          itemId: "item-user-input-secret-only",
+          threadId: "thread-1",
+          turnId: "turn-1",
+          questions: [
+            {
+              id: "secret_only",
+              header: "Credential",
+              question: "Enter the credential",
+              isSecret: true,
+              options: null,
+            },
+          ],
+        },
+      } satisfies ProviderEvent);
+      yield* runtime.emit({
+        id: asEventId("evt-user-input-secret-mixed"),
+        kind: "request",
+        provider: ProviderDriverKind.make("codex"),
+        threadId: asThreadId("thread-1"),
+        createdAt: "2026-01-01T00:00:01.000Z",
+        method: "item/tool/requestUserInput",
+        requestId: ApprovalRequestId.make("req-user-input-secret-mixed"),
+        payload: {
+          itemId: "item-user-input-secret-mixed",
+          threadId: "thread-1",
+          turnId: "turn-1",
+          questions: [
+            {
+              id: "public_choice",
+              header: "Choice",
+              question: "Pick one",
+              options: [{ label: "Allow", description: "Allow this action" }],
+            },
+            {
+              id: "secret_mixed",
+              header: "Credential",
+              question: "Enter the credential",
+              isSecret: true,
+              options: [],
+            },
+          ],
+        },
+      } satisfies ProviderEvent);
+
+      const events = Array.from(yield* Fiber.join(eventsFiber));
+      NodeAssert.equal(events.length, 2);
+      NodeAssert.deepStrictEqual(
+        events.map((event) => event.type),
+        ["runtime.warning", "runtime.warning"],
+      );
+      for (const event of events) {
+        NodeAssert.equal(event.type, "runtime.warning");
+        if (event.type === "runtime.warning") {
+          NodeAssert.match(event.payload.message, /secret input/i);
+          NodeAssert.match(event.payload.message, /Codex/);
+          NodeAssert.match(event.payload.message, /Interrupt the turn/);
+        }
+      }
+      NodeAssert.equal(events[0]?.requestId, "req-user-input-secret-only");
+      NodeAssert.equal(events[1]?.requestId, "req-user-input-secret-mixed");
+    }),
+  );
+
   it.effect("unwraps Codex token usage payloads for context window events", () =>
     Effect.gen(function* () {
       const { adapter, runtime } = yield* startLifecycleRuntime();
