@@ -343,9 +343,25 @@ describe("narrowAcceptedPermissions", () => {
 
     expect(narrowAcceptedPermissions(accepted, live)).toEqual({
       _tag: "unrepresentable",
-      reason: "approval_escalation_conflict",
+      reason: "approval_policy_conflict",
       acceptedApprovalPolicy: "never",
       liveApprovalPolicy: "on-request",
+    });
+  });
+
+  it("refuses to drop required approval when accepted untrusted meets live never", () => {
+    const accepted = resolveAcceptedPermissions(
+      makeConfig({ autonomy: "execute", codexApprovalPolicy: "untrusted" }),
+    );
+    const live = resolveAcceptedPermissions(
+      makeConfig({ autonomy: "execute", codexApprovalPolicy: "never" }),
+    );
+
+    expect(narrowAcceptedPermissions(accepted, live)).toEqual({
+      _tag: "unrepresentable",
+      reason: "approval_policy_conflict",
+      acceptedApprovalPolicy: "untrusted",
+      liveApprovalPolicy: "never",
     });
   });
 
