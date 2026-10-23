@@ -1,0 +1,14 @@
+{
+  "source": {
+    "head": "6fb57d562abac92a60db38a7ff9a2faf428042cc",
+    "status": ""
+  },
+  "route": "native first-party Claude",
+  "requestedModel": "claude-opus-5-5",
+  "effort": "high",
+  "actualModels": ["claude-opus-5-5"],
+  "exit": {
+    "exitCode": 0,
+    "head": "6fb57d562abac92a60db38a7ff9a2faf428042cc"
+  }
+}
