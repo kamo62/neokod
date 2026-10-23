@@ -177,6 +177,15 @@ export interface LiveRequestsService {
   >;
 
   /**
+   * Remove one registration that this caller just created, before any waiter
+   * observes it. Returns false when absent. Does not fail the Deferred.
+   */
+  readonly withdrawPending: (
+    runAttemptId: RunAttemptId,
+    requestId: string,
+  ) => Effect.Effect<boolean>;
+
+  /**
    * Idempotently fail every outstanding request for a run. Called on every
    * exit path; safe to call multiple times.
    */
@@ -375,6 +384,15 @@ export const makeLiveRequestsWithHooks = (hooks: LiveRequestsTestHooks) =>
           })),
       );
 
+    const withdrawPending: LiveRequestsService["withdrawPending"] = (runAttemptId, requestId) =>
+      Ref.modify(store, (current): readonly [boolean, Record<string, PendingApprovalRequest>] => {
+        const key = keyOf(runAttemptId, requestId);
+        if (current[key] === undefined) return [false, current];
+        const next = { ...current };
+        delete next[key];
+        return [true, next];
+      });
+
     const settleRun: LiveRequestsService["settleRun"] = (runAttemptId, reason) =>
       // Claiming the run's entries and failing each Deferred is one
       // uninterruptible step: an interrupted settlement must not remove requests
@@ -428,6 +446,7 @@ export const makeLiveRequestsWithHooks = (hooks: LiveRequestsTestHooks) =>
       listPending,
       settleRun,
       settleRequest,
+      withdrawPending,
     };
   });
 

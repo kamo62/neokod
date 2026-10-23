@@ -124,7 +124,7 @@ export function approvalRequestHistory(request: ApprovalRequest): ApprovalReques
       answer === undefined
         ? null
         : request.state === "delivering"
-          ? "Delivery to the agent was accepted; history finalisation is pending"
+          ? "Delivery unknown; local acceptance recorded, provider receipt unconfirmed"
           : "Provider receipt not confirmed",
     noteText: note?.text ?? null,
     noteDeliveryLabel: note === undefined ? null : "History only; not sent to the agent",

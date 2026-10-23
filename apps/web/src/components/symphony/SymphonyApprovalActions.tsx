@@ -196,10 +196,17 @@ export function SymphonyApprovalActions({
         <>
           {structured.questions.map((question) => {
             const draft = drafts[question.id] ?? emptyDraft;
+            const sensitive = question.sensitive === true;
             return (
               <div key={question.id} className="space-y-1.5">
                 <p className="text-[11px] font-medium text-foreground">{question.header}</p>
                 <p className="text-[11px] text-muted-foreground">{question.question}</p>
+                {sensitive ? (
+                  <p className="text-[10px] font-medium text-warning-foreground">
+                    Sensitive answer. Neokod stores only a redaction in history and will not display
+                    or return this value.
+                  </p>
+                ) : null}
                 {question.options.length > 0 ? (
                   <div className="flex flex-wrap gap-1.5" role="group" aria-label={question.header}>
                     {question.options.map((option) => {
@@ -235,6 +242,8 @@ export function SymphonyApprovalActions({
                 <Input
                   nativeInput
                   size="sm"
+                  type={sensitive ? "password" : undefined}
+                  autoComplete="off"
                   value={draft.custom}
                   placeholder={
                     question.options.length > 0 ? "Or type a custom answer" : "Type your answer"

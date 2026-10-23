@@ -880,6 +880,11 @@ export const ApprovalRequestSchema = Schema.Struct({
   /** History-only note attached to an approval or rejection. */
   decisionNote: Schema.optional(ApprovalDecisionNoteSchema),
   /**
+   * Present when stored answer/note JSON could not be decoded. The row and its
+   * question stay readable; no answer or note content is invented.
+   */
+  historyUnavailable: Schema.optional(Schema.String),
+  /**
    * How the request closed. The durable column records the same value as
    * `state` on every close, including `interrupted` (the run died while the
    * request was pending), so an interrupted row stays decodable.

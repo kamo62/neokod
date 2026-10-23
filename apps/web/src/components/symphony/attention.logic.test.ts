@@ -122,6 +122,23 @@ describe("approvalRequestHistory", () => {
     expect(history.answerText).toBeNull();
   });
 
+  it("labels a staged delivery as unknown, not delivered", () => {
+    const history = approvalRequestHistory(
+      approvalRequest({
+        state: "delivering",
+        decision: "answered",
+        answer: {
+          answers: [{ questionId: "q1", answer: "main" }],
+          delivery: "unknown",
+          actor: "local_operator",
+          recordedAt: "2026-08-08T10:00:05.000Z",
+        },
+      }),
+    );
+    expect(history.deliveryPending).toBe(true);
+    expect(history.answerDeliveryLabel).toContain("Delivery unknown");
+  });
+
   it("labels redacted and history-only content honestly", () => {
     const history = approvalRequestHistory(
       approvalRequest({
