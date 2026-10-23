@@ -212,10 +212,20 @@ layer(fakeDispatcherIdle)("Reconciler claim release", (it) => {
     Effect.gen(function* () {
       yield* seedWorkflow("/repo");
       const workItem = makeWorkItem("2001", "preparing");
-      yield* seedClaimed(workItem);
+      yield* seedClaimed(workItem, { pid: 9001, pgid: 9001, birthToken: "born-9001" });
       yield* seedAttempt(workItem.id, "user_cancelled", yield* nowIso, yield* nowIso);
 
-      yield* runReconcile();
+      yield* runReconcile({
+        processClosure: {
+          reader: { readBirthToken: () => Effect.succeed({ kind: "token", token: "born-9001" }) },
+          signaller: {
+            signalGroup: () => Effect.succeed("sent"),
+            isGroupAlive: () => Effect.succeed(false),
+          },
+          platform: "linux",
+          graceMs: 0,
+        },
+      });
 
       const after = yield* WorkItemRepository.pipe(
         Effect.flatMap((repo) => repo.getById(workItem.id)),
@@ -228,11 +238,21 @@ layer(fakeDispatcherIdle)("Reconciler claim release", (it) => {
     Effect.gen(function* () {
       yield* seedWorkflow("/repo");
       const workItem = makeWorkItem("2002", "running");
-      yield* seedClaimed(workItem);
+      yield* seedClaimed(workItem, { pid: 9002, pgid: 9002, birthToken: "born-9002" });
       yield* seedAttempt(workItem.id, "streaming_turn", yield* nowIso);
       yield* TestClock.adjust("600000 millis");
 
-      yield* runReconcile();
+      yield* runReconcile({
+        processClosure: {
+          reader: { readBirthToken: () => Effect.succeed({ kind: "no_such_process" } as const) },
+          signaller: {
+            signalGroup: () => Effect.succeed("no_such_group"),
+            isGroupAlive: () => Effect.succeed(false),
+          },
+          platform: "linux",
+          graceMs: 0,
+        },
+      });
 
       const workItems = yield* WorkItemRepository;
       const after = yield* workItems

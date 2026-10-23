@@ -19,6 +19,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 
 import { deriveWorkspaceKey } from "../Domain/Keys.ts";
 import { nowIso } from "../Domain/Time.ts";
+import { SymphonyPersistenceSqlError } from "../Persistence/Errors.ts";
 import type { SymphonyPersistenceError } from "../Persistence/Errors.ts";
 import { ServerConfig } from "../../config.ts";
 import { SqlitePersistenceMemory } from "../../persistence/Layers/Sqlite.ts";
@@ -204,8 +205,17 @@ const blockableFactory = Layer.effect(
   Effect.gen(function* () {
     const releaseRef = yield* Ref.make<(() => Effect.Effect<void>) | null>(null);
     return {
-      make: (_config: EffectiveWorkflowConfig) =>
+      make: (_config: EffectiveWorkflowConfig, options) =>
         Effect.gen(function* () {
+          yield* (
+            options?.onChildSpawned?.(4321, {
+              pid: 4321,
+              pgid: 4321,
+              spawnedAtMs: 0,
+              platform: "linux",
+              birthToken: "born-4321",
+            }) ?? Effect.void
+          ).pipe(Effect.orDie);
           const d = yield* Deferred.make<void, AgentRuntimeSpawnError>();
           yield* Ref.set(releaseRef, () =>
             Deferred.fail(d, new AgentRuntimeSpawnError("interrupted")).pipe(Effect.asVoid),
@@ -249,6 +259,25 @@ const fakeFinalizer = Layer.succeed(ExecutionFinalizer, {
   finalize: () => Effect.succeed("review_ready"),
 });
 
+const cancelTestSignaller = {
+  signalGroup: () => Effect.succeed("sent" as const),
+  isGroupAlive: () => Effect.succeed(false),
+};
+
+const cancelTestClosure = Layer.succeed(RunDispatcherProcessClosure, {
+  reader: {
+    readBirthToken: (pid: number) =>
+      Effect.succeed(
+        pid === 4321 || pid === 4322
+          ? ({ kind: "token", token: `born-${pid}` } as const)
+          : ({ kind: "no_such_process" } as const),
+      ),
+  },
+  signaller: cancelTestSignaller,
+  platform: "linux",
+  graceMs: 1,
+});
+
 const layer = (
   factory: Layer.Layer<AgentRuntimeFactory>,
   workspaceManager: Layer.Layer<WorkspaceManager> = fakeWorkspaceManager,
@@ -264,6 +293,7 @@ const layer = (
       Layer.provideMerge(workspaceManager),
       Layer.provideMerge(finalizer),
       Layer.provideMerge(factory),
+      Layer.provideMerge(cancelTestClosure),
       Layer.provideMerge(
         Layer.succeed(ServerConfig, {
           symphonyLogsDir: "/logs/symphony",
@@ -564,6 +594,17 @@ layer(scriptedFactory(reviewFeedbackCapture.agent))("Dispatcher review feedback"
   );
 });
 
+const waitForRecordedChild = (workItemId: WorkItemId) =>
+  Effect.gen(function* () {
+    const workItems = yield* WorkItemRepository;
+    for (let i = 0; i < 100; i++) {
+      const item = yield* workItems.getById(workItemId);
+      if (item?.ownerPid !== undefined && item.ownerPid !== null) return;
+      yield* TestClock.adjust("10 millis");
+    }
+    return yield* Effect.fail(new TestAssertionError("child identity was never recorded"));
+  });
+
 layer(blockableFactory)("Dispatcher cancel", (it) => {
   it.effect("cancelRun records a durable user_cancelled status and ends the dispatch", () =>
     Effect.gen(function* () {
@@ -595,6 +636,7 @@ layer(blockableFactory)("Dispatcher cancel", (it) => {
           });
 
         const id = yield* waitForAttempt(100);
+        yield* waitForRecordedChild(workItem.id);
         yield* dispatcher.cancelRun(id);
         // await (not join): the dispatch fiber is now pure-interrupted, and
         // joining an interrupted fiber propagates the interruption into this
@@ -629,8 +671,17 @@ const failingCancelFactory = Layer.effect(
   Effect.gen(function* () {
     const releaseRef = yield* Ref.make<(() => Effect.Effect<void>) | null>(null);
     return {
-      make: () =>
+      make: (_config, options) =>
         Effect.gen(function* () {
+          yield* (
+            options?.onChildSpawned?.(4322, {
+              pid: 4322,
+              pgid: 4322,
+              spawnedAtMs: 0,
+              platform: "linux",
+              birthToken: "born-4322",
+            }) ?? Effect.void
+          ).pipe(Effect.orDie);
           const d = yield* Deferred.make<void, AgentRuntimeSpawnError>();
           yield* Ref.set(releaseRef, () =>
             Deferred.fail(d, new AgentRuntimeSpawnError("interrupted")).pipe(Effect.asVoid),
@@ -684,6 +735,7 @@ layer(failingCancelFactory)("Dispatcher cancel race", (it) => {
           yield* TestClock.adjust("10 millis");
         }
         if (id !== null) {
+          yield* waitForRecordedChild(workItem.id);
           yield* dispatcher.cancelRun(id);
         }
         yield* Fiber.await(fiber).pipe(Effect.catch(() => Effect.void));
@@ -835,14 +887,16 @@ const admissionLayer = (platform: NodeJS.Platform) =>
 const waitForCancelableAttempt = (workItemId: WorkItemId) =>
   Effect.gen(function* () {
     const attempts = yield* RunAttemptRepository;
-    const dispatcher = yield* RunDispatcher;
+    const workItems = yield* WorkItemRepository;
     for (let i = 0; i < 100; i++) {
       const list = yield* attempts.listByWorkItem(workItemId);
       const id = list[0]?.id;
-      if (id !== undefined && (yield* dispatcher.isAgentActive(id))) return id;
+      const item = yield* workItems.getById(workItemId);
+      if (id !== undefined && item?.ownerPid !== undefined && item.ownerPid !== null) {
+        return id;
+      }
       yield* TestClock.adjust("10 millis");
     }
-    const workItems = yield* WorkItemRepository;
     const item = yield* workItems.getById(workItemId);
     return yield* Effect.fail(
       new TestAssertionError(`dispatch never registered; lifecycle=${String(item?.lifecycle)}`),

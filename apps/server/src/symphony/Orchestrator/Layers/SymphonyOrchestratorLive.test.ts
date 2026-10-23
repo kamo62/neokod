@@ -4778,7 +4778,15 @@ layer("SymphonyOrchestrator leadership", (it) => {
       yield* second.refreshNow();
       expect((yield* second.getOverview()).orchestratorRole).toBe("leader");
       const runAttempts = yield* RunAttemptRepository;
-      expect((yield* runAttempts.getById(runAttemptId))?.status).toBe("interrupted");
+      // A bound attempt with no persisted child identity is not proof that no
+      // child exists; startup recovery holds it rather than interrupting.
+      expect((yield* runAttempts.getById(runAttemptId))?.status).toBe("streaming_turn");
+      const runEvents = yield* RunEventRepository;
+      expect(
+        (yield* runEvents.listForAttempt(runAttemptId)).some(
+          (event) => event.eventType === "recovery_hold",
+        ),
+      ).toBe(true);
       // The same authoritative startup recovery reconciles uncertain staged
       // deliveries before any worker can answer, preserving delivery-unknown.
       const reconciledRow = yield* stagedRepository.getById(staged.id);
