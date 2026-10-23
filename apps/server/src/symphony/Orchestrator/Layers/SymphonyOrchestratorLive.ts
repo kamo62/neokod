@@ -1347,9 +1347,27 @@ const makeOrchestrator = Effect.gen(function* () {
       const attentionItems = requests
         .filter((request) => request.state === "pending")
         .map(approvalToAttentionItem);
+      // Exact authoritative Stop closure for this attempt only. The full
+      // timeline is already read here; a cancelled status or missing pid is
+      // never treated as closure.
+      const stopConfirmed = [...timeline]
+        .reverse()
+        .find((event) => event.eventType === "stop_confirmed" && event.runAttemptId === attempt.id);
+      const runAttemptWithClosure =
+        stopConfirmed === undefined
+          ? attempt
+          : {
+              ...attempt,
+              stopClosure: {
+                state: "confirmed" as const,
+                runAttemptId: attempt.id,
+                observedAt: stopConfirmed.occurredAt,
+                source: "recovery.stop_confirmed" as const,
+              },
+            };
       return {
         workItem: evidenceWorkItem,
-        runAttempt: attempt,
+        runAttempt: runAttemptWithClosure,
         timeline,
         attentionItems,
         approvalRequests: requests,
