@@ -30,6 +30,7 @@ const RunAttemptRowSchema = Schema.Struct({
   tokenUsageJson: Schema.NullOr(Schema.String),
   sessionId: Schema.NullOr(Schema.String),
   threadId: Schema.NullOr(Schema.String),
+  acceptedGuidanceJson: Schema.NullOr(Schema.String),
 });
 
 const rowToAttempt = (row: Schema.Schema.Type<typeof RunAttemptRowSchema>): RunAttempt => ({
@@ -50,6 +51,13 @@ const rowToAttempt = (row: Schema.Schema.Type<typeof RunAttemptRowSchema>): RunA
       : (decodeJson(row.tokenUsageJson) as RunAttempt["tokenUsage"]),
   sessionId: row.sessionId ?? undefined,
   threadId: row.threadId ?? undefined,
+  ...(row.acceptedGuidanceJson === null
+    ? {}
+    : {
+        acceptedGuidance: decodeJson(row.acceptedGuidanceJson) as NonNullable<
+          RunAttempt["acceptedGuidance"]
+        >,
+      }),
 });
 
 const attemptToRow = (attempt: RunAttempt): Schema.Schema.Type<typeof RunAttemptRowSchema> => ({
@@ -68,6 +76,8 @@ const attemptToRow = (attempt: RunAttempt): Schema.Schema.Type<typeof RunAttempt
   tokenUsageJson: attempt.tokenUsage === undefined ? null : encodeJson(attempt.tokenUsage),
   sessionId: attempt.sessionId ?? null,
   threadId: attempt.threadId ?? null,
+  acceptedGuidanceJson:
+    attempt.acceptedGuidance === undefined ? null : encodeJson(attempt.acceptedGuidance),
 });
 
 const SELECT_COLUMNS = `
@@ -76,7 +86,7 @@ const SELECT_COLUMNS = `
   workspace_path AS "workspacePath", started_at AS "startedAt",
   finished_at AS "finishedAt", error_json AS "errorJson",
   token_usage_json AS "tokenUsageJson", session_id AS "sessionId",
-  thread_id AS "threadId"
+  thread_id AS "threadId", accepted_guidance_json AS "acceptedGuidanceJson"
 `;
 
 const toSqlError =
@@ -96,13 +106,14 @@ const makeRepository = Effect.gen(function* () {
         INSERT INTO symphony_run_attempts (
           id, work_item_id, attempt_number, provider, model, status,
           current_stage, workspace_path, started_at, finished_at,
-          error_json, token_usage_json, session_id, thread_id
+          error_json, token_usage_json, session_id, thread_id,
+          accepted_guidance_json
         )
         VALUES (
           ${row.id}, ${row.workItemId}, ${row.attemptNumber}, ${row.provider},
           ${row.model}, ${row.status}, ${row.currentStage}, ${row.workspacePath},
           ${row.startedAt}, ${row.finishedAt}, ${row.errorJson}, ${row.tokenUsageJson},
-          ${row.sessionId}, ${row.threadId}
+          ${row.sessionId}, ${row.threadId}, ${row.acceptedGuidanceJson}
         )
         RETURNING ${cols}
       `,
@@ -122,7 +133,13 @@ const makeRepository = Effect.gen(function* () {
           error_json = ${row.errorJson},
           token_usage_json = ${row.tokenUsageJson},
           session_id = ${row.sessionId},
-          thread_id = ${row.threadId}
+          thread_id = ${row.threadId},
+          -- First accepted snapshot wins. A legacy NULL row may accept its
+          -- first snapshot; an existing snapshot is never replaced.
+          accepted_guidance_json = COALESCE(
+            symphony_run_attempts.accepted_guidance_json,
+            ${row.acceptedGuidanceJson}
+          )
         WHERE id = ${row.id}
         RETURNING ${cols}
       `,
