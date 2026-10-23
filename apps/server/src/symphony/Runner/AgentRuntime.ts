@@ -1,4 +1,5 @@
 import type {
+  AcceptedGuidanceSnapshot,
   EffectiveWorkflowConfig,
   NormalizedIssue,
   ApprovalQuestion,
@@ -6,6 +7,7 @@ import type {
   RunAttemptId,
   WorkItemId,
 } from "@neokod/contracts";
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
@@ -23,9 +25,16 @@ import * as CodexRpc from "effect-codex-app-server/rpc";
 import type * as EffectCodexSchema from "effect-codex-app-server/schema";
 
 import { resolveSpawnCommand } from "@neokod/shared/shell";
+import { HostProcessPlatform } from "@neokod/shared/hostProcess";
+import {
+  type ProcessGroupIdentity,
+  captureProcessBirthToken,
+  makeProvenGroupIdentity,
+} from "@neokod/shared/processGroup";
 import { expandHomePath } from "../../pathExpansion.ts";
 import { WORKFLOW_DEFAULTS } from "../Workflow/Config.ts";
 import { buildCodexInitializeParams } from "../../provider/Layers/CodexProvider.ts";
+import { narrowAcceptedPermissions, resolveAcceptedPermissions } from "./AcceptedGuidance.ts";
 import { buildRunPrompt, type ReviewFeedbackContext } from "./Prompt.ts";
 import { resolveRunnerPolicy } from "./Policy.ts";
 import {
@@ -58,6 +67,37 @@ export class AgentRuntimeSpawnError extends Error {
   }
 }
 
+/**
+ * An accepted snapshot names a provider/model/repository that the live config
+ * no longer matches. Continuing would silently retarget an accepted attempt, so
+ * the runtime refuses instead.
+ */
+export class AgentRuntimeTargetMismatchError extends Error {
+  readonly detail: string;
+
+  constructor(detail: string) {
+    super(`Accepted guidance conflicts with the live run target: ${detail}`);
+    this.name = "AgentRuntimeTargetMismatchError";
+    this.detail = detail;
+  }
+}
+
+export type AgentRuntimeRunError = AgentRuntimeSpawnError | AgentRuntimeTargetMismatchError;
+
+/**
+ * The callback had positive knowledge of a spawned child but could not record
+ * its ownership. The runtime treats this as fail-closed before provider use.
+ */
+export class AgentRuntimeChildOwnershipError extends Error {
+  readonly detail: string;
+
+  constructor(detail: string) {
+    super(`Failed to record agent child ownership: ${detail}`);
+    this.name = "AgentRuntimeChildOwnershipError";
+    this.detail = detail;
+  }
+}
+
 /** `turn/interrupt` must not block cancel on a hung or dead child. */
 export const INTERRUPT_REQUEST_TIMEOUT = Duration.seconds(5);
 
@@ -85,7 +125,10 @@ export interface AgentRuntimeService {
      * rides in the rendered prompt, so it is never re-sent on later
      * continuation turns within the same live thread (SPEC 8.2). */
     readonly reviewFeedback?: ReviewFeedbackContext;
-  }) => Effect.Effect<AgentTurnResult, AgentRuntimeSpawnError, Scope.Scope>;
+    /** Frozen accepted brief for this attempt. Supplying it makes the runtime
+     * render that brief and enforce its narrowed permissions. */
+    readonly acceptedGuidance?: AcceptedGuidanceSnapshot;
+  }) => Effect.Effect<AgentTurnResult, AgentRuntimeRunError, Scope.Scope>;
 
   readonly interrupt: () => Effect.Effect<void, never, never>;
 
@@ -153,8 +196,22 @@ export interface AgentRuntimeDeps {
    * audit item 8 lane F — tracker secrets used to flow wholesale). */
   readonly secretEnvironmentNames?: ReadonlyArray<string> | null;
   readonly liveRequests: LiveRequestsService;
-  /** Called once, right after the app-server child is spawned, with its pid. Failures are ignored. */
-  readonly onChildSpawned?: (pid: number) => Effect.Effect<void>;
+  /**
+   * Called once, immediately after the app-server child is spawned, before the
+   * Codex client is built.
+   *
+   * `identity` is present only when this spawn is demonstrably a detached POSIX
+   * group leader (pid === pgid) *and* its OS birth token was captured. It is
+   * absent on unsupported platforms or when identity cannot be proven, so a
+   * caller must never infer a group id from the bare pid.
+   *
+   * A failure is fail-closed: the runtime logs the surviving child, releases
+   * the scoped child resources and refuses further provider use.
+   */
+  readonly onChildSpawned?: (
+    pid: number,
+    identity?: ProcessGroupIdentity,
+  ) => Effect.Effect<void, AgentRuntimeChildOwnershipError>;
   /** Durable request record (WS-J2); best-effort, never blocks the agent. */
   readonly recordRequest?: (input: {
     readonly requestId: string;
@@ -180,6 +237,55 @@ export interface AgentRuntimeDeps {
     readonly runAttemptId: RunAttemptId;
   }) => Effect.Effect<boolean>;
 }
+
+type PromptAcceptedGuidance = NonNullable<Parameters<typeof buildRunPrompt>[0]["acceptedGuidance"]>;
+
+/**
+ * The prompt module still carries provisional snapshot types; the guidance
+ * owner replaces those with the canonical contract. Until then this narrow
+ * boundary converts the structurally identical canonical snapshot.
+ */
+const asPromptAcceptedGuidance = (accepted: AcceptedGuidanceSnapshot): PromptAcceptedGuidance =>
+  accepted as unknown as PromptAcceptedGuidance;
+
+const assertAcceptedTarget = (
+  accepted: AcceptedGuidanceSnapshot,
+  input: {
+    readonly config: EffectiveWorkflowConfig;
+    readonly workspacePath: string;
+    readonly branch: string;
+  },
+): Effect.Effect<void, AgentRuntimeTargetMismatchError> => {
+  const mismatches: string[] = [];
+  const target = accepted.target;
+  const config = input.config;
+  if (target.repositoryPath !== config.repositoryPath) {
+    mismatches.push(`repository ${target.repositoryPath} != live ${config.repositoryPath}`);
+  }
+  if (target.workflowPath !== config.workflowPath) {
+    mismatches.push(`workflow ${target.workflowPath} != live ${config.workflowPath}`);
+  }
+  if (target.workspacePath !== undefined && target.workspacePath !== input.workspacePath) {
+    mismatches.push(`workspace ${target.workspacePath} != live ${input.workspacePath}`);
+  }
+  if (target.baseBranch !== undefined && target.baseBranch !== input.branch) {
+    mismatches.push(`base branch ${target.baseBranch} != live ${input.branch}`);
+  }
+  if (
+    target.provider.instanceId !== config.agentProvider.instanceId ||
+    target.provider.driver !== config.agentProvider.driver
+  ) {
+    mismatches.push(
+      `provider ${String(target.provider.instanceId)}/${String(target.provider.driver)} != live ${String(config.agentProvider.instanceId)}/${String(config.agentProvider.driver)}`,
+    );
+  }
+  if (target.model !== config.agentModel) {
+    mismatches.push(`model ${target.model ?? "(none)"} != live ${config.agentModel ?? "(none)"}`);
+  }
+  return mismatches.length === 0
+    ? Effect.void
+    : Effect.fail(new AgentRuntimeTargetMismatchError(mismatches.join("; ")));
+};
 
 export const makeCodexAgentRuntime = (
   deps: AgentRuntimeDeps,
@@ -220,12 +326,18 @@ export const makeCodexAgentRuntime = (
         env,
         extendEnv: false,
       });
+      const platform = yield* HostProcessPlatform;
+      const spawnDetached = platform !== "win32";
       const child = yield* spawner
         .spawn(
           ChildProcess.make(spawnCommand.command, spawnCommand.args, {
             cwd: deps.env.PWD,
             env,
             extendEnv: false,
+            // Explicit group leadership on POSIX. The platform spawner defaults
+            // to detached there; being explicit keeps ownership recovery tied to
+            // a fact this runtime requested rather than an inherited default.
+            detached: spawnDetached,
             forceKillAfter: Duration.seconds(10),
             shell: spawnCommand.shell,
           }),
@@ -234,9 +346,42 @@ export const makeCodexAgentRuntime = (
           Effect.provideService(Scope.Scope, scope),
           Effect.mapError((cause) => new AgentRuntimeSpawnError(String(cause))),
         );
-      activePid = Number(child.pid);
+      const childPid = Number(child.pid);
+      activePid = childPid;
+      // A group identity is reported only for a detached POSIX leader whose
+      // birth token was actually captured. A bare pid (or missing token) stays
+      // unknown; recovery must fail closed rather than infer `pid === pgid`.
+      const childIdentity = yield* Effect.gen(function* () {
+        if (!spawnDetached || !Number.isSafeInteger(childPid) || childPid <= 0) return undefined;
+        const spawnedAtMs = yield* Clock.currentTimeMillis;
+        const birthToken = yield* captureProcessBirthToken(childPid);
+        if (birthToken === null || birthToken.trim().length === 0) return undefined;
+        const proven = makeProvenGroupIdentity({
+          pid: childPid,
+          pgid: childPid,
+          spawnedAtMs,
+          platform,
+          birthToken,
+        });
+        return proven.ok ? proven.identity : undefined;
+      });
       if (deps.onChildSpawned !== undefined) {
-        yield* deps.onChildSpawned(activePid).pipe(Effect.catch(() => Effect.void));
+        yield* deps.onChildSpawned(childPid, childIdentity).pipe(
+          Effect.tapError((cause) =>
+            Effect.logWarning("symphony.agent.ownership_record_failed", {
+              pid: childPid,
+              pgid: childIdentity?.pgid ?? null,
+              birthTokenCaptured: childIdentity !== undefined,
+              cause,
+            }),
+          ),
+          Effect.mapError(
+            (cause) =>
+              new AgentRuntimeSpawnError(
+                `the agent child owns pid ${childPid}, but recording its ownership failed; refusing to continue (${cause.message})`,
+              ),
+          ),
+        );
       }
       const clientContext = yield* CodexClient.layerChildProcess(child, { rawStreams: true }).pipe(
         Layer.build,
@@ -261,8 +406,35 @@ export const makeCodexAgentRuntime = (
 
     const runTurn: AgentRuntimeService["runTurn"] = (input) =>
       Effect.gen(function* () {
+        const accepted = input.acceptedGuidance;
+        if (accepted !== undefined) {
+          // Refuse a retarget before spawning, opening a thread or touching an
+          // existing client: an accepted attempt must never silently move to a
+          // different provider, model, repository or workspace.
+          yield* assertAcceptedTarget(accepted, input);
+        }
+        const livePolicy = resolveRunnerPolicy(input.config);
+        const effectivePolicy =
+          accepted === undefined
+            ? livePolicy
+            : (() => {
+                const narrowed = narrowAcceptedPermissions(
+                  accepted.permission,
+                  resolveAcceptedPermissions(input.config),
+                );
+                return {
+                  approvalPolicy: narrowed.approvalPolicy,
+                  threadSandbox: narrowed.threadSandbox,
+                  turnSandboxPolicy: narrowed.turnSandboxPolicy,
+                  reviewer:
+                    narrowed.approvalPolicy === "never"
+                      ? ("auto_review" as const)
+                      : ("user" as const),
+                  editsAllowed: narrowed.editsAllowed,
+                  approvalsEnabled: narrowed.approvalsEnabled,
+                };
+              })();
         const client = activeClient ?? (yield* initialize);
-        const policy = resolveRunnerPolicy(input.config);
 
         if (!requestConsumerStarted) {
           requestConsumerStarted = true;
@@ -284,9 +456,9 @@ export const makeCodexAgentRuntime = (
             .request("thread/start", {
               cwd: input.workspacePath,
               ...(input.config.agentModel !== undefined ? { model: input.config.agentModel } : {}),
-              approvalPolicy: policy.approvalPolicy,
-              sandbox: policy.threadSandbox,
-              approvalsReviewer: policy.reviewer,
+              approvalPolicy: effectivePolicy.approvalPolicy,
+              sandbox: effectivePolicy.threadSandbox,
+              approvalsReviewer: effectivePolicy.reviewer,
             })
             .pipe(Effect.mapError((cause) => new AgentRuntimeSpawnError(cause.message)));
           threadId = (thread as { readonly thread: { readonly id: string } }).thread.id;
@@ -303,15 +475,18 @@ export const makeCodexAgentRuntime = (
               ? { workflowInstructions: input.workflowInstructions }
               : {}),
             ...(input.reviewFeedback !== undefined ? { reviewFeedback: input.reviewFeedback } : {}),
+            ...(accepted !== undefined
+              ? { acceptedGuidance: asPromptAcceptedGuidance(accepted) }
+              : {}),
           });
         const turn = yield* client
           .request("turn/start", {
             threadId,
             input: [{ type: "text", text: prompt }],
             cwd: input.workspacePath,
-            approvalPolicy: policy.approvalPolicy,
-            approvalsReviewer: policy.reviewer,
-            sandboxPolicy: policy.turnSandboxPolicy,
+            approvalPolicy: effectivePolicy.approvalPolicy,
+            approvalsReviewer: effectivePolicy.reviewer,
+            sandboxPolicy: effectivePolicy.turnSandboxPolicy,
             ...(input.config.agentModel !== undefined ? { model: input.config.agentModel } : {}),
           })
           .pipe(Effect.mapError((cause) => new AgentRuntimeSpawnError(cause.message)));
