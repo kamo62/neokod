@@ -2,7 +2,12 @@ import type { ApprovalRequest, AttentionItem } from "@neokod/contracts";
 import { SymphonyApprovalRequestId, WorkItemId } from "@neokod/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { approvalRequestHistory, approvalRequestMode, attentionMode } from "./attention.logic";
+import {
+  approvalRequestHistory,
+  approvalRequestMode,
+  attentionMode,
+  buildApprovalAnswerInputs,
+} from "./attention.logic";
 
 const attentionItem = (availableActions: ReadonlyArray<string>) =>
   ({ availableActions }) as Pick<AttentionItem, "availableActions">;
@@ -37,6 +42,38 @@ describe("approvalRequestMode", () => {
   });
 });
 
+describe("buildApprovalAnswerInputs", () => {
+  const question = {
+    id: "q1",
+    header: "Checks",
+    question: "Which checks?",
+    options: [],
+    multiSelect: true,
+  } as const;
+
+  it("serialises a custom multi-select answer as a singleton array with no options", () => {
+    expect(
+      buildApprovalAnswerInputs([question], { q1: { selected: [], custom: "custom check" } }),
+    ).toEqual([{ questionId: "q1", answer: ["custom check"] }]);
+  });
+
+  it("keeps selected multi-choice labels as an array", () => {
+    expect(
+      buildApprovalAnswerInputs([question], {
+        q1: { selected: ["unit", "lint"], custom: "" },
+      }),
+    ).toEqual([{ questionId: "q1", answer: ["unit", "lint"] }]);
+  });
+
+  it("requires every question and leaves a single-select custom answer as a string", () => {
+    const single = { ...question, multiSelect: false } as const;
+    expect(buildApprovalAnswerInputs([single], {})).toBeNull();
+    expect(buildApprovalAnswerInputs([single], { q1: { selected: [], custom: "custom" } })).toEqual(
+      [{ questionId: "q1", answer: "custom" }],
+    );
+  });
+});
+
 const approvalRequest = (overrides: Partial<ApprovalRequest>): ApprovalRequest => ({
   id: SymphonyApprovalRequestId.make("sym-1"),
   requestId: "req-1",
@@ -67,6 +104,7 @@ describe("approvalRequestHistory", () => {
       }),
     );
     expect(history.answered).toBe(true);
+    expect(history.deliveryPending).toBe(false);
     expect(history.answerText).toBe("q1: main\nq2: unit, lint");
     expect(history.answerDeliveryLabel).toBe("Provider receipt not confirmed");
   });

@@ -1,4 +1,8 @@
-import type { ApprovalRequest, ApprovalRequestKind } from "@neokod/contracts";
+import type {
+  ApprovalQuestionPayload,
+  ApprovalRequest,
+  ApprovalRequestKind,
+} from "@neokod/contracts";
 import {
   ApprovalAnswerRecordSchema,
   ApprovalDecisionNoteSchema,
@@ -101,24 +105,24 @@ const rowToApproval = (
       row.questionPayloadJson !== null
         ? yield* Effect.try({
             try: () => decodeJson(row.questionPayloadJson as string),
-            catch: (cause) =>
-              new SymphonyPersistenceDecodeError({
-                operation: "ApprovalRepository.rowToApproval",
-                issue: `approval row ${String(row.id)} question payload could not be decoded`,
-                cause,
-              }),
+            catch: () => null,
           }).pipe(
+            Effect.catch(() => Effect.succeed(null)),
             Effect.flatMap((json) =>
-              decodeQuestionPayload(json).pipe(
-                Effect.mapError(
-                  (cause) =>
-                    new SymphonyPersistenceDecodeError({
-                      operation: "ApprovalRepository.rowToApproval",
-                      issue: `approval row ${String(row.id)} question payload could not be decoded`,
-                      cause,
-                    }),
-                ),
-              ),
+              json === null
+                ? Effect.succeed(null)
+                : decodeQuestionPayload(json).pipe(
+                    Effect.map((payload) => payload),
+                    Effect.catch(() => Effect.succeed(null)),
+                  ),
+            ),
+            Effect.map(
+              (payload): ApprovalQuestionPayload =>
+                payload ?? {
+                  kind: "unsupported",
+                  providerMethod: "item/tool/requestUserInput",
+                  detail: "the stored question payload could not be decoded",
+                },
             ),
           )
         : kind === "user_input"
@@ -315,6 +319,40 @@ const makeRepository = Effect.gen(function* () {
       `.pipe(Effect.mapError(toSqlError("ApprovalRepository.decide")));
     });
 
+  const stageDelivery: ApprovalRepositoryShape["stageDelivery"] = (id, decision, details) =>
+    Effect.gen(function* () {
+      const answerJson = details?.answer === undefined ? null : encodeJson(details.answer);
+      const decisionNoteJson =
+        details?.decisionNote === undefined ? null : encodeJson(details.decisionNote);
+      yield* sql`
+        UPDATE symphony_approvals
+        SET state = 'delivering', decision = ${decision},
+            answer_json = ${answerJson}, decision_note_json = ${decisionNoteJson}
+        WHERE id = ${id} AND state = 'pending'
+      `.pipe(Effect.mapError(toSqlError("ApprovalRepository.stageDelivery")));
+    });
+
+  const completeDelivery: ApprovalRepositoryShape["completeDelivery"] = (id, decision) =>
+    Effect.gen(function* () {
+      const decidedAt = yield* nowIso;
+      yield* sql`
+        UPDATE symphony_approvals
+        SET state = ${decision}, decision = ${decision}, decided_at = ${decidedAt}
+        WHERE id = ${id} AND state = 'delivering'
+      `.pipe(Effect.mapError(toSqlError("ApprovalRepository.completeDelivery")));
+    });
+
+  const abortDelivery: ApprovalRepositoryShape["abortDelivery"] = (id, decision) =>
+    Effect.gen(function* () {
+      const decidedAt = yield* nowIso;
+      yield* sql`
+        UPDATE symphony_approvals
+        SET state = ${decision}, decision = ${decision}, decided_at = ${decidedAt},
+            answer_json = NULL, decision_note_json = NULL
+        WHERE id = ${id} AND state = 'delivering'
+      `.pipe(Effect.mapError(toSqlError("ApprovalRepository.abortDelivery")));
+    });
+
   const listPending: ApprovalRepositoryShape["listPending"] = (options) =>
     Effect.gen(function* () {
       const rows = yield* sql<Schema.Schema.Type<typeof ApprovalRowSchema>>`
@@ -345,12 +383,36 @@ const makeRepository = Effect.gen(function* () {
       ),
     );
 
+  const findByRequest: ApprovalRepositoryShape["findByRequest"] = (runAttemptId, requestId) =>
+    SqlSchema.findOneOption({
+      Request: Schema.Struct({ runAttemptId: RunAttemptId, requestId: Schema.String }),
+      Result: ApprovalRowSchema,
+      execute: (request) =>
+        sql`
+          SELECT ${cols}
+          FROM symphony_approvals
+          WHERE run_attempt_id = ${request.runAttemptId}
+            AND request_id = ${request.requestId}
+          ORDER BY created_at DESC
+          LIMIT 1
+        `,
+    })({ runAttemptId, requestId }).pipe(
+      Effect.mapError(toSqlError("ApprovalRepository.findByRequest")),
+      Effect.flatMap((row) =>
+        row._tag === "None" ? Effect.succeed(null) : rowToApproval(row.value),
+      ),
+    );
+
   return {
     create,
     decide,
+    stageDelivery,
+    completeDelivery,
+    abortDelivery,
     listPending,
     listForRun,
     getById,
+    findByRequest,
   } satisfies ApprovalRepositoryShape;
 });
 

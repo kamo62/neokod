@@ -322,6 +322,67 @@ layer("ApprovalRepository request vocabulary", (it) => {
     }),
   );
 
+  it.effect(
+    "keeps empty option descriptions decodable and degrades malformed payload JSON honestly",
+    () =>
+      Effect.gen(function* () {
+        yield* seedWorkItem("wi-question-robust");
+        const sql = yield* SqlClient.SqlClient;
+        const repository = yield* ApprovalRepository;
+        const created = yield* repository.create({
+          id: SymphonyApprovalRequestId.make("sym-question-robust"),
+          requestId: "30",
+          workItemId: WorkItemId.make("wi-question-robust"),
+          runAttemptId,
+          action: "user_input",
+          scope: "once",
+          questionPayload: {
+            kind: "structured",
+            version: 1,
+            questions: [
+              {
+                id: "q1",
+                header: "Branch",
+                question: "Which branch?",
+                options: [{ label: "main", description: "" }],
+              },
+            ],
+          },
+        });
+        expect(created.questionPayload).toMatchObject({ kind: "structured" });
+
+        // A row written by a partial/bad payload must not fail the whole list.
+        yield* sql`
+        INSERT INTO symphony_approvals (
+          id, request_id, work_item_id, run_attempt_id, action, scope,
+          state, policy_source, payload_json, question_payload_json, created_at
+        )
+        VALUES (
+          'sym-question-malformed', '31', 'wi-question-robust', ${runAttemptId},
+          'user_input', 'once', 'pending', 'once',
+          ${encodeJson({ reason: "broken question" })},
+          '{"kind":"structured","version":1,"questions":[{"id":""}]}',
+          '2026-08-05T00:00:00.000Z'
+        )
+      `;
+
+        const rows = yield* repository.listForRun(runAttemptId);
+        expect(rows.map((row) => String(row.id))).toContain("sym-question-robust");
+        const malformed = rows.find((row) => String(row.id) === "sym-question-malformed");
+        expect(malformed?.questionPayload).toMatchObject({
+          kind: "unsupported",
+          providerMethod: "item/tool/requestUserInput",
+        });
+        // The valid question survives unchanged, so one bad row cannot hide it.
+        expect(
+          rows.find((row) => String(row.id) === "sym-question-robust")?.questionPayload,
+        ).toMatchObject({ kind: "structured" });
+        expect((yield* repository.listPending()).map((row) => String(row.id))).toEqual(
+          expect.arrayContaining(["sym-question-robust", "sym-question-malformed"]),
+        );
+      }),
+  );
+
   it.effect("keeps a redelivered provider request as one durable row", () =>
     Effect.gen(function* () {
       yield* seedWorkItem("wi-duplicate-1");
