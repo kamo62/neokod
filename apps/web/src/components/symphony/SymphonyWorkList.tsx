@@ -1,4 +1,5 @@
 import { AlertTriangleIcon, ChevronRightIcon, RefreshCwIcon } from "lucide-react";
+import type { ReactNode } from "react";
 
 import { cn } from "../../lib/utils";
 import { Badge } from "../ui/badge";
@@ -170,6 +171,7 @@ export function SymphonyWorkList({
   emptyTitle,
   emptyDescription,
   showFilters = true,
+  footer,
   onRefresh,
 }: {
   readonly filter: WorkFilter;
@@ -184,6 +186,7 @@ export function SymphonyWorkList({
   readonly emptyTitle: string;
   readonly emptyDescription: string;
   readonly showFilters?: boolean;
+  readonly footer?: ReactNode;
   readonly onRefresh: () => void;
 }) {
   return (
@@ -284,6 +287,7 @@ export function SymphonyWorkList({
             ))}
           </div>
         )}
+        {footer}
       </div>
     </div>
   );
