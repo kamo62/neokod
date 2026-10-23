@@ -1,0 +1,47 @@
+{
+  "implementer": "deepseek/deepseek-flash",
+  "catalogue": "DeepSeek V4.1 Flash1017",
+  "route": "OpenCode2 ACP",
+  "sourceGate": "not live proof",
+  "lanes": {
+    "feedback": {
+      "head": "41a49b8255705d9debebfe6212fb766b0939011f",
+      "reviews": "native Sol and first-party Opus ACCEPT",
+      "reportedChecks": {
+        "runtimeApprovalWs": 81,
+        "contracts": 26,
+        "attention": 14,
+        "publicationRegressionSuite": 26,
+        "serverNoEmit": 0,
+        "webNoEmit": 0
+      }
+    },
+    "recovery": {
+      "head": "4c9587615",
+      "reportedChecks": {
+        "focused7files": 161,
+        "serverNoEmit": 0
+      },
+      "review": "both requested recovered Stop correction; superseded by guidance03939b278"
+    },
+    "guidance": {
+      "head": "6fb57d562",
+      "reportedChecks": {
+        "focused9files": 200,
+        "postCommit4files": 146,
+        "serverNoEmit": 0
+      },
+      "review": "final native Sol/Opus running"
+    },
+    "ui": {
+      "head": "daf6cfb55748f9d4f006a38421b258ed80054e86",
+      "reviews": "native Sol and first-party Opus ACCEPT",
+      "reportedChecks": {
+        "focused6files": 106,
+        "webNoEmit": 0
+      },
+      "chrome": "matching source renderer/backend; synthetic fixture only"
+    }
+  },
+  "forbiddenActionsPerformed": []
+}

@@ -1,0 +1,10 @@
+{
+  "runId": "live-202610232029044-a7c81cba",
+  "status": "blocked",
+  "startedAt": "2026-10-23T20:29:04.463Z",
+  "pid": 87265,
+  "worktree": "/Users/kamogelo/.codex/worktrees/neokod-feedback/t3code",
+  "head": "41a49b8255705d9debebfe6212fb766b0939011f",
+  "updatedAt": "2026-10-23T20:29:19.649Z",
+  "receiptPath": "/tmp/neokod-implementation-2026-10-23/live-proof/runs/live-202610232029044-a7c81cba/receipt.json"
+}

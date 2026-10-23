@@ -1,3 +1,12 @@
+## 3.8.0 - Unreleased (Minor)
+
+Release impact: Minor because this adds structured Symphony feedback, accepted guidance snapshots, identity-bound recovery and the production Work view. This is candidate source on a feature branch. It is held from shipping until the recorded live feedback gate passes; no build or release publication was performed.
+
+- Preserve independent question answers and supported notes, distinguish answered history from approval, and retain uncertain delivery evidence through interruption and restart.
+- Bind process ownership to the exact attempt and claim generation. Stop retains ownership until supported identity and closure are confirmed, including after restart and failed persistence.
+- Freeze accepted guidance and provenance per attempt, intersect later policy without widening permission, and refuse unsupported executor pins, changed targets and publication gates without durable approval authority.
+- Consolidate Symphony monitoring into Work with lifecycle and overlapping attention filters, secondary History and on-demand detail. Incomplete, stale and disconnected evidence remains unknown.
+
 ## 3.7.2 - 2026-10-23 (Patch)
 
 Release impact: Patch because this preserves valid normal Code questions and adds a conservative lifecycle projection for the pending Symphony Work UI. This is unreleased dev source; builds and release publication have not been performed.
