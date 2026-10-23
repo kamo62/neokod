@@ -902,6 +902,45 @@ layer("ApprovalService durable ids", (it) => {
     }),
   );
 
+  it.effect("a stage that loses the live waiter is aborted, not left as delivering", () =>
+    Effect.gen(function* () {
+      yield* seedWorkItem("wi-stage-lost");
+      const service = yield* ApprovalService;
+      const live = yield* LiveRequests;
+      const repo = yield* ApprovalRepository;
+      const runAttemptId = RunAttemptId.make("run-stage-lost");
+      const deferred = yield* live.registerUserInput({
+        requestId: "0",
+        workItemId: WorkItemId.make("wi-stage-lost"),
+        runAttemptId,
+        prompt: "Which branch?",
+        questionIds: ["q1"],
+      });
+      const record = yield* service.recordPending({
+        id: "ignored",
+        requestId: "0",
+        workItemId: WorkItemId.make("wi-stage-lost"),
+        runAttemptId,
+        action: "user_input",
+        scope: "once",
+        reason: "Which branch?",
+        questionPayload: userInputPayload,
+      });
+      // The live waiter disappears between staging and the claim (cancellation).
+      yield* live.settleRun(runAttemptId, "cancelled");
+      const result = yield* Effect.result(
+        service.respondToUserInput(record.id, {
+          answers: [{ questionId: "q1", answer: "main" }],
+        }),
+      );
+      expect(result._tag).toBe("Failure");
+      const row = yield* repo.getById(record.id);
+      expect(row?.state).toBe("interrupted");
+      expect(row?.answer).toBeUndefined();
+      expect(yield* Deferred.isDone(deferred)).toBe(true);
+    }),
+  );
+
   it.effect("recordPending returns one logical row for a redelivered provider request", () =>
     Effect.gen(function* () {
       yield* seedWorkItem("wi-record-dedup");
