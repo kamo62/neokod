@@ -835,15 +835,17 @@ const admissionLayer = (platform: NodeJS.Platform) =>
 const waitForCancelableAttempt = (workItemId: WorkItemId) =>
   Effect.gen(function* () {
     const attempts = yield* RunAttemptRepository;
+    const dispatcher = yield* RunDispatcher;
     for (let i = 0; i < 100; i++) {
       const list = yield* attempts.listByWorkItem(workItemId);
-      if (list[0] !== undefined) return list[0].id;
+      const id = list[0]?.id;
+      if (id !== undefined && (yield* dispatcher.isAgentActive(id))) return id;
       yield* TestClock.adjust("10 millis");
     }
     const workItems = yield* WorkItemRepository;
     const item = yield* workItems.getById(workItemId);
     return yield* Effect.fail(
-      new TestAssertionError(`dispatch never started; lifecycle=${String(item?.lifecycle)}`),
+      new TestAssertionError(`dispatch never registered; lifecycle=${String(item?.lifecycle)}`),
     );
   });
 
@@ -1033,6 +1035,47 @@ stopLayer(true, 22002)("Dispatcher stop with a confirmed owner group", (it) => {
           .pipe(Effect.flatMap(required));
         expect(replacementAttempt.status).toBe("preparing_workspace");
       }),
+  );
+
+  it.effect("does not confirm legacy cancellation without an exact stop receipt", () =>
+    Effect.gen(function* () {
+      stopSignalLog.length = 0;
+      const workItem = yield* seedWorkItem("stop-legacy-receipt");
+      const attempts = yield* RunAttemptRepository;
+      const runEvents = yield* RunEventRepository;
+      const attemptId = RunAttemptId.make("run-legacy-receipt");
+      yield* attempts.create({
+        id: attemptId,
+        workItemId: workItem.id,
+        attemptNumber: 1,
+        workspacePath: "/ws/#stop-legacy-receipt",
+        provider: makeConfig("/repo").agentProvider,
+        status: "user_cancelled",
+        startedAt: yield* nowIso,
+        finishedAt: yield* nowIso,
+        error: null,
+      });
+
+      const dispatcher = yield* RunDispatcher;
+      const withoutReceipt = yield* dispatcher.cancelRun(attemptId);
+      expect(withoutReceipt.status).toBe("held");
+      if (withoutReceipt.status === "held") {
+        expect(withoutReceipt.reason).toBe("stop_not_confirmed");
+      }
+
+      yield* runEvents.append(attemptId, "stop_confirmed", {
+        closure: "group_terminated",
+        released: true,
+        generation: 3,
+      });
+      const withReceipt = yield* dispatcher.cancelRun(attemptId);
+      expect(withReceipt.status).toBe("confirmed");
+      if (withReceipt.status === "confirmed") {
+        expect(withReceipt.evidence).toBe("group_terminated");
+        expect(withReceipt.releasedGeneration).toBe(3);
+        expect(withReceipt.released).toBe(false);
+      }
+    }),
   );
 
   it.effect("rejects a same-instant replacement generation despite timestamp order", () =>

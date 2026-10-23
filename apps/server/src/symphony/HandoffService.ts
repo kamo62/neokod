@@ -323,23 +323,31 @@ export const makeHandoffService = Effect.gen(function* () {
       //     or transferring ownership. The fence is the generation produced by
       //     the confirmed release; a replacement claim has a different
       //     generation and cannot be touched.
+      if (stopped.releasedGeneration === undefined) {
+        return yield* Effect.fail(
+          new HandoffError(
+            "Stop receipt does not carry the exact released generation; takeover aborted without releasing authority",
+          ),
+        );
+      }
       const cancellation = yield* workItems
         .getClaimOwnership(attempt.workItemId)
         .pipe(Effect.mapError((cause) => new HandoffError(cause.message)));
       if (
         cancellation === null ||
         cancellation.lifecycle !== "cancelled" ||
-        cancellation.ownerToken !== null
+        cancellation.ownerToken !== null ||
+        cancellation.generation !== stopped.releasedGeneration
       ) {
         return yield* Effect.fail(
           new HandoffError(
-            "run is not in an exact confirmed, unclaimed cancellation; takeover aborted without releasing authority",
+            "a replacement claim intervened after the confirmed Stop; takeover aborted without releasing authority",
           ),
         );
       }
       const parked = yield* workItems
         .parkConfirmedCancellation(attempt.workItemId, {
-          generation: cancellation.generation,
+          generation: stopped.releasedGeneration,
         })
         .pipe(Effect.mapError((cause) => new HandoffError(cause.message)));
       if (!parked) {
