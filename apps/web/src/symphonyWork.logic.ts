@@ -150,6 +150,42 @@ export interface SymphonyWorkItemInput {
 
 export type SymphonyWorkFilter = "all" | "not_started" | "in_progress" | "attention" | "history";
 
+export type SymphonyWorkConnectionPhase =
+  | "available"
+  | "offline"
+  | "connecting"
+  | "reconnecting"
+  | "connected"
+  | "error";
+
+/**
+ * A known board/run/attention value is only fresh while the environment is
+ * connected. This uses the existing connection state and never reads a clock.
+ */
+export function symphonyWorkConnectionStaleReason(
+  phase: SymphonyWorkConnectionPhase | null,
+  networkStatus: "unknown" | "offline" | "online" = "online",
+): string | null {
+  if (networkStatus === "offline") return "Disconnected from the network.";
+  if (networkStatus === "unknown") return "Network status is unknown.";
+  switch (phase) {
+    case "connected":
+      return null;
+    case "available":
+      return "The environment connection is not started.";
+    case "offline":
+      return "Disconnected from the environment (offline).";
+    case "connecting":
+      return "Not connected to the environment (connecting).";
+    case "reconnecting":
+      return "Not connected to the environment (reconnecting).";
+    case "error":
+      return "Connection to the environment failed.";
+    case null:
+      return "Environment connection state is unknown.";
+  }
+}
+
 export interface SymphonyWorkCollectionInput {
   readonly environmentId: EnvironmentId;
   readonly projectId: SymphonyProjectId;
@@ -473,18 +509,37 @@ function attentionEntry(input: {
   };
 }
 
+function positiveTimestamp(value: string): number | null {
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function closureCoversAttempt(
+  closure: SymphonyWorkClosureEvidence,
+  workItemId: WorkItemId,
+  runAttemptId: RunAttemptId,
+  startedAt: string,
+): boolean {
+  if (String(closure.workItemId) !== String(workItemId)) return false;
+  const closureTime = positiveTimestamp(closure.observedAt);
+  const attemptTime = positiveTimestamp(startedAt);
+  if (closureTime === null || attemptTime === null) return false;
+  if (closure.runAttemptId !== undefined) {
+    return String(closure.runAttemptId) === String(runAttemptId) && attemptTime <= closureTime;
+  }
+  return attemptTime <= closureTime;
+}
+
 function closureFor(
   closures: ReadonlyArray<SymphonyWorkClosureEvidence> | undefined,
   workItemId: WorkItemId,
   runAttemptId: RunAttemptId,
+  startedAt: string,
 ): SymphonyWorkClosureEvidence | null {
   if (closures === undefined) return null;
   return (
-    closures.find(
-      (closure) =>
-        String(closure.workItemId) === String(workItemId) &&
-        (closure.runAttemptId === undefined ||
-          String(closure.runAttemptId) === String(runAttemptId)),
+    closures.find((closure) =>
+      closureCoversAttempt(closure, workItemId, runAttemptId, startedAt),
     ) ?? null
   );
 }
@@ -492,19 +547,26 @@ function closureFor(
 function hasConfirmedWorkItemClosure(
   closures: ReadonlyArray<SymphonyWorkClosureEvidence> | undefined,
   workItemId: WorkItemId,
+  attempts: ReadonlyArray<SymphonyWorkAttempt>,
 ): boolean {
-  return (
-    closures?.some(
-      (closure) =>
-        String(closure.workItemId) === String(workItemId) && closure.runAttemptId === undefined,
-    ) ?? false
-  );
+  if (closures === undefined) return false;
+  return closures.some((closure) => {
+    if (String(closure.workItemId) !== String(workItemId)) return false;
+    if (closure.runAttemptId !== undefined) return false;
+    const closureTime = positiveTimestamp(closure.observedAt);
+    if (closureTime === null) return false;
+    return attempts.every((attempt) => {
+      const attemptTime = positiveTimestamp(attempt.startedAt);
+      return attemptTime !== null && attemptTime <= closureTime;
+    });
+  });
 }
 
 function attemptOutcome(input: {
   readonly statuses: ReadonlyArray<RunAttemptStatus>;
   readonly workItemId: WorkItemId;
   readonly runAttemptId: RunAttemptId;
+  readonly startedAt: string;
   readonly closures: ReadonlyArray<SymphonyWorkClosureEvidence> | undefined;
 }): SymphonyWorkAttemptOutcome {
   if (input.statuses.length === 0) {
@@ -522,7 +584,8 @@ function attemptOutcome(input: {
   if (status === "succeeded") return { state: "succeeded" };
   if (FAILED_RUN_STATUSES.has(status)) return { state: "failed" };
   if (STOPPED_RUN_STATUSES.has(status)) {
-    return closureFor(input.closures, input.workItemId, input.runAttemptId) === null
+    return closureFor(input.closures, input.workItemId, input.runAttemptId, input.startedAt) ===
+      null
       ? {
           state: "stop_requested",
           reason:
@@ -584,6 +647,7 @@ function buildAttempts(input: {
         statuses,
         workItemId: input.workItemId,
         runAttemptId: first.runAttemptId,
+        startedAt: first.startedAt,
         closures: input.closures,
       }),
       isCurrent:
@@ -1031,13 +1095,16 @@ function startAction(input: {
             : `Not eligible: ${input.lifecycle.detail}`,
         );
       case "refused":
-        return unknown(
-          input.refusal === null
-            ? "The last dispatch was refused. Refresh to recheck policy before starting."
-            : `The last dispatch was refused (${input.refusal.reason})${
-                input.refusal.detail === undefined ? "." : `: ${input.refusal.detail}.`
-              } Refresh to recheck policy before starting.`,
-        );
+        return {
+          ...base,
+          state: "available",
+          reason:
+            input.refusal === null
+              ? "The last dispatch was refused. The row remains Not started until the server accepts it."
+              : `The last dispatch was refused (${input.refusal.reason})${
+                  input.refusal.detail === undefined ? "." : `: ${input.refusal.detail}.`
+                } The row remains Not started until the server accepts it.`,
+        };
     }
   }
   return MANUALLY_DISPATCHABLE_LIFECYCLES.has(input.lifecycle.lifecycle)
@@ -1324,9 +1391,20 @@ export function projectSymphonyWorkItem(input: SymphonyWorkItemInput): SymphonyW
   const stopRequestedAttempts = attempts.history.filter(
     (attempt) => attempt.outcome.state === "stop_requested",
   );
+  const unresolvedStopAttempts = stopRequestedAttempts.filter(
+    (stop) =>
+      !attempts.history.some(
+        (other) =>
+          String(other.runAttemptId) !== String(stop.runAttemptId) &&
+          (other.attemptNumber > stop.attemptNumber ||
+            (other.attemptNumber === stop.attemptNumber && other.startedAt > stop.startedAt)) &&
+          other.outcome.state === "succeeded",
+      ),
+  );
+  const hasUnresolvedStop = unresolvedStopAttempts.length > 0;
   const hasPositiveOwnership =
     activeAttempts.length > 0 ||
-    stopRequestedAttempts.length > 0 ||
+    hasUnresolvedStop ||
     attempts.outstanding.length > 0 ||
     attention.state === "needs_attention";
 
@@ -1381,11 +1459,11 @@ export function projectSymphonyWorkItem(input: SymphonyWorkItemInput): SymphonyW
 
   const hasConfirmedStop =
     attempts.history.some((attempt) => attempt.outcome.state === "stopped") ||
-    hasConfirmedWorkItemClosure(input.closures, input.workItemId);
+    hasConfirmedWorkItemClosure(input.closures, input.workItemId, attempts.history);
   const hasUnconfirmedCancellation =
     resolved.lifecycle.phase === "finished" &&
     resolved.lifecycle.outcome === "cancelled" &&
-    (stopRequestedAttempts.length > 0 || !hasConfirmedStop);
+    (hasUnresolvedStop || !hasConfirmedStop);
 
   const execution: SymphonyWorkExecution =
     activeAttempts.length > 0
@@ -1463,8 +1541,14 @@ export function projectSymphonyWorkItem(input: SymphonyWorkItemInput): SymphonyW
       resolved.lifecycle.phase === "in_progress" ||
       input.pendingDispatch !== undefined ||
       hasUnconfirmedCancellation ||
-      (reconciliation && (activeAttempts.length > 0 || stopRequestedAttempts.length > 0)),
-    needsAttention: attention.state === "needs_attention" || reconciliation,
+      hasUnresolvedStop ||
+      (reconciliation && activeAttempts.length > 0),
+    needsAttention:
+      attention.state === "needs_attention" ||
+      input.pendingDispatch !== undefined ||
+      hasUnconfirmedCancellation ||
+      hasUnresolvedStop ||
+      contradictions.length > 0,
     history: resolved.lifecycle.phase === "finished",
     reconciliation,
   };
