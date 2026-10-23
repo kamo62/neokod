@@ -196,43 +196,68 @@ export const makeExecutionFinalizer = Effect.gen(function* () {
         yield* appendEvent(input.runAttemptId, "validation_started");
       }
 
-      // 1. Validation (no-op when nothing is configured).
+      // 1. Read the current attempt WITHOUT mutating it. Missing and unreadable
+      //    attempts are distinct from a legacy row whose accepted snapshot is
+      //    absent; neither may be treated as an accepted brief. Refuse
+      //    publication before validation, push or PR creation can run.
+      const attemptRead = yield* Effect.result(runAttempts.getById(input.runAttemptId));
+      if (attemptRead._tag === "Failure" || attemptRead.success === null) {
+        const unreadable = attemptRead._tag === "Failure";
+        const reason = unreadable
+          ? "Publication refused: the run attempt could not be read, so its accepted publication policy cannot be established. No branch was pushed and no pull request was opened."
+          : "Publication refused: the run attempt is missing, so its accepted publication policy cannot be established. No branch was pushed and no pull request was opened.";
+        yield* appendEvent(input.runAttemptId, "delivery_refused", {
+          reason,
+          attemptRead: unreadable ? "failed" : "missing",
+          ...(unreadable ? { cause: String(attemptRead.failure) } : {}),
+        });
+        yield* runAttempts
+          .updateStatus(input.runAttemptId, "workflow_error", {
+            finishedAt: now,
+            error: { category: "workflow_error", message: reason },
+          })
+          .pipe(Effect.catch(() => Effect.void));
+        yield* settleLifecycle(input, "failed");
+        yield* attention
+          .create({
+            id: AttentionItemId.make(
+              `delivery-attempt-unavailable-${String(input.runAttemptId).replace(/[^a-zA-Z0-9._-]/g, "_")}`,
+            ),
+            workItemId: input.workItem.id,
+            runAttemptId: String(input.runAttemptId),
+            kind: "workflow_invalid",
+            severity: "high",
+            whatHappened: reason,
+            whyHuman:
+              "Neokod cannot prove the attempt's accepted publication policy or ownership, so it must not publish.",
+            recommendedResponse:
+              "Inspect the run attempt and its workspace. No branch was pushed and no pull request was opened.",
+            availableActions: ["take-over", "abandon"],
+          })
+          .pipe(Effect.catch(() => Effect.void));
+        return "delivery_refused" as const;
+      }
+      const attempt = attemptRead.success;
+
+      // 2. Validation (no-op when nothing is configured).
       const validationResults = yield* validationRunner.runAll({
         config: input.config,
         runAttemptId: input.runAttemptId,
         workspacePath: input.workspacePath,
       });
 
-      // 2. Agent handoff file; missing is a fact, not an error.
+      // 3. Agent handoff file; missing is a fact, not an error.
       const evidenceFileContent = yield* fileSystem
         .readFileString(`${input.workspacePath}/${EVIDENCE_FILE_NAME}`)
         .pipe(Effect.catch(() => Effect.succeed(null)));
 
-      // 3. Read the current attempt WITHOUT mutating it: the terminal status
-      //    must be written once, after the validation verdict is known
-      //    (REVIEW P1: `succeeded` was written first, so a crash between the
-      //    write and the verdict left a failed run recorded as succeeded).
-      const attempt = yield* runAttempts
-        .getById(input.runAttemptId)
-        .pipe(Effect.catch(() => Effect.succeed(null)));
-
-      // 4. Assemble the bundle against a synthetic finished attempt so the
-      //    duration is real without a durable status write.
-      const assembledAttempt = attempt ?? {
-        id: input.runAttemptId,
-        workItemId: input.workItem.id,
-        attemptNumber: 1,
-        workspacePath: input.workspacePath,
-        provider: input.config.agentProvider,
-        status: "streaming_turn" as const,
-        startedAt: input.workItem.updatedAt,
-        finishedAt: now,
-        error: null,
-      };
+      // 4. Assemble the bundle against the exact durable attempt. A legacy row
+      //    with no accepted snapshot remains supported through the live
+      //    workflow policy; no snapshot is synthesised here.
       let evidence: EvidenceBundle = yield* evidenceService.assemble({
         workItem: input.workItem,
         issue: input.issue,
-        runAttempt: assembledAttempt,
+        runAttempt: attempt,
         config: input.config,
         workspacePath: input.workspacePath,
         baseBranch: input.baseBranch,
