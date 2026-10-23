@@ -4582,13 +4582,17 @@ layer("SymphonyOrchestrator leadership", (it) => {
         acceptanceCriteria: [],
         source: { kind: "manual" },
         trackerIssueId: `manual-${id}`,
-        lifecycle: "running",
+        lifecycle: "queued",
         priority: 1,
         eligibilityReasons: [],
         evidence: null,
-        claimedAt: now,
         createdAt: now,
         updatedAt: now,
+      });
+      const claimed = yield* workItems.claim(WorkItemId.make(id), "leadership-owner");
+      yield* workItems.transition(WorkItemId.make(id), "running", {
+        ownerToken: "leadership-owner",
+        generation: claimed.generation,
       });
       const runAttempts = yield* RunAttemptRepository;
       const startedAt = yield* nowIso;

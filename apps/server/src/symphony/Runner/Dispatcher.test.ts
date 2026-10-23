@@ -298,6 +298,7 @@ layer(
       Effect.succeed({
         runTurn: () =>
           (options?.onChildSpawned?.(4321) ?? Effect.void).pipe(
+            Effect.orDie,
             Effect.as({ turnId: "t1", threadId: "th1", completed: true }),
           ),
         interrupt: () => Effect.void,
@@ -681,10 +682,14 @@ const stopBlockableFactory = (pid: number, recordIdentity: boolean) =>
             yield* Ref.set(releaseRef, () =>
               Deferred.fail(d, new AgentRuntimeSpawnError("interrupted")).pipe(Effect.asVoid),
             );
+            // The production factory narrows this surface; the runtime invokes
+            // the same callback with the optional proven identity.
+            const onChildSpawned = options?.onChildSpawned as unknown as
+              | ((pid: number, identity?: ProcessGroupIdentity) => Effect.Effect<void>)
+              | undefined;
             yield* (
-              options?.onChildSpawned?.(pid, recordIdentity ? provenIdentity(pid) : undefined) ??
-                Effect.void
-            );
+              onChildSpawned?.(pid, recordIdentity ? provenIdentity(pid) : undefined) ?? Effect.void
+            ).pipe(Effect.orDie);
             return {
               runTurn: () =>
                 Deferred.await(d).pipe(
@@ -756,6 +761,28 @@ const stopLayer = (recordIdentity: boolean, pid: number) =>
     ),
   );
 
+const admissionLayer = (platform: NodeJS.Platform) =>
+  it.layer(
+    RunDispatcherLive.pipe(
+      Layer.provideMerge(WorkItemRepositoryLive),
+      Layer.provideMerge(RunAttemptRepositoryLive),
+      Layer.provideMerge(RunEventRepositoryLive),
+      Layer.provideMerge(ApprovalRepositoryLive),
+      Layer.provideMerge(LiveRequestsLive),
+      Layer.provideMerge(fakeWorkspaceManager),
+      Layer.provideMerge(fakeFinalizer),
+      Layer.provideMerge(scriptedFactory(scriptedAgent(true))),
+      Layer.provideMerge(Layer.succeed(RunDispatcherProcessClosure, { platform })),
+      Layer.provideMerge(
+        Layer.succeed(ServerConfig, {
+          symphonyLogsDir: "/logs/symphony",
+        } as ServerConfig["Service"]),
+      ),
+      Layer.provideMerge(SqlitePersistenceMemory),
+      Layer.provideMerge(NodeServices.layer),
+    ),
+  );
+
 const waitForCancelableAttempt = (workItemId: WorkItemId) =>
   Effect.gen(function* () {
     const attempts = yield* RunAttemptRepository;
@@ -770,6 +797,32 @@ const waitForCancelableAttempt = (workItemId: WorkItemId) =>
       new TestAssertionError(`dispatch never started; lifecycle=${String(item?.lifecycle)}`),
     );
   });
+
+admissionLayer("win32")("Dispatcher admission platform gate", (it) => {
+  it.effect("refuses Symphony work before claiming on an unsupported platform", () =>
+    Effect.gen(function* () {
+      const workItem = yield* seedWorkItem("platform-win32-1");
+      const dispatcher = yield* RunDispatcher;
+      const result = yield* Effect.result(
+        dispatcher.dispatchWorkItem({
+          workItem,
+          issue: makeIssue("platform-win32-1"),
+          config: makeConfig("/repo"),
+        }),
+      );
+      expect(result._tag).toBe("Failure");
+      if (result._tag === "Failure") {
+        expect(result.failure.message).toContain("process-group closure cannot be proven");
+      }
+      const workItems = yield* WorkItemRepository;
+      const after = yield* workItems.getById(workItem.id).pipe(Effect.flatMap(required));
+      expect(after.lifecycle).toBe("queued");
+      expect(after.ownerPid ?? null).toBeNull();
+      const attempts = yield* RunAttemptRepository;
+      expect(yield* attempts.listByWorkItem(workItem.id)).toEqual([]);
+    }),
+  );
+});
 
 stopLayer(false, 22001)("Dispatcher stop with an unverifiable legacy owner", (it) => {
   it.effect("retains the claim, never retries, and re-checks on a repeated Stop", () =>
@@ -791,6 +844,9 @@ stopLayer(false, 22001)("Dispatcher stop with an unverifiable legacy owner", (it
       expect(first.status).toBe("held");
       if (first.status === "held") expect(first.reason).toBe("unproven_group_identity");
       expect(stopSignalLog).toEqual([]);
+      // A pending held Stop still counts as active for the sweeper, so a tick
+      // cannot release it as if the interrupted fiber's exit were closure.
+      expect(yield* dispatcher.isAgentActive(runAttemptId)).toBe(true);
       const workItems = yield* WorkItemRepository;
       const after = yield* workItems.getById(workItem.id).pipe(Effect.flatMap(required));
       // The held lifecycle is whichever active phase the Stop interrupted:
@@ -925,6 +981,44 @@ stopLayer(true, 22002)("Dispatcher stop with a confirmed owner group", (it) => {
           .pipe(Effect.flatMap(required));
         expect(replacementAttempt.status).toBe("preparing_workspace");
       }),
+  );
+
+  it.effect("preserves a replacement claim in its preparation window", () =>
+    Effect.gen(function* () {
+      stopSignalLog.length = 0;
+      const workItem = yield* seedWorkItem("stop-prep-window");
+      const attempts = yield* RunAttemptRepository;
+      const oldAttemptId = RunAttemptId.make("run-prep-old");
+      yield* attempts.create({
+        id: oldAttemptId,
+        workItemId: workItem.id,
+        attemptNumber: 1,
+        workspacePath: "/ws/#stop-prep-window",
+        provider: makeConfig("/repo").agentProvider,
+        status: "streaming_turn",
+        startedAt: "1960-01-01T00:00:00.000Z",
+        finishedAt: null,
+        error: null,
+      });
+      const workItems = yield* WorkItemRepository;
+      const claimed = yield* workItems.claim(workItem.id, "owner-prep");
+      yield* workItems.setClaimOwnerProcessIdentity(workItem.id, "owner-prep", claimed.generation, {
+        pid: 33003,
+        pgid: 33003,
+        birthToken: "born-33003",
+      });
+
+      const dispatcher = yield* RunDispatcher;
+      const outcome = yield* dispatcher.cancelRun(oldAttemptId);
+      expect(outcome.status).toBe("held");
+      if (outcome.status === "held") expect(outcome.reason).toBe("claim_not_associated");
+      expect(stopSignalLog).toEqual([]);
+      expect(yield* dispatcher.isAgentActive(oldAttemptId)).toBe(false);
+
+      const replacement = yield* workItems.getById(workItem.id).pipe(Effect.flatMap(required));
+      expect(replacement.lifecycle).toBe("preparing");
+      expect(replacement.ownerPid).toBe(33003);
+    }),
   );
 });
 
