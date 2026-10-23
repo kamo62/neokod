@@ -1132,7 +1132,7 @@ layer("ApprovalService durable ids", (it) => {
     ),
   );
 
-  it.effect("scope closure finalises a pending request instead of leaving it answerable", () =>
+  it.effect("scope closure finalises a request while publication is still blocked", () =>
     Effect.gen(function* () {
       yield* seedWorkItem("wi-scope-close");
       const service = yield* ApprovalService;
@@ -1142,10 +1142,27 @@ layer("ApprovalService durable ids", (it) => {
       const runAttemptId = RunAttemptId.make("run-scope-close");
       const workItemId = WorkItemId.make("wi-scope-close");
       const scope = yield* Scope.make();
+      const callbacks = approvalServiceRequestCallbacks(service);
+      const persisted = yield* Deferred.make<void>();
+      const releasePublication = yield* Deferred.make<void>();
+      let firstRecord = true;
+      const recordRequest: NonNullable<
+        Parameters<typeof makeFakeCodexRuntime>[0]["recordRequest"]
+      > = (input) => {
+        if (!firstRecord) return callbacks.recordRequest(input);
+        firstRecord = false;
+        return callbacks.recordRequest(input).pipe(
+          Effect.tap(() => Deferred.succeed(persisted, undefined)),
+          // Block inside the real production recordRequest wrapper after the
+          // durable row has been inserted and before it returns.
+          Effect.andThen(Deferred.await(releasePublication)),
+        );
+      };
       const runtime = yield* makeFakeCodexRuntime({
         peer,
         liveRequests: live,
-        ...approvalServiceRequestCallbacks(service),
+        ...callbacks,
+        recordRequest,
       }).pipe(Effect.provideService(Scope.Scope, scope));
       yield* runtime
         .runTurn({
@@ -1158,24 +1175,40 @@ layer("ApprovalService durable ids", (it) => {
         })
         .pipe(Effect.provideService(Scope.Scope, scope), Effect.forkIn(scope));
       yield* peer.awaitClientRequest("turn/start");
-      yield* peer.sendCommandApproval();
+      const wireId = yield* peer.sendCommandApproval();
 
-      let recorded: ApprovalRequest | undefined;
-      for (let attempt = 0; attempt < 100 && recorded === undefined; attempt += 1) {
-        yield* Effect.yieldNow;
-        const rows = yield* repository.listForRun(runAttemptId);
-        recorded = rows[0];
-      }
+      // Deterministic barrier: the real recordPending has returned, so the row
+      // exists, but recordRequest has not returned to the runtime yet.
+      yield* Deferred.await(persisted);
+      const rows = yield* repository.listForRun(runAttemptId);
+      const recorded = rows[0];
       if (recorded === undefined) throw new Error("the runtime did not record the request");
-      yield* Effect.repeat(Effect.yieldNow, { times: 20 });
+      expect(recorded.state).toBe("pending");
+      expect(yield* live.listPending(runAttemptId)).toHaveLength(1);
 
-      // Closing the runtime scope interrupts the waiting handler. The
-      // uninterruptible finaliser must withdraw the exact registration and
-      // close the pending row, not leave an advertised answerable request.
+      // Closing the runtime scope now must still run the publication finaliser:
+      // withdraw exactly this registration and close the durable pending row.
       yield* Scope.close(scope, Exit.void);
       const row = yield* repository.getById(recorded.id);
       expect(row?.state).toBe("interrupted");
       expect(yield* live.listPending(runAttemptId)).toHaveLength(0);
+
+      // No provider response was sent for the interrupted request.
+      const received = yield* peer.received;
+      expect(received.some((message) => message.id === wireId)).toBe(false);
+
+      // The request identity is not permanently poisoned: a later replacement
+      // can register and be withdrawn without touching an unrelated waiter.
+      const replacement = yield* live.registerApproval({
+        requestId: "0",
+        workItemId,
+        runAttemptId,
+        action: "command_execution",
+        prompt: "replacement",
+      });
+      expect(
+        yield* live.withdrawPending(runAttemptId, "0", replacement as Deferred.Deferred<unknown>),
+      ).toBe(true);
     }),
   );
 
