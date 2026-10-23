@@ -15,13 +15,13 @@ import {
 import { RunAttemptRepository } from "../Persistence/Services/RunAttemptRepository.ts";
 import { RunEventRepository } from "../Persistence/Services/RunEventRepository.ts";
 import { WorkflowRepository } from "../Persistence/Services/WorkflowRepository.ts";
-import { RunDispatcher } from "../Runner/Dispatcher.ts";
-import { WORKFLOW_DEFAULTS } from "../Workflow/Config.ts";
 import {
-  attemptAssociatesWithClaim,
-  hasPendingStopIntent,
-  settleConfirmedStopIntent,
-} from "./Recovery.ts";
+  RunDispatcher,
+  claimBindingMatches,
+  readAttemptClaimBinding,
+} from "../Runner/Dispatcher.ts";
+import { WORKFLOW_DEFAULTS } from "../Workflow/Config.ts";
+import { hasPendingStopIntent, settleConfirmedStopIntent } from "./Recovery.ts";
 
 /**
  * Claim reconciliation (plan 9.4, 9.7.3 to 9.7.5).
@@ -194,10 +194,11 @@ const reconcileItem = (
         })
         .pipe(Effect.catch(() => Effect.succeed(false)));
 
-    // Preserve the preparation window: a claim newer than the latest attempt
-    // belongs to a replacement execution that has not created its attempt row.
-    if (!attemptAssociatesWithClaim(attempt, ownership)) {
-      yield* recordHold("claim_not_associated");
+    // Positive association is the exact durable attempt/claim binding, not
+    // timestamp order. Missing legacy bindings stay held and unverifiable.
+    const binding = yield* readAttemptClaimBinding(deps.runEvents, attempt.id);
+    if (!claimBindingMatches(binding, ownership, item.id)) {
+      yield* recordHold("claim_binding_unverified");
       return;
     }
 

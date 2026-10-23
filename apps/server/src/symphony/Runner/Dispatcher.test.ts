@@ -716,7 +716,7 @@ const stopFailingFactory = (pid: number) =>
   Layer.succeed(AgentRuntimeFactory, {
     make: (_config, options) =>
       Effect.gen(function* () {
-        yield* options?.onChildSpawned?.(pid) ?? Effect.void;
+        yield* (options?.onChildSpawned?.(pid) ?? Effect.void).pipe(Effect.orDie);
         return {
           runTurn: () => Effect.fail(new AgentRuntimeSpawnError("agent turn failed")),
           interrupt: () => Effect.void,
@@ -983,11 +983,14 @@ stopLayer(true, 22002)("Dispatcher stop with a confirmed owner group", (it) => {
       }),
   );
 
-  it.effect("preserves a replacement claim in its preparation window", () =>
+  it.effect("rejects a same-instant replacement generation despite timestamp order", () =>
     Effect.gen(function* () {
       stopSignalLog.length = 0;
       const workItem = yield* seedWorkItem("stop-prep-window");
+      const workItems = yield* WorkItemRepository;
       const attempts = yield* RunAttemptRepository;
+      const runEvents = yield* RunEventRepository;
+      const first = yield* workItems.claim(workItem.id, "owner-old");
       const oldAttemptId = RunAttemptId.make("run-prep-old");
       yield* attempts.create({
         id: oldAttemptId,
@@ -996,28 +999,42 @@ stopLayer(true, 22002)("Dispatcher stop with a confirmed owner group", (it) => {
         workspacePath: "/ws/#stop-prep-window",
         provider: makeConfig("/repo").agentProvider,
         status: "streaming_turn",
-        startedAt: "1960-01-01T00:00:00.000Z",
+        startedAt: yield* nowIso,
         finishedAt: null,
         error: null,
       });
-      const workItems = yield* WorkItemRepository;
-      const claimed = yield* workItems.claim(workItem.id, "owner-prep");
-      yield* workItems.setClaimOwnerProcessIdentity(workItem.id, "owner-prep", claimed.generation, {
-        pid: 33003,
-        pgid: 33003,
-        birthToken: "born-33003",
+      yield* runEvents.append(oldAttemptId, "issue_claimed", {
+        workItemId: String(workItem.id),
+        ownerToken: "owner-old",
+        generation: first.generation,
       });
+      yield* workItems.releaseClaim(workItem.id, "queued", {
+        ownerToken: "owner-old",
+        generation: first.generation,
+        ownerPid: null,
+        ownerPgid: null,
+        ownerBirthToken: null,
+      });
+      // Same clock instant as the previous attempt/claim: only the exact
+      // generation binding can distinguish the replacement.
+      const replacement = yield* workItems.claim(workItem.id, "owner-prep");
+      yield* workItems.setClaimOwnerProcessIdentity(
+        workItem.id,
+        "owner-prep",
+        replacement.generation,
+        { pid: 33003, pgid: 33003, birthToken: "born-33003" },
+      );
 
       const dispatcher = yield* RunDispatcher;
       const outcome = yield* dispatcher.cancelRun(oldAttemptId);
       expect(outcome.status).toBe("held");
-      if (outcome.status === "held") expect(outcome.reason).toBe("claim_not_associated");
+      if (outcome.status === "held") expect(outcome.reason).toBe("claim_binding_unverified");
       expect(stopSignalLog).toEqual([]);
-      expect(yield* dispatcher.isAgentActive(oldAttemptId)).toBe(false);
+      expect(yield* dispatcher.isAgentActive(oldAttemptId)).toBe(true);
 
-      const replacement = yield* workItems.getById(workItem.id).pipe(Effect.flatMap(required));
-      expect(replacement.lifecycle).toBe("preparing");
-      expect(replacement.ownerPid).toBe(33003);
+      const current = yield* workItems.getById(workItem.id).pipe(Effect.flatMap(required));
+      expect(current.lifecycle).toBe("preparing");
+      expect(current.ownerPid).toBe(33003);
     }),
   );
 });

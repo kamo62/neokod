@@ -21,7 +21,11 @@ import {
 import { RunAttemptRepository } from "../Persistence/Services/RunAttemptRepository.ts";
 import { RunEventRepository } from "../Persistence/Services/RunEventRepository.ts";
 import { WorkflowRepository } from "../Persistence/Services/WorkflowRepository.ts";
-import { RunDispatcher } from "../Runner/Dispatcher.ts";
+import {
+  RunDispatcher,
+  claimBindingMatches,
+  readAttemptClaimBinding,
+} from "../Runner/Dispatcher.ts";
 import type { WorkspaceOwnershipRepositoryShape } from "../Persistence/Services/WorkspaceOwnershipRepository.ts";
 import { isRetryableCategory } from "./Retry.ts";
 
@@ -107,22 +111,6 @@ const ownershipFence = (ownership: ClaimOwnership): ClaimFence | null =>
         ownerPgid: ownership.ownerPgid,
         ownerBirthToken: ownership.ownerBirthToken,
       };
-
-/**
- * An attempt belongs to the current claim only when it started at or after the
- * claim was taken. A newer claim that has not created its attempt row yet (the
- * preparation window) therefore leaves the previous terminal attempt unable to
- * authorise a release of the new owner's claim.
- */
-export const attemptAssociatesWithClaim = (
-  attempt: { readonly startedAt: string },
-  ownership: ClaimOwnership,
-): boolean => {
-  if (ownership.claimedAt === null) return false;
-  const attemptStarted = Date.parse(attempt.startedAt);
-  const claimedAt = Date.parse(ownership.claimedAt);
-  return !Number.isNaN(attemptStarted) && !Number.isNaN(claimedAt) && attemptStarted >= claimedAt;
-};
 
 /**
  * Durable Stop intent. A Stop that ended held leaves `stop_unconfirmed` (and an
@@ -308,14 +296,14 @@ const recoverItem = (
       return;
     }
 
-    // Preserve the preparation window: a claim newer than the latest attempt
-    // belongs to a replacement execution that has not created its attempt row
-    // yet. The previous attempt's status must not release it.
-    if (!attemptAssociatesWithClaim(attempt, ownership)) {
+    // Positive association is the exact durable attempt/claim binding, not
+    // timestamp order. Missing legacy bindings stay held and unverifiable.
+    const binding = yield* readAttemptClaimBinding(deps.runEvents, attempt.id);
+    if (!claimBindingMatches(binding, ownership, item.id)) {
       yield* deps.runEvents
         .appendOnce(attempt.id, "recovery_hold", {
           workItemId: String(item.id),
-          reason: "claim_not_associated",
+          reason: "claim_binding_unverified",
           ownerPid: ownership.ownerPid,
           generation: ownership.generation,
           terminalAttempt: TERMINAL_STATUSES.has(attempt.status),

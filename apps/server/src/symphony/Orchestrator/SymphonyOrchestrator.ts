@@ -12,13 +12,13 @@ import type {
   SymphonyProjectId,
   SymphonyProjectSourceControl,
   SymphonyOverview,
+  SymphonyStopOutcome,
   TrackerHealth,
   WorkflowRecord,
 } from "@neokod/contracts";
 import * as Context from "effect/Context";
 import type * as Effect from "effect/Effect";
 import type * as Scope from "effect/Scope";
-import type { StopOutcome } from "../Runner/Dispatcher.ts";
 import type { SymphonyPersistenceError } from "../Persistence/Errors.ts";
 
 export type SymphonyProjectUpdateResult =
@@ -135,7 +135,9 @@ export interface SymphonyOrchestratorShape {
    * the RPC boundary can report an unconfirmed Stop instead of claiming it
    * was cancelled.
    */
-  readonly cancelRun: (runAttemptId: string) => Effect.Effect<StopOutcome, never, Scope.Scope>;
+  readonly cancelRun: (
+    runAttemptId: string,
+  ) => Effect.Effect<SymphonyStopOutcome, never, Scope.Scope>;
 
   // Review lifecycle (Phase 5, plan 14): review actions with their own
   // lifecycle transitions and confirmations.

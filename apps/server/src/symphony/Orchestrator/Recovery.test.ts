@@ -100,8 +100,9 @@ const seedAttempt = (
 ) =>
   Effect.gen(function* () {
     const runAttempts = yield* RunAttemptRepository;
+    const attemptId = RunAttemptId.make(`run-${workItemId}-${startedAt}`);
     yield* runAttempts.create({
-      id: RunAttemptId.make(`run-${workItemId}-${startedAt}`),
+      id: attemptId,
       workItemId,
       attemptNumber,
       workspacePath: "/ws/1",
@@ -114,6 +115,16 @@ const seedAttempt = (
       finishedAt,
       error: null,
     });
+    const workItems = yield* WorkItemRepository;
+    const ownership = yield* workItems.getClaimOwnership(workItemId);
+    if (ownership !== null && ownership.ownerToken !== null) {
+      const runEvents = yield* RunEventRepository;
+      yield* runEvents.append(attemptId, "issue_claimed", {
+        workItemId: String(workItemId),
+        ownerToken: ownership.ownerToken,
+        generation: ownership.generation,
+      });
+    }
   });
 
 const seedClaimedItem = (
