@@ -141,7 +141,7 @@ export function SymphonyRunDetailView({ runId }: { readonly runId: string }) {
         input: { runAttemptId: cancelAction.runAttemptId },
       });
       if (result._tag === "Success") {
-        setCancelNote(stopAcknowledgementNote(result.value));
+        setCancelNote(stopAcknowledgementNote(result.value, cancelAction.runAttemptId));
       } else if (!isAtomCommandInterrupted(result)) {
         const cause = squashAtomCommandFailure(result);
         setCancelNote(

@@ -1,3 +1,4 @@
+import { useAtomValue } from "@effect/atom-react";
 import * as Schema from "effect/Schema";
 import { useEffect, useMemo, useState } from "react";
 
@@ -19,9 +20,11 @@ import type {
 } from "@neokod/contracts";
 import { RunAttemptId, WorkLifecycleSchema } from "@neokod/contracts";
 
+import { environmentCatalog } from "../../connection/catalog";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import {
   projectSymphonyWorkItem,
+  symphonyWorkConnectionStaleReason,
   type SymphonyWorkAction,
   type SymphonyWorkAttempt,
   type SymphonyWorkAttentionEntry,
@@ -31,6 +34,7 @@ import {
   type SymphonyWorkItemProjection,
   type SymphonyWorkRefusal,
 } from "../../symphonyWork.logic";
+import { useEnvironmentPresentation } from "../../state/presentation";
 import { useEnvironmentQuery } from "../../state/query";
 import { useSymphonyProjectWork } from "../../state/symphonyWork";
 import { symphonyEnvironment } from "../../state/symphony";
@@ -502,6 +506,15 @@ export function SymphonyWorkView({
   const cancelRun = useAtomCommand(symphonyEnvironment.cancelRun, {
     reportFailure: false,
   });
+  const environmentPresentation = useEnvironmentPresentation(environmentId);
+  const networkStatus = useAtomValue(environmentCatalog.networkStatusValueAtom);
+  const connectionStaleReason =
+    environmentId === null
+      ? null
+      : symphonyWorkConnectionStaleReason(
+          environmentPresentation.presentation?.connection.phase ?? null,
+          networkStatus,
+        );
 
   const pendingForProject = useMemo(
     () =>
@@ -621,14 +634,24 @@ export function SymphonyWorkView({
               reason: "Only pending requests from the exact attempt were loaded.",
             };
 
+    const boardStaleReason =
+      boardError ??
+      (collection?.freshness.board.state === "stale" ? collection.freshness.board.reason : null) ??
+      connectionStaleReason;
     const runsStaleReason =
       detailQuery.error ??
-      (selectedItem.freshness.runs.state === "stale" ? selectedItem.freshness.runs.reason : null);
+      (selectedItem.freshness.runs.state === "stale" ? selectedItem.freshness.runs.reason : null) ??
+      (collection?.freshness.runs.state === "stale" ? collection.freshness.runs.reason : null) ??
+      connectionStaleReason;
     const attentionStaleReason =
       detailQuery.error ??
       (selectedItem.freshness.attention.state === "stale"
         ? selectedItem.freshness.attention.reason
-        : null);
+        : null) ??
+      (collection?.freshness.attention.state === "stale"
+        ? collection.freshness.attention.reason
+        : null) ??
+      connectionStaleReason;
     const closures: Array<{
       workItemId: WorkItemId;
       runAttemptId?: RunAttemptId;
@@ -660,7 +683,11 @@ export function SymphonyWorkView({
       environmentId,
       workItemId: selectedCard.workItemId,
       projectId,
-      card: { state: "known", value: selectedCard },
+      card: {
+        state: "known",
+        value: selectedCard,
+        ...(boardStaleReason === null ? {} : { staleReason: boardStaleReason }),
+      },
       ...(details === null
         ? {}
         : {
@@ -697,6 +724,9 @@ export function SymphonyWorkView({
       ...(closures.length === 0 ? {} : { closures }),
     });
   }, [
+    boardError,
+    collection,
+    connectionStaleReason,
     detailQuery.data,
     detailQuery.error,
     environmentId,
@@ -840,7 +870,7 @@ export function SymphonyWorkView({
     try {
       const result = await cancelRun({ environmentId, input: { runAttemptId } });
       if (result._tag === "Success") {
-        setCancelNote(stopAcknowledgementNote(result.value));
+        setCancelNote(stopAcknowledgementNote(result.value, runAttemptId));
       } else if (!isAtomCommandInterrupted(result)) {
         const cause = squashAtomCommandFailure(result);
         setCancelNote(
