@@ -85,7 +85,24 @@ export class AgentRuntimeTargetMismatchError extends Error {
   }
 }
 
-export type AgentRuntimeRunError = AgentRuntimeSpawnError | AgentRuntimeTargetMismatchError;
+/**
+ * The accepted brief cannot be enforced against the current live policy
+ * without re-enabling an approval path the accepted permission forbids.
+ */
+export class AgentRuntimePermissionConflictError extends Error {
+  readonly detail: string;
+
+  constructor(detail: string) {
+    super(`Accepted guidance permission cannot be enforced: ${detail}`);
+    this.name = "AgentRuntimePermissionConflictError";
+    this.detail = detail;
+  }
+}
+
+export type AgentRuntimeRunError =
+  | AgentRuntimeSpawnError
+  | AgentRuntimeTargetMismatchError
+  | AgentRuntimePermissionConflictError;
 
 /**
  * The callback had positive knowledge of a spawned child but could not record
@@ -423,23 +440,38 @@ export const makeCodexAgentRuntime = (
           yield* assertAcceptedTarget(accepted, input);
         }
         const livePolicy = resolveRunnerPolicy(input.config);
-        const effectivePolicy =
+        const narrowedPermission =
           accepted === undefined
+            ? undefined
+            : narrowAcceptedPermissions(
+                accepted.permission,
+                resolveAcceptedPermissions(input.config),
+              );
+        if (narrowedPermission?._tag === "unrepresentable") {
+          return yield* Effect.fail(
+            new AgentRuntimePermissionConflictError(
+              `${narrowedPermission.reason}: accepted ${narrowedPermission.acceptedApprovalPolicy} vs live ${narrowedPermission.liveApprovalPolicy}`,
+            ),
+          );
+        }
+        const acceptedForPrompt =
+          accepted === undefined || narrowedPermission === undefined
+            ? undefined
+            : { ...accepted, permission: narrowedPermission.permission };
+        const effectivePolicy =
+          narrowedPermission === undefined
             ? livePolicy
-            : (() => {
-                const narrowed = narrowAcceptedPermissions(
-                  accepted.permission,
-                  resolveAcceptedPermissions(input.config),
-                );
-                return {
-                  approvalPolicy: narrowed.approvalPolicy,
-                  threadSandbox: narrowed.threadSandbox,
-                  turnSandboxPolicy: narrowed.turnSandboxPolicy,
-                  reviewer: reviewerForPolicy(narrowed.approvalPolicy, narrowed.turnSandboxPolicy),
-                  editsAllowed: narrowed.editsAllowed,
-                  approvalsEnabled: narrowed.approvalsEnabled,
-                };
-              })();
+            : {
+                approvalPolicy: narrowedPermission.permission.approvalPolicy,
+                threadSandbox: narrowedPermission.permission.threadSandbox,
+                turnSandboxPolicy: narrowedPermission.permission.turnSandboxPolicy,
+                reviewer: reviewerForPolicy(
+                  narrowedPermission.permission.approvalPolicy,
+                  narrowedPermission.permission.turnSandboxPolicy,
+                ),
+                editsAllowed: narrowedPermission.permission.editsAllowed,
+                approvalsEnabled: narrowedPermission.permission.approvalsEnabled,
+              };
         const client = activeClient ?? (yield* initialize);
 
         if (!requestConsumerStarted) {
@@ -481,7 +513,7 @@ export const makeCodexAgentRuntime = (
               ? { workflowInstructions: input.workflowInstructions }
               : {}),
             ...(input.reviewFeedback !== undefined ? { reviewFeedback: input.reviewFeedback } : {}),
-            ...(accepted !== undefined ? { acceptedGuidance: accepted } : {}),
+            ...(acceptedForPrompt !== undefined ? { acceptedGuidance: acceptedForPrompt } : {}),
           });
         const turn = yield* client
           .request("turn/start", {

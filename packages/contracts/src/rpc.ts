@@ -197,7 +197,9 @@ import {
   SymphonyRunsStreamEvent,
   SymphonyRunEventsStreamEvent,
   SymphonySetLocalPriorityInput,
+  SymphonyStopAllResultSchema,
   SymphonyStopAllRunsInput,
+  SymphonyStopResultSchema,
   SymphonyTakeOverInput,
   SymphonyValidateWorkflowInput,
   WorkflowRecordSchema,
@@ -935,13 +937,13 @@ export const WsSymphonySetLocalPriorityRpc = Rpc.make(SYMPHONY_WS_METHODS.setLoc
 
 export const WsSymphonyCancelRunRpc = Rpc.make(SYMPHONY_WS_METHODS.cancelRun, {
   payload: SymphonyCancelRunInput,
-  success: SymphonyEmptyResult,
+  success: SymphonyStopResultSchema,
   error: SymphonyError,
 });
 
 export const WsSymphonyStopAllRunsRpc = Rpc.make(SYMPHONY_WS_METHODS.stopAllRuns, {
   payload: SymphonyStopAllRunsInput,
-  success: SymphonyEmptyResult,
+  success: SymphonyStopAllResultSchema,
   error: SymphonyError,
 });
 

@@ -1,11 +1,17 @@
 import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
-import { ApprovalRequestSchema, RunAttemptSchema, WorkItemSchema } from "./symphony.ts";
+import {
+  ApprovalRequestSchema,
+  RunAttemptSchema,
+  SymphonyStopResultSchema,
+  WorkItemSchema,
+} from "./symphony.ts";
 
 const decodeWorkItem = Schema.decodeUnknownSync(WorkItemSchema);
 const decodeApprovalRequest = Schema.decodeUnknownSync(ApprovalRequestSchema);
 const decodeRunAttempt = Schema.decodeUnknownSync(RunAttemptSchema);
+const decodeStopResult = Schema.decodeUnknownSync(SymphonyStopResultSchema);
 
 const workItem = {
   id: "work-item-1",
@@ -341,19 +347,52 @@ describe("ApprovalRequestSchema question payload robustness", () => {
   });
 });
 
-describe("AcceptedSourceSnapshot manual source", () => {
-  it("preserves a manual work source instead of relabelling it as a tracker", () => {
+describe("Symphony Stop evidence", () => {
+  it("keeps absence of stop closure unknown", () => {
+    expect(decodeRunAttempt(runAttempt).stopClosure).toBeUndefined();
+  });
+
+  it("decodes a confirmed closure only with exact attempt, time and source", () => {
     const decoded = decodeRunAttempt({
       ...runAttempt,
-      acceptedGuidance: {
-        ...acceptedGuidance,
-        source: {
-          ...acceptedGuidance.source,
-          trackerId: "manual:item-1",
-          kind: "manual",
-        },
+      stopClosure: {
+        state: "confirmed",
+        runAttemptId: "run-1",
+        observedAt: "2026-08-08T10:00:05.000Z",
+        source: "recovery.stop_confirmed",
       },
     });
-    expect(decoded.acceptedGuidance?.source.kind).toBe("manual");
+    expect(decoded.stopClosure?.runAttemptId).toBe("run-1");
+    expect(() =>
+      decodeRunAttempt({
+        ...runAttempt,
+        stopClosure: { state: "confirmed", observedAt: "2026-08-08T10:00:05.000Z" },
+      }),
+    ).toThrow();
+  });
+
+  it("decodes held and confirmed Stop results without treating absence as confirmation", () => {
+    expect(decodeStopResult({ ok: true })).toEqual({ ok: true });
+    expect(
+      decodeStopResult({
+        ok: false,
+        outcome: {
+          status: "held",
+          runAttemptId: "run-1",
+          reason: "unverified_owner",
+        },
+      }).outcome,
+    ).toMatchObject({ status: "held" });
+    expect(
+      decodeStopResult({
+        ok: true,
+        outcome: {
+          status: "confirmed",
+          runAttemptId: "run-1",
+          evidence: "group_terminated",
+          released: true,
+        },
+      }).outcome,
+    ).toMatchObject({ status: "confirmed", released: true });
   });
 });
