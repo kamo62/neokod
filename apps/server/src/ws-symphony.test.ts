@@ -368,8 +368,8 @@ it.layer(fakeOrchestratorLayer.pipe(Layer.provideMerge(fakeApprovalsLayer)))(
         const result = yield* Effect.scoped(
           handler({ runAttemptId: RunAttemptIdValue.make("run-1") }),
         );
-        // Legacy void result stays unknown, never a confirmation.
-        expect(result).toEqual({ ok: true });
+        // Legacy void result stays unknown, never a confirmation and never ok.
+        expect(result).toEqual({ ok: false });
       }),
     );
 
