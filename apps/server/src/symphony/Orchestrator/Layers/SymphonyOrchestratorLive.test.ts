@@ -320,6 +320,7 @@ const mockDispatcherLayer = Layer.effect(
   }),
 );
 
+let reconciledDeliveryCalls = 0;
 const mockApprovalsLayer = Layer.effect(
   ApprovalService,
   Effect.gen(function* () {
@@ -342,6 +343,17 @@ const mockApprovalsLayer = Layer.effect(
         repository.decide(requestId, "expired").pipe(Effect.catch(() => Effect.void)),
       interrupt: (requestId) =>
         repository.decide(requestId, "interrupted").pipe(Effect.catch(() => Effect.void)),
+      reconcileUncertainDeliveries: () =>
+        Effect.gen(function* () {
+          reconciledDeliveryCalls += 1;
+          const rows = yield* repository.listDelivering().pipe(Effect.orElseSucceed(() => []));
+          for (const row of rows) {
+            yield* repository
+              .reconcileDelivery(row.id, "interrupted")
+              .pipe(Effect.catch(() => Effect.void));
+          }
+          return rows.length;
+        }),
       expireRequest: (runAttemptId, requestId) =>
         repository.listForRun(runAttemptId).pipe(
           Effect.flatMap((records) => {
@@ -4722,13 +4734,38 @@ layer("SymphonyOrchestrator leadership", (it) => {
   it.effect("a follower takes the lock when the lease expires and then runs recovery", () =>
     Effect.gen(function* () {
       if (second === null) throw new Error("second orchestrator missing");
-      const { runAttemptId } = yield* seedHeldRun("lead-2");
+      const { workItemId, runAttemptId } = yield* seedHeldRun("lead-2");
+      const stagedRepository = yield* ApprovalRepository;
+      const staged = yield* stagedRepository.create({
+        id: "lead-2-staged-delivery",
+        requestId: "lead-2-staged-request",
+        workItemId: String(workItemId),
+        runAttemptId,
+        action: "user_input",
+        scope: "current_run",
+        reason: "Which branch?",
+      });
+      yield* stagedRepository.stageDelivery(staged.id, "answered", {
+        answer: {
+          answers: [{ questionId: "q1", answer: "main" }],
+          delivery: "unknown",
+          actor: "local_operator",
+          recordedAt: yield* nowIso,
+        },
+      });
       const sql = yield* SqlClient.SqlClient;
       yield* sql`UPDATE symphony_orchestrator_state SET lock_expires_at = '1969-01-01T00:00:00.000Z'`;
       yield* second.refreshNow();
       expect((yield* second.getOverview()).orchestratorRole).toBe("leader");
       const runAttempts = yield* RunAttemptRepository;
       expect((yield* runAttempts.getById(runAttemptId))?.status).toBe("interrupted");
+      // The same authoritative startup recovery reconciles uncertain staged
+      // deliveries before any worker can answer, preserving delivery-unknown.
+      const reconciledRow = yield* stagedRepository.getById(staged.id);
+      expect(reconciledRow?.state).toBe("interrupted");
+      expect(reconciledRow?.decision).toBe("interrupted");
+      expect(reconciledRow?.answer?.delivery).toBe("unknown");
+      expect(reconciledRow?.answer?.answers).toEqual([{ questionId: "q1", answer: "main" }]);
       const first = yield* SymphonyOrchestrator;
       yield* first.refreshNow();
       expect((yield* first.getOverview()).orchestratorRole).toBe("follower");
