@@ -285,3 +285,21 @@ describe("RunAttemptSchema accepted guidance", () => {
     expect(decoded.acceptedGuidance?.permission.delivery.approvalBeforePush).toBeNull();
   });
 });
+
+
+describe("AcceptedSourceSnapshot manual source", () => {
+  it("preserves a manual work source instead of relabelling it as a tracker", () => {
+    const decoded = decodeRunAttempt({
+      ...runAttempt,
+      acceptedGuidance: {
+        ...acceptedGuidance,
+        source: {
+          ...acceptedGuidance.source,
+          trackerId: "manual:item-1",
+          kind: "manual",
+        },
+      },
+    });
+    expect(decoded.acceptedGuidance?.source.kind).toBe("manual");
+  });
+});

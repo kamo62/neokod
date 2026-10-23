@@ -279,6 +279,16 @@ export type TrackerKind = typeof TrackerKindSchema.Type;
 export const AutonomyLevelSchema = Schema.Literals(["observe", "prepare", "execute", "deliver"]);
 export type AutonomyLevel = typeof AutonomyLevelSchema.Type;
 
+/**
+ * A tracker kind plus the real manual work source. Saved source provenance must
+ * not relabel a manual item as whichever tracker the workflow happens to use.
+ */
+export const AcceptedSourceKindSchema = Schema.Union([
+  TrackerKindSchema,
+  Schema.Literal("manual"),
+]);
+export type AcceptedSourceKind = typeof AcceptedSourceKindSchema.Type;
+
 /** Operator text that was deliberately absent versus deliberately empty. */
 export const AcceptedInstructionTextSchema = Schema.Union([
   Schema.Struct({ state: Schema.Literal("absent") }),
@@ -323,7 +333,7 @@ export const AcceptedWorkflowGuidanceSchema = Schema.Struct({
 
 export const AcceptedSourceSnapshotSchema = Schema.Struct({
   trackerId: Schema.String,
-  kind: TrackerKindSchema,
+  kind: AcceptedSourceKindSchema,
   externalId: Schema.optional(Schema.String),
   externalUrl: Schema.optional(Schema.String),
   identifier: Schema.String,
