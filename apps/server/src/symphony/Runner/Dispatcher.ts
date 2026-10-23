@@ -1,10 +1,11 @@
 import type {
   EffectiveWorkflowConfig,
+  IsoDateTime,
   NormalizedIssue,
   WorkItem,
   WorkItemId,
 } from "@neokod/contracts";
-import { RunAttemptId } from "@neokod/contracts";
+import { RunAttemptId, WorkflowId } from "@neokod/contracts";
 import {
   confirmOwnedProcessClosure,
   isGroupSignalingSupported,
@@ -39,6 +40,7 @@ import {
   type SymphonyWorkspace,
 } from "../Workspaces/Manager.ts";
 import { AgentRuntimeChildOwnershipError, type AgentRuntimeService } from "./AgentRuntime.ts";
+import { freezeAcceptedGuidance } from "./AcceptedGuidance.ts";
 import { ExecutionFinalizer } from "./ExecutionFinalizer.ts";
 import { LiveRequests } from "./LiveRequests.ts";
 import type { ReviewFeedbackContext } from "./Prompt.ts";
@@ -103,6 +105,9 @@ export interface RunDispatcherService {
     readonly workItem: WorkItem;
     readonly issue: NormalizedIssue;
     readonly config: EffectiveWorkflowConfig;
+    /** Workflow record id and persisted revision read by the orchestrator for this dispatch. */
+    readonly workflowId: WorkflowId;
+    readonly workflowRevision: IsoDateTime;
     /** Agent-facing Markdown body from WORKFLOW.md. Raw front matter remains
      * host-only and is never included in the model prompt. */
     readonly workflowInstructions?: string;
@@ -554,7 +559,15 @@ export const makeRunDispatcher = Effect.gen(function* () {
 
   const dispatchWorkItem: RunDispatcherService["dispatchWorkItem"] = (input) =>
     Effect.gen(function* () {
-      const { workItem, issue, config, reviewFeedback, workflowInstructions } = input;
+      const {
+        workItem,
+        issue,
+        config,
+        reviewFeedback,
+        workflowId,
+        workflowRevision,
+        workflowInstructions,
+      } = input;
       // Honest admission gate: without supported POSIX group semantics there
       // is no way to prove closure for a spawned child. Refuse before claiming
       // so old unknown ownership is never cleared and new work is not admitted
@@ -615,6 +628,20 @@ export const makeRunDispatcher = Effect.gen(function* () {
         latestAttempt !== null &&
         (latestAttempt.status === "failed" || latestAttempt.status === "interrupted") &&
         (yield* workspaces.hasCommittedHandoff(workspace));
+      const acceptedGuidance = freezeAcceptedGuidance({
+        acceptedAt: startedAt,
+        workflowId,
+        workflowRevision,
+        workflowInstructions: workflowInstructions ?? "",
+        workItem: {
+          source: workItem.source,
+          ...(workItem.repositoryId !== undefined ? { repositoryId: workItem.repositoryId } : {}),
+        },
+        issue,
+        config,
+        workspacePath: workspace.path,
+        baseBranch: workspace.baseBranch,
+      });
       yield* runAttempts
         .create({
           id: runAttemptId,
@@ -627,6 +654,7 @@ export const makeRunDispatcher = Effect.gen(function* () {
           startedAt,
           finishedAt: null,
           error: null,
+          acceptedGuidance,
         })
         .pipe(
           Effect.mapError((cause) => new RunDispatchError(cause.message)),
@@ -743,8 +771,10 @@ export const makeRunDispatcher = Effect.gen(function* () {
               config,
               workspacePath: workspace.path,
               branch: workspace.branch,
+              baseBranch: workspace.baseBranch,
               runAttemptId,
               workItemId,
+              acceptedGuidance,
               ...(workflowInstructions !== undefined ? { workflowInstructions } : {}),
               ...(reviewFeedback !== undefined ? { reviewFeedback } : {}),
             })
@@ -830,8 +860,10 @@ export const makeRunDispatcher = Effect.gen(function* () {
             config,
             workspacePath: workspace.path,
             branch: workspace.branch,
+            baseBranch: workspace.baseBranch,
             runAttemptId,
             workItemId,
+            acceptedGuidance,
             ...(reviewFeedback !== undefined ? { reviewFeedback } : {}),
           })
           .pipe(Effect.mapError((cause) => new RunDispatchError(cause.message)));
@@ -846,8 +878,10 @@ export const makeRunDispatcher = Effect.gen(function* () {
               config,
               workspacePath: workspace.path,
               branch: workspace.branch,
+              baseBranch: workspace.baseBranch,
               runAttemptId,
               workItemId,
+              acceptedGuidance,
               continuation: true,
             })
             .pipe(Effect.mapError((cause) => new RunDispatchError(cause.message)));

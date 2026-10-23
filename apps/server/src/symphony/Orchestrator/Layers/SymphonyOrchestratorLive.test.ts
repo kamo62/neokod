@@ -1,6 +1,7 @@
 import type {
   EffectiveWorkflowConfig,
   EvidenceBundle,
+  IsoDateTime,
   NormalizedIssue,
   PullRequestEvidence,
   SymphonyProjectConfiguration,
@@ -264,6 +265,8 @@ const settle = Effect.repeat(Effect.yieldNow, { times: 50 });
 // actually reaches the dispatcher, not just that a dispatch happened).
 const dispatchedInputs: Array<{
   readonly workItemId: string;
+  readonly workflowId?: string;
+  readonly workflowRevision?: string;
   readonly reviewFeedback?: ReviewFeedbackContext;
   readonly workflowInstructions?: string;
 }> = [];
@@ -275,6 +278,8 @@ const mockDispatcherLayer = Layer.effect(
     return {
       dispatchWorkItem: (input: {
         readonly workItem: { readonly id: WorkItemId };
+        readonly workflowId?: WorkflowId;
+        readonly workflowRevision?: IsoDateTime;
         readonly reviewFeedback?: ReviewFeedbackContext;
         readonly workflowInstructions?: string;
       }) =>
@@ -284,6 +289,10 @@ const mockDispatcherLayer = Layer.effect(
               dispatchedIds.push(String(input.workItem.id));
               dispatchedInputs.push({
                 workItemId: String(input.workItem.id),
+                ...(input.workflowId !== undefined ? { workflowId: input.workflowId } : {}),
+                ...(input.workflowRevision !== undefined
+                  ? { workflowRevision: input.workflowRevision }
+                  : {}),
                 ...(input.reviewFeedback !== undefined
                   ? { reviewFeedback: input.reviewFeedback }
                   : {}),
@@ -996,6 +1005,13 @@ layer("SymphonyOrchestrator Observe", (it) => {
 
       expect(dispatchedIds).toHaveLength(1);
       expect(dispatchedInputs[0]?.workflowInstructions).toBe("Implement.");
+      const workflows = yield* WorkflowRepository;
+      const workflow = yield* workflows.getById(WorkflowId.make("wf-execute-1"));
+      if (workflow === null) {
+        throw new Error("expected the execute workflow to exist");
+      }
+      expect(dispatchedInputs[0]?.workflowId).toBe("wf-execute-1");
+      expect(dispatchedInputs[0]?.workflowRevision).toBe(workflow.updatedAt);
       const workItems = yield* WorkItemRepository;
       const dispatched = yield* workItems.getById(WorkItemId.make(dispatchedIds[0] ?? "missing"));
       expect(dispatched?.lifecycle).toBe("preparing");

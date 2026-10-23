@@ -4,6 +4,7 @@ import {
   ProviderInstanceId,
   RunAttemptId,
   SymphonyProjectId,
+  WorkflowId,
   WorkItemId,
 } from "@neokod/contracts";
 import { expect, it } from "@effect/vitest";
@@ -64,6 +65,11 @@ const makeConfig = (
   approvalsPolicies: [],
   ...overrides,
 });
+
+const dispatchAuthority = {
+  workflowId: WorkflowId.make("wf-dispatch"),
+  workflowRevision: "2026-10-22T09:00:00.000Z",
+} as const;
 
 const makeIssue = (id: string): NormalizedIssue => ({
   id,
@@ -134,14 +140,26 @@ const scriptedAgent = (completed: boolean): AgentRuntimeService => ({
  * turn and one continuation turn are observed.
  */
 const reviewFeedbackCapturingAgent = () => {
-  const calls: Array<{ readonly continuation: boolean; readonly hasReviewFeedback: boolean }> = [];
+  const calls: Array<{
+    readonly continuation: boolean;
+    readonly hasReviewFeedback: boolean;
+    readonly hasAcceptedGuidance: boolean;
+    readonly baseBranch: string | undefined;
+  }> = [];
   return {
     agent: {
-      runTurn: (input: { readonly continuation?: boolean; readonly reviewFeedback?: unknown }) =>
+      runTurn: (input: {
+        readonly continuation?: boolean;
+        readonly reviewFeedback?: unknown;
+        readonly acceptedGuidance?: unknown;
+        readonly baseBranch?: string;
+      }) =>
         Effect.sync(() => {
           calls.push({
             continuation: input.continuation === true,
             hasReviewFeedback: input.reviewFeedback !== undefined,
+            hasAcceptedGuidance: input.acceptedGuidance !== undefined,
+            baseBranch: input.baseBranch,
           });
           return {
             turnId: `t${calls.length}`,
@@ -265,9 +283,11 @@ layer(scriptedFactory(scriptedAgent(true)))("Dispatcher prepare mode", (it) => {
       const workItem = yield* seedWorkItem("1001");
       const dispatcher = yield* RunDispatcher;
       const runAttemptId = yield* dispatcher.dispatchWorkItem({
+        ...dispatchAuthority,
         workItem,
         issue: makeIssue("1001"),
         config: makeConfig("/repo"),
+        workflowInstructions: "Follow the repository contribution policy.",
       });
 
       const attempts = yield* RunAttemptRepository;
@@ -276,6 +296,16 @@ layer(scriptedFactory(scriptedAgent(true)))("Dispatcher prepare mode", (it) => {
       expect(attempt.workItemId).toBe(workItem.id);
       expect(attempt.attemptNumber).toBe(1);
       expect(attempt.workspacePath).toBe("/ws/#1001");
+      expect(attempt.acceptedGuidance?.workflow).toMatchObject({
+        id: "wf-dispatch",
+        revision: "2026-10-22T09:00:00.000Z",
+        instructions: "Follow the repository contribution policy.",
+      });
+      expect(attempt.acceptedGuidance?.source.identifier).toBe("#1001");
+      expect(attempt.acceptedGuidance?.target).toMatchObject({
+        workspacePath: "/ws/#1001",
+        baseBranch: "main",
+      });
 
       const workItems = yield* WorkItemRepository;
       const after = yield* workItems.getById(workItem.id).pipe(Effect.flatMap(required));
@@ -311,6 +341,7 @@ layer(
       const workItem = yield* seedWorkItem("1030");
       const dispatcher = yield* RunDispatcher;
       yield* dispatcher.dispatchWorkItem({
+        ...dispatchAuthority,
         workItem,
         issue: makeIssue("1030"),
         config: makeConfig("/repo"),
@@ -327,6 +358,7 @@ layer(
       const workItem = yield* seedWorkItem("1031");
       const dispatcher = yield* RunDispatcher;
       yield* dispatcher.dispatchWorkItem({
+        ...dispatchAuthority,
         workItem,
         issue: makeIssue("1031"),
         config: makeConfig("/repo"),
@@ -347,6 +379,7 @@ layer(scriptedFactory(scriptedAgent(false)))("Dispatcher prepare mode failure", 
         const workItem = yield* seedWorkItem("1002");
         const dispatcher = yield* RunDispatcher;
         const runAttemptId = yield* dispatcher.dispatchWorkItem({
+          ...dispatchAuthority,
           workItem,
           issue: makeIssue("1002"),
           config: makeConfig("/repo"),
@@ -373,6 +406,7 @@ layer(scriptedFactory(scriptedAgent(false)))("Dispatcher exhaustion", (it) => {
       const workItem = yield* seedWorkItem("1010");
       const dispatcher = yield* RunDispatcher;
       const runAttemptId = yield* dispatcher.dispatchWorkItem({
+        ...dispatchAuthority,
         workItem,
         issue: makeIssue("1010"),
         config: makeConfig("/repo", { maxAttempts: 1 }),
@@ -397,6 +431,7 @@ layer(scriptedFactory(countingIncompleteAgent().agent))("Dispatcher continuation
       const workItem = yield* seedWorkItem("1005");
       const dispatcher = yield* RunDispatcher;
       const runAttemptId = yield* dispatcher.dispatchWorkItem({
+        ...dispatchAuthority,
         workItem,
         issue: makeIssue("1005"),
         config: makeConfig("/repo", { autonomy: "execute", maxTurns: 3 }),
@@ -474,6 +509,7 @@ layer(
 
       const dispatcher = yield* RunDispatcher;
       const runAttemptId = yield* dispatcher.dispatchWorkItem({
+        ...dispatchAuthority,
         workItem,
         issue: makeIssue("1007"),
         config: makeConfig("/repo", { autonomy: "execute" }),
@@ -500,6 +536,7 @@ layer(scriptedFactory(reviewFeedbackCapture.agent))("Dispatcher review feedback"
         const workItem = yield* seedWorkItem("1006");
         const dispatcher = yield* RunDispatcher;
         yield* dispatcher.dispatchWorkItem({
+          ...dispatchAuthority,
           workItem,
           issue: makeIssue("1006"),
           config: makeConfig("/repo", { autonomy: "execute", maxTurns: 3 }),
@@ -510,8 +547,18 @@ layer(scriptedFactory(reviewFeedbackCapture.agent))("Dispatcher review feedback"
         });
 
         expect(reviewFeedbackCapture.calls).toEqual([
-          { continuation: false, hasReviewFeedback: true },
-          { continuation: true, hasReviewFeedback: false },
+          {
+            continuation: false,
+            hasReviewFeedback: true,
+            hasAcceptedGuidance: true,
+            baseBranch: "main",
+          },
+          {
+            continuation: true,
+            hasReviewFeedback: false,
+            hasAcceptedGuidance: true,
+            baseBranch: "main",
+          },
         ]);
       }),
   );
@@ -527,6 +574,7 @@ layer(blockableFactory)("Dispatcher cancel", (it) => {
         const attempts = yield* RunAttemptRepository;
         const fiber = yield* Effect.forkScoped(
           dispatcher.dispatchWorkItem({
+            ...dispatchAuthority,
             workItem,
             issue: makeIssue("1003"),
             config: makeConfig("/repo"),
@@ -617,6 +665,7 @@ layer(failingCancelFactory)("Dispatcher cancel race", (it) => {
       yield* Effect.gen(function* () {
         const fiber = yield* Effect.forkScoped(
           dispatcher.dispatchWorkItem({
+            ...dispatchAuthority,
             workItem,
             issue: makeIssue("1004"),
             config: makeConfig("/repo"),
@@ -805,6 +854,7 @@ admissionLayer("win32")("Dispatcher admission platform gate", (it) => {
       const dispatcher = yield* RunDispatcher;
       const result = yield* Effect.result(
         dispatcher.dispatchWorkItem({
+          ...dispatchAuthority,
           workItem,
           issue: makeIssue("platform-win32-1"),
           config: makeConfig("/repo"),
@@ -832,6 +882,7 @@ stopLayer(false, 22001)("Dispatcher stop with an unverifiable legacy owner", (it
       const dispatcher = yield* RunDispatcher;
       const fiber = yield* Effect.forkScoped(
         dispatcher.dispatchWorkItem({
+          ...dispatchAuthority,
           workItem,
           issue: makeIssue("stop-legacy-1"),
           config: makeConfig("/repo"),
@@ -889,6 +940,7 @@ stopLayer(true, 22002)("Dispatcher stop with a confirmed owner group", (it) => {
       const dispatcher = yield* RunDispatcher;
       const fiber = yield* Effect.forkScoped(
         dispatcher.dispatchWorkItem({
+          ...dispatchAuthority,
           workItem,
           issue: makeIssue("stop-confirmed-1"),
           config: makeConfig("/repo"),
@@ -1045,6 +1097,7 @@ layer(stopFailingFactory(44004))("Dispatcher non-Stop failure ownership", (it) =
       const workItem = yield* seedWorkItem("failure-hold-1");
       const dispatcher = yield* RunDispatcher;
       yield* dispatcher.dispatchWorkItem({
+        ...dispatchAuthority,
         workItem,
         issue: makeIssue("failure-hold-1"),
         config: makeConfig("/repo"),
@@ -1082,6 +1135,7 @@ layer(
       const dispatcher = yield* RunDispatcher;
       const result = yield* Effect.result(
         dispatcher.dispatchWorkItem({
+          ...dispatchAuthority,
           workItem,
           issue: makeIssue("1020"),
           config: makeConfig("/repo", { autonomy: "execute" }),
@@ -1114,6 +1168,7 @@ layer(
       const dispatcher = yield* RunDispatcher;
       yield* Effect.result(
         dispatcher.dispatchWorkItem({
+          ...dispatchAuthority,
           workItem,
           issue: makeIssue("1021"),
           config: makeConfig("/repo", { autonomy: "execute", maxAttempts: 1 }),
@@ -1135,6 +1190,7 @@ layer(
       const dispatcher = yield* RunDispatcher;
       yield* Effect.result(
         dispatcher.dispatchWorkItem({
+          ...dispatchAuthority,
           workItem: first,
           issue: makeIssue("1022"),
           config: makeConfig("/repo", { autonomy: "execute" }),
@@ -1157,6 +1213,7 @@ layer(
       const dispatcher = yield* RunDispatcher;
       yield* Effect.result(
         dispatcher.dispatchWorkItem({
+          ...dispatchAuthority,
           workItem,
           issue: makeIssue("1024"),
           config: makeConfig("/repo", { autonomy: "execute" }),
