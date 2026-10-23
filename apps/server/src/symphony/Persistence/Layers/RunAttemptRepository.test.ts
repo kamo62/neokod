@@ -10,11 +10,15 @@ import type { AcceptedGuidanceSnapshot, RunAttempt } from "@neokod/contracts";
 import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import { nowIso } from "../../Domain/Time.ts";
 import { WorkItemRepository } from "../Services/WorkItemRepository.ts";
 import { WorkItemRepositoryLive } from "./WorkItemRepository.ts";
-import { RunAttemptRepository } from "../Services/RunAttemptRepository.ts";
+import {
+  RunAttemptRepository,
+  validateAcceptedGuidanceSnapshot,
+} from "../Services/RunAttemptRepository.ts";
 import { RunAttemptRepositoryLive } from "./RunAttemptRepository.ts";
 import { SqlitePersistenceMemory } from "../../../persistence/Layers/Sqlite.ts";
 
@@ -301,7 +305,7 @@ layer("RunAttemptRepository", (it) => {
     }),
   );
 
-  it.effect("lets a legacy attempt accept its first snapshot exactly once", () =>
+  it.effect("never backfills accepted guidance through update", () =>
     Effect.gen(function* () {
       const repo = yield* RunAttemptRepository;
       yield* seedWorkItem("wi-legacy-guidance");
@@ -310,25 +314,73 @@ layer("RunAttemptRepository", (it) => {
 
       const legacy = yield* repo.getById(RunAttemptId.make("run-legacy-guidance"));
       expect(legacy?.acceptedGuidance).toBeUndefined();
-
-      const acceptedGuidance = makeAcceptedGuidance();
-      expect(legacy).not.toBeNull();
       if (legacy === null) {
         throw new Error("expected the legacy run attempt to exist");
       }
-      yield* repo.update({ ...legacy, acceptedGuidance });
-      const firstWrite = yield* repo.getById(RunAttemptId.make("run-legacy-guidance"));
-      expect(firstWrite?.acceptedGuidance).toEqual(acceptedGuidance);
-      if (firstWrite === null) {
-        throw new Error("expected the legacy run attempt to exist after the first write");
-      }
 
       yield* repo.update({
-        ...firstWrite,
-        acceptedGuidance: makeAcceptedGuidance({ digest: "sha256:replacement" }),
+        ...legacy,
+        acceptedGuidance: makeAcceptedGuidance(),
       });
-      const secondWrite = yield* repo.getById(RunAttemptId.make("run-legacy-guidance"));
-      expect(secondWrite?.acceptedGuidance).toEqual(acceptedGuidance);
+      const afterUpdate = yield* repo.getById(RunAttemptId.make("run-legacy-guidance"));
+      expect(afterUpdate?.acceptedGuidance).toBeUndefined();
     }),
   );
+
+  it.effect("rejects an invalid snapshot at create and on read", () =>
+    Effect.gen(function* () {
+      const repo = yield* RunAttemptRepository;
+      const sql = yield* SqlClient.SqlClient;
+      yield* seedWorkItem("wi-invalid-guidance");
+
+      const attempt = yield* makeAttempt("run-invalid-guidance", "wi-invalid-guidance", 1);
+      const createError = yield* repo
+        .create({
+          ...attempt,
+          acceptedGuidance: makeAcceptedGuidance({ acceptedAt: "not-a-date" }),
+        })
+        .pipe(Effect.flip);
+      expect(createError._tag).toBe("SymphonyPersistenceDecodeError");
+      expect(yield* repo.getById(RunAttemptId.make("run-invalid-guidance"))).toBeNull();
+
+      const valid = yield* repo.create({
+        ...attempt,
+        acceptedGuidance: makeAcceptedGuidance(),
+      });
+      expect(valid.id).toBe("run-invalid-guidance");
+
+      yield* sql`
+        UPDATE symphony_run_attempts
+        SET accepted_guidance_json = '{"schemaVersion":1}'
+        WHERE id = 'run-invalid-guidance'
+      `;
+      const readError = yield* repo
+        .getById(RunAttemptId.make("run-invalid-guidance"))
+        .pipe(Effect.flip);
+      expect(readError._tag).toBe("SymphonyPersistenceDecodeError");
+    }),
+  );
+
+  it("validates canonical shape, revision timestamps and approval consistency", () => {
+    const snapshot = makeAcceptedGuidance();
+    expect(validateAcceptedGuidanceSnapshot(snapshot)).toEqual({
+      _tag: "valid",
+      snapshot,
+    });
+    expect(
+      validateAcceptedGuidanceSnapshot({
+        ...snapshot,
+        acceptedAt: "2026-10-23T08:00:00.000Z",
+      })._tag,
+    ).toBe("valid");
+    expect(
+      validateAcceptedGuidanceSnapshot({ ...snapshot, acceptedAt: "not-a-date" }),
+    ).toMatchObject({ _tag: "invalid" });
+    expect(
+      validateAcceptedGuidanceSnapshot({
+        ...snapshot,
+        permission: { ...snapshot.permission, approvalsEnabled: false },
+      }),
+    ).toMatchObject({ _tag: "invalid" });
+  });
 });
