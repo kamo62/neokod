@@ -106,6 +106,36 @@ export interface WorkItemRepositoryShape {
     pid: number,
   ) => Effect.Effect<boolean, SymphonyPersistenceError>;
 
+  /**
+   * Record the spawned child's full process identity on a live claim. The
+   * group id and birth token are persisted exactly as the runtime supplied
+   * them: a bare pid never invents a group, and a missing identity clears both
+   * fields so recovery fails closed instead of trusting the pid alone.
+   * Fenced by the claim owner token and generation.
+   */
+  readonly setClaimOwnerProcessIdentity: (
+    id: WorkItemId,
+    ownerToken: string,
+    generation: number,
+    identity: {
+      readonly pid: number;
+      readonly pgid?: number | null;
+      readonly birthToken?: string | null;
+    },
+  ) => Effect.Effect<boolean, SymphonyPersistenceError>;
+
+  /**
+   * Read the claim fence (owner token and generation) for an item. Recovery
+   * and Stop compare this immediately before signalling or releasing so a
+   * replacement claim can never inherit a stale owner's decision.
+   */
+  readonly getClaimFence: (
+    id: WorkItemId,
+  ) => Effect.Effect<
+    { readonly ownerToken: string | null; readonly generation: number } | null,
+    SymphonyPersistenceError
+  >;
+
   /** Record the base branch the run's workspace was created from. Fenced like setClaimOwnerPid. */
   readonly setBaseBranch: (
     id: WorkItemId,
@@ -123,6 +153,8 @@ export interface WorkItemRepositoryShape {
   readonly releaseClaim: (
     id: WorkItemId,
     to: "queued" | "retry_scheduled",
+    /** When supplied, release only the exact claim owner/generation. */
+    fence?: { readonly ownerToken: string; readonly generation: number },
   ) => Effect.Effect<boolean, SymphonyPersistenceError>;
 
   /**
@@ -139,6 +171,7 @@ export interface WorkItemRepositoryShape {
    */
   readonly releaseConfirmedStop: (
     id: WorkItemId,
+    fence: { readonly ownerToken: string; readonly generation: number },
   ) => Effect.Effect<boolean, SymphonyPersistenceError>;
 
   /** Write queue overrides (exclude / local priority) that survive restart. */

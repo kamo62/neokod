@@ -119,9 +119,15 @@ const seedAttempt = (
 
 const fakeDispatcherIdle = Layer.succeed(RunDispatcher, {
   dispatchWorkItem: () => Effect.never,
-  cancelRun: () => Effect.void,
+  cancelRun: (runAttemptId) =>
+    Effect.succeed({
+      status: "confirmed",
+      runAttemptId,
+      evidence: "no_owner_recorded",
+      released: false,
+    } as const),
   isAgentActive: () => Effect.succeed(false),
-  stopAllRuns: () => Effect.succeed(0),
+  stopAllRuns: () => Effect.succeed({ confirmed: 0, held: 0 }),
 } as RunDispatcher["Service"]);
 
 const layer = it.layer(
@@ -267,6 +273,26 @@ layer("Recovery startup", (it) => {
       yield* sql`UPDATE symphony_work_items SET owner_pid = ${pid} WHERE id = ${workItemId}`;
     });
 
+  const seedClaimedItem = (
+    workItem: WorkItem,
+    identity: { readonly pid: number; readonly pgid?: number; readonly birthToken?: string },
+  ) =>
+    Effect.gen(function* () {
+      const repo = yield* WorkItemRepository;
+      yield* repo.upsert({ ...workItem, lifecycle: "queued" });
+      const claimed = yield* repo.claim(workItem.id, "owner-recovery");
+      yield* repo.setClaimOwnerProcessIdentity(
+        workItem.id,
+        "owner-recovery",
+        claimed.generation,
+        identity,
+      );
+      yield* repo.transition(workItem.id, "running", {
+        ownerToken: "owner-recovery",
+        generation: claimed.generation,
+      });
+    });
+
   /** Expose persisted group identity that the current schema cannot store yet. */
   const withIdentity = (
     base: WorkItemRepositoryShape,
@@ -404,22 +430,17 @@ layer("Recovery startup", (it) => {
       yield* seedWorkflow("/repo");
       const workItem = makeWorkItem("3201", "running");
       const base = yield* WorkItemRepository;
-      yield* base.upsert(workItem);
+      yield* seedClaimedItem(workItem, {
+        pid: 4242,
+        pgid: 4242,
+        birthToken: "spawned-token",
+      });
       yield* seedAttempt(workItem.id, "streaming_turn");
       const { signaller, signals } = yield* makeRecordingSignaller({
         aliveAfterTerm: false,
         aliveAfterKill: false,
       });
       yield* runRecoveryWith({
-        workItems: withIdentity(
-          base,
-          new Map([
-            [
-              String(workItem.id),
-              { ownerPid: 4242, ownerPgid: 4242, ownerBirthToken: "spawned-token" },
-            ],
-          ]),
-        ),
         processClosure: {
           signaller,
           // The pid now belongs to a different process.
@@ -447,7 +468,11 @@ layer("Recovery startup", (it) => {
       yield* seedWorkflow("/repo");
       const workItem = makeWorkItem("3202", "running");
       const base = yield* WorkItemRepository;
-      yield* base.upsert(workItem);
+      yield* seedClaimedItem(workItem, {
+        pid: 5151,
+        pgid: 5151,
+        birthToken: "born-5151",
+      });
       yield* seedAttempt(workItem.id, "streaming_turn");
       const { signaller, signals } = yield* makeRecordingSignaller({
         aliveAfterTerm: false,
@@ -482,7 +507,7 @@ layer("Recovery startup", (it) => {
       yield* seedWorkflow("/repo");
       const workItem = makeWorkItem("3203", "running");
       const base = yield* WorkItemRepository;
-      yield* base.upsert(workItem);
+      yield* seedClaimedItem(workItem, { pid: 7171 });
       yield* seedAttempt(
         workItem.id,
         "succeeded",
@@ -495,7 +520,6 @@ layer("Recovery startup", (it) => {
         aliveAfterKill: false,
       });
       yield* runRecoveryWith({
-        workItems: withIdentity(base, new Map([[String(workItem.id), { ownerPid: 7171 }]])),
         processClosure: {
           signaller,
           reader: tokenReader({ 7171: "born-7171" }),
@@ -515,20 +539,17 @@ layer("Recovery startup", (it) => {
       yield* seedWorkflow("/repo");
       const workItem = makeWorkItem("3204", "running");
       const base = yield* WorkItemRepository;
-      yield* base.upsert(workItem);
+      yield* seedClaimedItem(workItem, {
+        pid: 8181,
+        pgid: 8181,
+        birthToken: "born-8181",
+      });
       yield* seedAttempt(workItem.id, "streaming_turn");
       const { signaller, signals } = yield* makeRecordingSignaller({
         aliveAfterTerm: false,
         aliveAfterKill: false,
       });
-      const workItems = withIdentity(
-        base,
-        new Map([
-          [String(workItem.id), { ownerPid: 8181, ownerPgid: 8181, ownerBirthToken: "born-8181" }],
-        ]),
-      );
       const deps = {
-        workItems,
         processClosure: {
           signaller,
           reader: tokenReader({ 8181: "born-8181" }),
@@ -557,7 +578,11 @@ layer("Recovery startup", (it) => {
       yield* seedWorkflow("/repo");
       const workItem = makeWorkItem("3205", "running");
       const base = yield* WorkItemRepository;
-      yield* base.upsert(workItem);
+      yield* seedClaimedItem(workItem, {
+        pid: 9191,
+        pgid: 9191,
+        birthToken: "born-9191",
+      });
       yield* seedAttempt(workItem.id, "streaming_turn");
       const { signaller, signals } = yield* makeRecordingSignaller({
         aliveAfterTerm: true,
@@ -575,15 +600,6 @@ layer("Recovery startup", (it) => {
           ]),
       };
       yield* runRecoveryWith({
-        workItems: withIdentity(
-          base,
-          new Map([
-            [
-              String(workItem.id),
-              { ownerPid: 9191, ownerPgid: 9191, ownerBirthToken: "born-9191" },
-            ],
-          ]),
-        ),
         processClosure: { signaller, reader, platform: "linux", graceMs: 0 },
       });
       // TERM was sent, but the leader's exit is not group closure: no KILL,
