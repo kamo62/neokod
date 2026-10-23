@@ -12,6 +12,7 @@ import { useState } from "react";
 
 import { symphonyEnvironment } from "../../state/symphony";
 import { useAtomCommand } from "../../state/use-atom-command";
+import { buildApprovalAnswerInputs, type ApprovalQuestionDraft } from "./attention.logic";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Spinner } from "../ui/spinner";
@@ -33,12 +34,7 @@ const failureCode = (cause: unknown): string | null =>
 const failureMessage = (cause: unknown): string =>
   cause instanceof Error && cause.message.trim().length > 0 ? cause.message.trim() : "";
 
-interface DraftAnswer {
-  readonly selected: ReadonlyArray<string>;
-  readonly custom: string;
-}
-
-const emptyDraft: DraftAnswer = { selected: [], custom: "" };
+const emptyDraft: ApprovalQuestionDraft = { selected: [], custom: "" };
 
 /**
  * Answer a pending agent request from wherever it is visible (the project
@@ -72,7 +68,7 @@ export function SymphonyApprovalActions({
   const respond = useAtomCommand(symphonyEnvironment.respondToUserInput, { reportFailure: false });
   const [note, setNote] = useState("");
   const [legacyAnswer, setLegacyAnswer] = useState("");
-  const [drafts, setDrafts] = useState<Record<string, DraftAnswer>>({});
+  const [drafts, setDrafts] = useState<Record<string, ApprovalQuestionDraft>>({});
   const [pending, setPending] = useState<"approve" | "reject" | "answer" | null>(null);
   const [failure, setFailure] = useState<{
     readonly stale: boolean;
@@ -82,27 +78,8 @@ export function SymphonyApprovalActions({
   const trimmed = note.trim();
   const structured = questionPayload?.kind === "structured" ? questionPayload : null;
 
-  const answerInputs = (): ReadonlyArray<ApprovalAnswerInput> | null => {
-    if (structured === null) return null;
-    const answers: ApprovalAnswerInput[] = [];
-    for (const question of structured.questions) {
-      const draft = drafts[question.id] ?? emptyDraft;
-      const custom = draft.custom.trim();
-      if (custom.length > 0) {
-        answers.push({ questionId: question.id, answer: custom });
-        continue;
-      }
-      if (question.multiSelect === true) {
-        if (draft.selected.length === 0) return null;
-        answers.push({ questionId: question.id, answer: [...draft.selected] });
-        continue;
-      }
-      const selected = draft.selected[0];
-      if (selected === undefined || selected.length === 0) return null;
-      answers.push({ questionId: question.id, answer: selected });
-    }
-    return answers;
-  };
+  const answerInputs = (): ReadonlyArray<ApprovalAnswerInput> | null =>
+    structured === null ? null : buildApprovalAnswerInputs(structured.questions, drafts);
 
   const canSubmitAnswer =
     mode === "question" &&
@@ -171,7 +148,7 @@ export function SymphonyApprovalActions({
 
   const disabled = pending !== null;
 
-  const setDraft = (questionId: string, next: DraftAnswer) =>
+  const setDraft = (questionId: string, next: ApprovalQuestionDraft) =>
     setDrafts((current) => ({ ...current, [questionId]: next }));
 
   return (

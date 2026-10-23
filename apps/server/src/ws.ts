@@ -427,7 +427,9 @@ const approvalError = (cause: { readonly message: string }): SymphonyError =>
     code:
       cause instanceof ApprovalService.ApprovalAnswerValidationError
         ? "invalid_answer"
-        : "approval_request_not_found",
+        : cause instanceof ApprovalService.ApprovalHistoryPendingError
+          ? "approval_history_pending"
+          : "approval_request_not_found",
     message: cause.message,
   });
 const approvalUnavailable = (): SymphonyError =>
