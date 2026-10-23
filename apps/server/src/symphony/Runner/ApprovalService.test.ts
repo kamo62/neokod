@@ -2,6 +2,7 @@ import { assert, expect, it } from "@effect/vitest";
 import { RunAttemptId, SymphonyProjectId, WorkItemId } from "@neokod/contracts";
 import type { ApprovalRequest, ApprovalQuestionPayload, WorkItem } from "@neokod/contracts";
 import * as Context from "effect/Context";
+import * as Crypto from "effect/Crypto";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -16,12 +17,13 @@ import { ApprovalRepository } from "../Persistence/Services/ApprovalRepository.t
 import { ApprovalRepositoryLive } from "../Persistence/Layers/ApprovalRepository.ts";
 import { SymphonyPersistenceSqlError } from "../Persistence/Errors.ts";
 import { approvalServiceRequestCallbacks } from "./AgentRequestCallbacks.ts";
-import { LiveRequests, LiveRequestsLive } from "./LiveRequests.ts";
+import { LiveRequests, LiveRequestsLive, makeLiveRequests } from "./LiveRequests.ts";
 import {
   ApprovalHistoryPendingError,
   ApprovalRequestNotFoundError,
   ApprovalService,
   ApprovalServiceLive,
+  makeApprovalService,
 } from "./ApprovalService.ts";
 import { makeFakeCodexPeer, makeFakeCodexRuntime } from "./testkit/FakeCodexPeer.ts";
 import { makeRunnerTestConfig, makeRunnerTestIssue } from "./testkit/RunnerFixtures.ts";
@@ -803,6 +805,80 @@ layer("ApprovalService durable ids", (it) => {
       ),
   );
 
+  it.effect("a staged row without a local claim receipt cannot be finalised after restart", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const context = yield* Layer.build(
+          Layer.fresh(failingDeliveryStack({ completeFailures: 1 })),
+        );
+        const service = Context.get(context, ApprovalService);
+        const live = Context.get(context, LiveRequests);
+        const workItems = Context.get(context, WorkItemRepository);
+        const repository = Context.get(context, ApprovalRepository);
+        const crypto = Context.get(context, Crypto.Crypto);
+        const seededAt = yield* nowIso;
+        const workItemId = WorkItemId.make("wi-restart-delivery");
+        yield* workItems.upsert({
+          id: workItemId,
+          mode: "symphony",
+          projectId: SymphonyProjectId.make("approvals-restart-delivery"),
+          objective: "Restart delivery target",
+          acceptanceCriteria: [],
+          source: { kind: "manual" },
+          trackerIssueId: "wi-restart-delivery",
+          lifecycle: "queued",
+          priority: 1,
+          eligibilityReasons: [],
+          evidence: null,
+          createdAt: seededAt,
+          updatedAt: seededAt,
+        });
+        const runAttemptId = RunAttemptId.make("run-restart-delivery");
+        yield* live.registerUserInput({
+          requestId: "0",
+          workItemId,
+          runAttemptId,
+          prompt: "Which branch?",
+          questionIds: ["q1"],
+        });
+        const record = yield* service.recordPending({
+          id: "ignored",
+          requestId: "0",
+          workItemId,
+          runAttemptId,
+          action: "user_input",
+          scope: "once",
+          reason: "Which branch?",
+          questionPayload: userInputPayload,
+        });
+        const submission = { answers: [{ questionId: "q1", answer: "main" }] } as const;
+        const first = yield* Effect.result(service.respondToUserInput(record.id, submission));
+        expect(first._tag).toBe("Failure");
+        expect((yield* repository.getById(record.id))?.state).toBe("delivering");
+
+        // Simulate a restart: a fresh LiveRequests registry and a fresh service
+        // receipt set. The staged row has no proof of local consumption here.
+        const restartedLive = yield* makeLiveRequests;
+        const restarted = yield* makeApprovalService.pipe(
+          Effect.provideService(ApprovalRepository, repository),
+          Effect.provideService(LiveRequests, restartedLive),
+          Effect.provideService(Crypto.Crypto, crypto),
+        );
+        const retry = yield* Effect.result(restarted.respondToUserInput(record.id, submission));
+        expect(retry._tag).toBe("Failure");
+        expect((yield* repository.getById(record.id))?.state).toBe("delivering");
+
+        expect(yield* restarted.reconcileUncertainDeliveries?.() ?? Effect.succeed(0)).toBe(1);
+        const reconciled = yield* repository.getById(record.id);
+        expect(reconciled?.state).toBe("interrupted");
+        expect(reconciled?.decision).toBe("interrupted");
+        // Stored answer content is preserved as delivery-unknown, not erased or
+        // promoted to answered.
+        expect(reconciled?.answer?.answers).toEqual([{ questionId: "q1", answer: "main" }]);
+      }),
+    ),
+  );
+
   it.effect("a stage write failure delivers nothing and can be retried", () =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -963,6 +1039,52 @@ layer("ApprovalService durable ids", (it) => {
       const rows = yield* repo.listForRun(runAttemptId);
       expect(rows.filter((row) => row.requestId === "0")).toHaveLength(1);
     }),
+  );
+
+  it.effect("a settled live request is recorded interrupted instead of left pending", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        yield* seedWorkItem("wi-settled");
+        const service = yield* ApprovalService;
+        const live = yield* LiveRequests;
+        const repository = yield* ApprovalRepository;
+        const peer = yield* makeFakeCodexPeer();
+        const runAttemptId = RunAttemptId.make("run-settled");
+        const workItemId = WorkItemId.make("wi-settled");
+        const runtime = yield* makeFakeCodexRuntime({
+          peer,
+          liveRequests: live,
+          ...approvalServiceRequestCallbacks(service),
+        });
+        const fiber = yield* runtime
+          .runTurn({
+            issue: makeRunnerTestIssue("settled"),
+            config: makeRunnerTestConfig({ liveRequestsWaitTimeoutMs: 30_000 }),
+            workspacePath: "/tmp/fake-ws",
+            branch: "b",
+            runAttemptId,
+            workItemId,
+          })
+          .pipe(Effect.forkScoped);
+        yield* peer.awaitClientRequest("turn/start");
+        const wireId = yield* peer.sendCommandApproval();
+
+        let recorded: ApprovalRequest | undefined;
+        for (let attempt = 0; attempt < 100 && recorded === undefined; attempt += 1) {
+          yield* Effect.yieldNow;
+          const rows = yield* repository.listForRun(runAttemptId);
+          recorded = rows[0];
+        }
+        if (recorded === undefined) throw new Error("the runtime did not record the request");
+
+        yield* live.settleRun(runAttemptId, "cancelled");
+        const reply = yield* peer.awaitClientResponse(wireId);
+        expect(reply.result).toEqual({ decision: "decline" });
+        expect((yield* repository.getById(recorded.id))?.state).toBe("interrupted");
+        yield* peer.completeTurn("completed");
+        yield* Fiber.join(fiber);
+      }),
+    ),
   );
 
   it.effect("a runtime wait timeout expires a question and sends no synthetic answer", () =>

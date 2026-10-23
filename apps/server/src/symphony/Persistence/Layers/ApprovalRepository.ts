@@ -135,30 +135,27 @@ const rowToApproval = (
             : ({ kind: "legacy_text" as const, text: reason } as const)
           : undefined;
 
+    const historyProblems: string[] = [];
     const answer =
       row.answerJson === null
         ? undefined
         : yield* Effect.try({
             try: () => decodeJson(row.answerJson as string),
-            catch: (cause) =>
-              new SymphonyPersistenceDecodeError({
-                operation: "ApprovalRepository.rowToApproval",
-                issue: `approval row ${String(row.id)} answer could not be decoded`,
-                cause,
-              }),
+            catch: () => null,
           }).pipe(
-            Effect.flatMap((json) =>
-              decodeAnswerRecord(json).pipe(
-                Effect.mapError(
-                  (cause) =>
-                    new SymphonyPersistenceDecodeError({
-                      operation: "ApprovalRepository.rowToApproval",
-                      issue: `approval row ${String(row.id)} answer could not be decoded`,
-                      cause,
-                    }),
-                ),
-              ),
-            ),
+            Effect.catch(() => Effect.succeed(null)),
+            Effect.flatMap((json) => {
+              if (json === null) {
+                historyProblems.push("the stored answer history could not be decoded");
+                return Effect.succeed(null);
+              }
+              return decodeAnswerRecord(json).pipe(
+                Effect.catch(() => {
+                  historyProblems.push("the stored answer history could not be decoded");
+                  return Effect.succeed(null);
+                }),
+              );
+            }),
           );
 
     const decisionNote =
@@ -166,25 +163,21 @@ const rowToApproval = (
         ? undefined
         : yield* Effect.try({
             try: () => decodeJson(row.decisionNoteJson as string),
-            catch: (cause) =>
-              new SymphonyPersistenceDecodeError({
-                operation: "ApprovalRepository.rowToApproval",
-                issue: `approval row ${String(row.id)} decision note could not be decoded`,
-                cause,
-              }),
+            catch: () => null,
           }).pipe(
-            Effect.flatMap((json) =>
-              decodeDecisionNote(json).pipe(
-                Effect.mapError(
-                  (cause) =>
-                    new SymphonyPersistenceDecodeError({
-                      operation: "ApprovalRepository.rowToApproval",
-                      issue: `approval row ${String(row.id)} decision note could not be decoded`,
-                      cause,
-                    }),
-                ),
-              ),
-            ),
+            Effect.catch(() => Effect.succeed(null)),
+            Effect.flatMap((json) => {
+              if (json === null) {
+                historyProblems.push("the stored decision note could not be decoded");
+                return Effect.succeed(null);
+              }
+              return decodeDecisionNote(json).pipe(
+                Effect.catch(() => {
+                  historyProblems.push("the stored decision note could not be decoded");
+                  return Effect.succeed(null);
+                }),
+              );
+            }),
           );
 
     // Before `answered` existed, a user-input request shared the `approved`
@@ -211,8 +204,9 @@ const rowToApproval = (
       ...(workingDirectory === undefined ? {} : { workingDirectory }),
       ...(reason === undefined ? {} : { reason }),
       ...(questionPayload === undefined ? {} : { questionPayload }),
-      ...(answer === undefined ? {} : { answer }),
-      ...(decisionNote === undefined ? {} : { decisionNote }),
+      ...(answer === null || answer === undefined ? {} : { answer }),
+      ...(decisionNote === null || decisionNote === undefined ? {} : { decisionNote }),
+      ...(historyProblems.length > 0 ? { historyUnavailable: historyProblems.join("; ") } : {}),
       affectedFiles,
       createdAt: row.createdAt,
       decidedAt: row.decidedAt,
@@ -353,6 +347,29 @@ const makeRepository = Effect.gen(function* () {
       `.pipe(Effect.mapError(toSqlError("ApprovalRepository.abortDelivery")));
     });
 
+  const listDelivering: ApprovalRepositoryShape["listDelivering"] = () =>
+    Effect.gen(function* () {
+      const rows = yield* sql<Schema.Schema.Type<typeof ApprovalRowSchema>>`
+        SELECT ${cols}
+        FROM symphony_approvals
+        WHERE state = 'delivering'
+        ORDER BY created_at DESC
+      `.pipe(Effect.mapError(toSqlError("ApprovalRepository.listDelivering")));
+      return yield* Effect.forEach(rows, rowToApproval);
+    });
+
+  const reconcileDelivery: ApprovalRepositoryShape["reconcileDelivery"] = (id, decision) =>
+    Effect.gen(function* () {
+      const decidedAt = yield* nowIso;
+      // Preserve answer/note content: it may have reached the provider, so the
+      // row stays explicit delivery-unknown rather than being erased.
+      yield* sql`
+        UPDATE symphony_approvals
+        SET state = ${decision}, decision = ${decision}, decided_at = ${decidedAt}
+        WHERE id = ${id} AND state = 'delivering'
+      `.pipe(Effect.mapError(toSqlError("ApprovalRepository.reconcileDelivery")));
+    });
+
   const listPending: ApprovalRepositoryShape["listPending"] = (options) =>
     Effect.gen(function* () {
       const rows = yield* sql<Schema.Schema.Type<typeof ApprovalRowSchema>>`
@@ -409,6 +426,8 @@ const makeRepository = Effect.gen(function* () {
     stageDelivery,
     completeDelivery,
     abortDelivery,
+    listDelivering,
+    reconcileDelivery,
     listPending,
     listForRun,
     getById,
