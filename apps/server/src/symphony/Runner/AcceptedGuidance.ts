@@ -322,7 +322,7 @@ export type AcceptedPermissionNarrowing =
   | { readonly _tag: "narrowed"; readonly permission: AcceptedPermissionScope }
   | {
       readonly _tag: "unrepresentable";
-      readonly reason: "approval_escalation_conflict";
+      readonly reason: "approval_policy_conflict";
       readonly acceptedApprovalPolicy: AcceptedPermissionScope["approvalPolicy"];
       readonly liveApprovalPolicy: AcceptedPermissionScope["approvalPolicy"];
     };
@@ -334,19 +334,28 @@ export type AcceptedPermissionNarrowing =
  *
  * Approval policy is not one broadness scale. `never` means the agent may not
  * request approval at all; `on-request`/`untrusted` enable that request path.
- * An accepted `never` therefore cannot be intersected with a live policy that
- * enables approvals. That combination is refused explicitly rather than
- * silently re-enabling escalation or silently disabling the live policy.
- * A later live `never` does narrow an accepted approval-enabled policy.
+ * `untrusted` additionally requires approval for untrusted commands, so
+ * collapsing it to `never` would silently drop a required human gate.
+ *
+ * Therefore:
+ * - accepted `never` + live approvals-enabled is unrepresentable;
+ * - accepted `untrusted` + live `never` is unrepresentable in the other
+ *   direction, because the live policy cannot satisfy the accepted approval
+ *   requirement;
+ * - accepted `on-request` + live `never` narrows to `never`: no escalation is
+ *   required and a no-escalation policy is within the accepted permission.
  */
 export const narrowAcceptedPermissions = (
   accepted: AcceptedPermissionScope,
   live: AcceptedPermissionScope,
 ): AcceptedPermissionNarrowing => {
-  if (accepted.approvalPolicy === "never" && live.approvalPolicy !== "never") {
+  const approvalConflict =
+    (accepted.approvalPolicy === "never" && live.approvalPolicy !== "never") ||
+    (accepted.approvalPolicy === "untrusted" && live.approvalPolicy === "never");
+  if (approvalConflict) {
     return {
       _tag: "unrepresentable",
-      reason: "approval_escalation_conflict",
+      reason: "approval_policy_conflict",
       acceptedApprovalPolicy: accepted.approvalPolicy,
       liveApprovalPolicy: live.approvalPolicy,
     };

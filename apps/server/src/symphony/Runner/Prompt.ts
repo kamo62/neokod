@@ -188,7 +188,7 @@ const contractViewFor = (input: RunPromptInput): WorkflowContractView => {
         planOnly: true,
         editsAllowed: false,
         blockedReason:
-          "The accepted brief forbids approval escalation, but the current workflow enables approval requests. Reconcile the workflow policy before continuing.",
+          "The accepted and current workflow approval policies cannot be combined without changing approval requirements. Reconcile the workflow policy before continuing.",
       };
     }
     const permission = narrowed.permission;
