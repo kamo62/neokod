@@ -1,0 +1,7 @@
+Confirmed. My point 3 wording was too loose, and Sol's reading is correct.
+
+The Stop click is only a request. Capacity and the workspace lease are released only after positive evidence that the work was interrupted or closed. If a Stop is never confirmed, the child keeps its ownership and capacity and shows "may still be running", in line with the 16.6 invariant and W6-C4's acceptance (Stop settles to `stopped` or `orphaned`).
+
+Corrected text for the joint decision: "Capacity is released only on positive settlement, or after an explicit human Stop followed by positive interruption or closure evidence. An unconfirmed Stop keeps ownership and capacity and shows may still be running."
+
+I have no remaining disagreement, so the joint decision can be published with that sentence.

@@ -1,0 +1,8 @@
+{
+  "selection": {
+    "model": "github-copilot/claude-opus-5.5",
+    "effort": "high",
+    "mode": "plan"
+  },
+  "fallbackReason": "Direct first-party Claude session limit; 13:50 SAST reset"
+}

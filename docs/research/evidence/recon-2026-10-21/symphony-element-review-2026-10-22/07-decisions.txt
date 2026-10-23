@@ -1,0 +1,192 @@
+Browser tab: 326104976, Title: "Symphony plan and decisions · Concept C · Neokod design prototype", URL: "http://127.0.0.1:63035/planning.html".
+1 AXWebArea Symphony plan and decisions · Concept C · Neokod design prototype, URL: 127.0.0.1:63035/planning.html
+	2 container
+		3 link Description: Skip to plan, Value: 127.0.0.1:63035/planning.html#workspace
+		4 link Description: N Neokod, Value: 127.0.0.1:63035/index.html
+		5 container Location
+			6 text Symphony NEO-4821
+			7 text Plan and decisions
+		8 container Symphony prototype
+			9 link Description: Work, Value: 127.0.0.1:63035/work.html
+			10 link Description: Runs, Value: 127.0.0.1:63035/runs.html
+			11 link Description: Workflow map, Value: 127.0.0.1:63035/workflow.html
+			12 link Description: Plan and decisions, Value: 127.0.0.1:63035/planning.html
+		13 text Design prototype · Sample data
+		14 button Reset demo, ID: reset-demo
+		15 checkbox Description: Switch to light theme, Value: 1
+		16 tab group Workspace
+			17 tab (selectable, settable, boolean) Plan, Value: 0, ID: tab-plan
+			18 tab (selected, settable, boolean) Decisions 1 open, Value: 1, ID: tab-decisions
+				133 text Decisions
+				134 container 1 open
+					135 text 1
+			19 tab (selectable, settable, boolean) Evidence, Value: 0, ID: tab-evidence
+		20 container plan-ident
+			136 container Sample Mac (mac), Connected. Sample machine.
+				137 text Sample Mac mac
+			138 text NEO-4821, attempt 3
+		139 container Selected item detail
+			140 link Description: Summary, Value: 127.0.0.1:63035/runs.html?item=NEO-4821&attempt=3#NEO-4821
+			141 link Description: Execution, Value: 127.0.0.1:63035/workflow.html?item=NEO-4821&attempt=3#NEO-4821
+			142 link Description: Plan and decisions, Value: 127.0.0.1:63035/planning.html?item=NEO-4821&attempt=3&tab=decisions#NEO-4821
+			143 link Description: Evidence, Value: 127.0.0.1:63035/planning.html?item=NEO-4821&attempt=3&tab=evidence#NEO-4821
+		29 container plan-status
+			144 text Plan r5, saved 13:42
+			145 container Sample Mac (mac), Connected. Sample machine.
+				146 text Sample Mac mac
+			147 text NEO-4821 attempt 3 Execution approved: r5, attempt 3
+		34 container Description: Plan outline, decisions and revisions, ID: outline
+			148 text Plan
+			149 button Goal
+			150 button Current behaviour
+			151 button Send lifecycle
+			152 button Work packages
+			153 button Validation
+			154 button Out of scope
+			155 text Decisions
+			156 button D-3 How should a send with an unknown acknowledgement be handled?
+				157 text D-3 How should a send with an unknown acknowledgement be handled?
+			158 button D-2 How long does the server keep send receipts?
+				159 text D-2 How long does the server keep send receipts?
+			160 button D-1 Where do queued sends persist?
+				161 text D-1 Where do queued sends persist?
+			162 button D-0 Show a queued-send count in the composer? Unresolved
+				163 text D-0 Show a queued-send count in the composer?
+				164 text Unresolved
+			165 text Revisions
+			166 text r5 You Current
+			167 button r4 You 13:31
+				168 text r4 You
+				169 text 13:31
+			170 text r3 You Not in sample r2 R, root run Not in sample r1 R, root run Not in sample
+		58 container Description: Decisions 1 open, ID: workspace
+			171 content list
+				172 text Open 1
+				173 button D-3 How should a send with an unknown acknowledgement be handled? Anchored to Send lifecycle
+					174 text D-3 How should a send with an unknown acknowledgement be handled?
+					175 text Anchored to Send lifecycle
+				176 text Saved 3
+				177 button D-2 How long does the server keep send receipts? Anchored to Send lifecycle
+					178 text D-2 How long does the server keep send receipts?
+					179 text Anchored to Send lifecycle
+				180 button D-1 Where do queued sends persist? Anchored to Work packages
+					181 text D-1 Where do queued sends persist?
+					182 text Anchored to Work packages
+				183 button D-0 Show a queued-send count in the composer? Anchor not found in r5
+					184 text D-0 Show a queued-send count in the composer?
+					185 text Anchor not found in r5
+			186 text D-3
+			187 text Open
+			188 text Raised by C2, implementer of package B at 14:26. Attempt 3, head 7f3a9c2. On Sample Mac (mac), attempt 3.
+			189 heading How should a send with an unknown acknowledgement be handled?, Value: 2, ID: dec-title
+				190 text How should a send with an unknown acknowledgement be handled?
+			191 text The socket dropped after the client sent message m-81f2 and before the server's acknowledgement arrived. On reconnect the client cannot tell whether the server stored it.
+			192 text Applies to NEO-4821 attempt 3 on Sample Mac (mac), head 7f3a9c2. This answer is shared with Runs and Execution.
+			193 container
+				194 text Anchored to 
+				195 button Send lifecycle
+				196 text  in plan r5.
+			197 button E-4
+			198 button E-5
+			199 content list Decision stages
+				200 container
+					201 text 1 Draft answer Empty
+				202 container
+					203 text 2 Saved decision Not saved
+				204 container
+					205 text 3 Execution approval Locked
+			206 container
+				207 heading 1 Draft answer, Value: 3
+					208 text 1 Draft answer
+				209 How should a send with an unknown acknowledgement be handled?
+					210 container
+						211 radio button (settable, integer) Value: 0, Description: Resend automatically with the same message ID Relies on server receipts to drop the duplicate. Silent if the receipt has expired.
+						212 text Resend automatically with the same message ID Relies on server receipts to drop the duplicate. Silent if the receipt has expired.
+					213 container
+						214 radio button (settable, integer) Value: 0, Description: Keep the message identity and ask for an explicit retry Suggested by C2 Mark delivery as unknown, keep m-81f2 in the outbox and show Retry. No send happens until someone retries.
+						215 text Keep the message identity and ask for an explicit retry  Suggested by C2 Mark delivery as unknown, keep m-81f2 in the outbox and show Retry. No send happens until someone retries.
+					216 container
+						217 radio button (settable, integer) Value: 0, Description: Mark the send as failed and drop it from the outbox Simplest. The user retypes the message and loses the original identity.
+						218 text Mark the send as failed and drop it from the outbox Simplest. The user retypes the message and loses the original identity.
+				219 text Reason (optional)
+				220 text entry area (settable) Reason (optional), ID: dec-note
+				221 button Save draft
+				222 button (disabled) Save decision
+				223 text Choose an option to save a decision.
+				224 text A saved draft stays local until you replace it. It is not a decision. Saving the decision records it with your name; it does not start work or approve anything.
+			225 container
+				226 heading 2 Saved decision, Value: 3
+					227 text 2 Saved decision
+				228 text Not saved. Nothing has been decided.
+			229 container
+				230 heading 3 Execution approval, Value: 3
+					231 text Execution approval
+				232 text Locked until D-3 is saved. Saving it will unlock this step but will not approve anything.
+			233 container
+				234 heading History, Value: 3
+					235 text History
+				236 content list
+					237 container
+						238 text 14:26 C2 Raised during repair round 1 of package B.
+		132 container Description: Run context, ID: rail
+			239 container
+				240 text NEO-4821, Core reliability Preserve queued sends across reconnects Waiting on D-3
+				241 container Sample Mac (mac), Connected. Sample machine.
+					242 text Sample Mac mac
+				243 text Attempt 3 of 4, head 
+				244 text 7f3a9c2
+				245 text , base 
+				246 text e19c4d0
+				247 text , machine Sample Mac (mac)
+			248 container
+				249 heading Stages, Value: 3
+					250 text Stages
+				251 content list
+					252 container
+						253 text Intake Issue #4821
+					254 container
+						255 text Design v2 approved in round 2
+					256 container
+						257 text Build Package B waiting on D-3
+					258 container
+						259 text Integrate Failed at 7f3a9c2
+					260 container
+						261 text Review Round 1 of 2 sent back
+					262 container
+						263 text PR Not opened, merge locked
+			264 container
+				265 heading Agents, Value: 3
+					266 text Agents
+				267 content list
+					268 button R Root run Waiting for input, Waiting since 14:26
+						269 text R Root run
+						270 text Waiting for input, Waiting since 14:26
+					271 button C1 Implementer, package A Completed, 18m 04s
+						272 text C1 Implementer, package A
+						273 text Completed, 18m 04s
+					274 button C2 Implementer, package B Asked a question, Waiting since 14:26
+						275 text C2 Implementer, package B
+						276 text Asked a question, Waiting since 14:26
+					277 button N1 Tester subagent Observed Tracking lost, Last observed 14:21:07 · 3m 12s
+						278 text N1 Tester subagent 
+						279 text Observed
+						280 text Tracking lost, Last observed 14:21:07 · 3m 12s
+					281 button C3 Critic and reviewer Round 1 complete, 6m 40s
+						282 text C3 Critic and reviewer
+						283 text Round 1 complete, 6m 40s
+				284 text On Sample Mac (mac). Cost: not reported for any agent.
+			285 container
+				286 heading Approvals, Value: 3
+					287 text Approvals
+				288 content list
+					289 container
+						290 text Plan execution r5 approved for attempt 3 on Sample Mac (mac) at 13:43 by You
+					291 container
+						292 text Resume package B Locked: D-3 must be saved first.
+					293 container
+						294 text Merge Locked. Yours under the merge policy, in GitHub.
+			295 container
+				296 link Description:  Open in runs view, Value: 127.0.0.1:63035/runs.html?item=NEO-4821&attempt=3#NEO-4821
+				297 link Description:  Open in workflow map, Value: 127.0.0.1:63035/workflow.html?item=NEO-4821&attempt=3#NEO-4821
+
+The focused UI element is 18 tab (selected, settable, boolean) Decisions 1 open, Value: 1, ID: tab-decisions

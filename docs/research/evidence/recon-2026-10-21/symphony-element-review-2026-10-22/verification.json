@@ -1,0 +1,19 @@
+{
+  "scope": "Review documentation only; no implementation acceptance",
+  "implementationCommit": "d89c4f3aacfeb7925dee9d05f5ea2233f5e457f6",
+  "elementFamilies": 158,
+  "allElementRowsHaveJobDispositionAndReason": true,
+  "localLinksChecked": 33,
+  "missingLocalLinks": [],
+  "artifactSourceHashesMatch": true,
+  "exactOpusResultPreserved": true,
+  "opusFinalSuccess": true,
+  "gitDiffCheck": "pass",
+  "applicationAndPackageSourceDiff": [],
+  "portsWithoutListeners": [63035, 6953, 14993],
+  "matchingAutomationConfigAbsent": true,
+  "buildsRun": false,
+  "applicationTestsRun": false,
+  "compilerOrRuntimeProof": false,
+  "formatting": "vp fmt passed on changed review Markdown/JSON; final check recorded by command receipt"
+}

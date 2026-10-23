@@ -40,6 +40,14 @@ const multiSelectQuestion = {
   multiSelect: true,
 } as const;
 
+const freeTextQuestion = {
+  id: "details",
+  header: "Details",
+  question: "Explain the change",
+  options: [],
+  multiSelect: false,
+} as const;
+
 describe("resolvePendingUserInputAnswer", () => {
   it("prefers a custom answer over selected options", () => {
     expect(
@@ -153,6 +161,22 @@ describe("buildPendingUserInputAnswers", () => {
   it("returns null when any question is unanswered", () => {
     expect(buildPendingUserInputAnswers([singleSelectQuestion], {})).toBeNull();
   });
+
+  it("builds a custom answer for a no-options question in a mixed prompt", () => {
+    expect(
+      buildPendingUserInputAnswers([singleSelectQuestion, freeTextQuestion], {
+        scope: {
+          selectedOptionLabels: ["Orchestration-first"],
+        },
+        details: {
+          customAnswer: "Keep the existing envelope for one release",
+        },
+      }),
+    ).toEqual({
+      scope: "Orchestration-first",
+      details: "Keep the existing envelope for one release",
+    });
+  });
 });
 
 describe("pending user input question progress", () => {
@@ -243,6 +267,33 @@ describe("pending user input question progress", () => {
     ).toMatchObject({
       selectedOptionLabels: ["Server", "Web"],
       resolvedAnswer: ["Server", "Web"],
+      canAdvance: true,
+      isComplete: true,
+    });
+  });
+
+  it("advances a no-options question only with a custom answer", () => {
+    expect(derivePendingUserInputProgress([freeTextQuestion], {}, 0)).toMatchObject({
+      activeQuestion: freeTextQuestion,
+      resolvedAnswer: null,
+      canAdvance: false,
+      isComplete: false,
+    });
+
+    expect(
+      derivePendingUserInputProgress(
+        [freeTextQuestion],
+        {
+          details: {
+            customAnswer: "Keep the existing envelope for one release",
+          },
+        },
+        0,
+      ),
+    ).toMatchObject({
+      activeQuestion: freeTextQuestion,
+      resolvedAnswer: "Keep the existing envelope for one release",
+      usingCustomAnswer: true,
       canAdvance: true,
       isComplete: true,
     });

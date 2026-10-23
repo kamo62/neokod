@@ -1,0 +1,121 @@
+[
+  {
+    "repo": "pingdotgg/t3code",
+    "sha": "22840ab943b8418744b48223411e46ba4fdcef1a",
+    "path": "apps/server/src/mcp/McpToolAccess.ts",
+    "sha256": "8551e32d6522c1b2ae8b9f253f1d81f1e5d1b236f55c5c1e0fa9c217422af029",
+    "url": "https://github.com/pingdotgg/t3code/blob/22840ab943b8418744b48223411e46ba4fdcef1a/apps/server/src/mcp/McpToolAccess.ts"
+  },
+  {
+    "repo": "pingdotgg/t3code",
+    "sha": "22840ab943b8418744b48223411e46ba4fdcef1a",
+    "path": "apps/server/src/mcp/OrchestratorMcpService.ts",
+    "sha256": "2daee104175debb5e543c7fe2e6a7912b0d576b5a732d148fc6f670c181bdac8",
+    "url": "https://github.com/pingdotgg/t3code/blob/22840ab943b8418744b48223411e46ba4fdcef1a/apps/server/src/mcp/OrchestratorMcpService.ts"
+  },
+  {
+    "repo": "pingdotgg/t3code",
+    "sha": "22840ab943b8418744b48223411e46ba4fdcef1a",
+    "path": "apps/server/src/mcp/threadAccess.ts",
+    "sha256": "52c9c5b860e3365b5f92b10568adcd12b52e4ebd795452759ceebe00a382aeee",
+    "url": "https://github.com/pingdotgg/t3code/blob/22840ab943b8418744b48223411e46ba4fdcef1a/apps/server/src/mcp/threadAccess.ts"
+  },
+  {
+    "repo": "pingdotgg/t3code",
+    "sha": "22840ab943b8418744b48223411e46ba4fdcef1a",
+    "path": "apps/server/src/mcp/toolkits/orchestrator/tools.ts",
+    "sha256": "9fabebafff5f9803096bdc87bf35f0d557a754d1782bc65943826614831eb244",
+    "url": "https://github.com/pingdotgg/t3code/blob/22840ab943b8418744b48223411e46ba4fdcef1a/apps/server/src/mcp/toolkits/orchestrator/tools.ts"
+  },
+  {
+    "repo": "pingdotgg/t3code",
+    "sha": "22840ab943b8418744b48223411e46ba4fdcef1a",
+    "path": "apps/server/src/mcp/toolkits/thread/handlers.ts",
+    "sha256": "75ea6ff20ea79416f632013cab6a79f8f4b0e426ef5749eb797df26162489976",
+    "url": "https://github.com/pingdotgg/t3code/blob/22840ab943b8418744b48223411e46ba4fdcef1a/apps/server/src/mcp/toolkits/thread/handlers.ts"
+  },
+  {
+    "repo": "pingdotgg/t3code",
+    "sha": "22840ab943b8418744b48223411e46ba4fdcef1a",
+    "path": "apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts",
+    "sha256": "a2056a06a10733aaa958e47c25820f899cec05b35bdb18de2f62ad70d0334109",
+    "url": "https://github.com/pingdotgg/t3code/blob/22840ab943b8418744b48223411e46ba4fdcef1a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts"
+  },
+  {
+    "repo": "pingdotgg/t3code",
+    "sha": "22840ab943b8418744b48223411e46ba4fdcef1a",
+    "path": "apps/server/src/orchestration-v2/DelegatedTaskQuestionReactor.ts",
+    "sha256": "ff73b1a07d30f9f1f528b4829bdf9020211c1043c31defbc88cb7f971361b545",
+    "url": "https://github.com/pingdotgg/t3code/blob/22840ab943b8418744b48223411e46ba4fdcef1a/apps/server/src/orchestration-v2/DelegatedTaskQuestionReactor.ts"
+  },
+  {
+    "repo": "pingdotgg/t3code",
+    "sha": "22840ab943b8418744b48223411e46ba4fdcef1a",
+    "path": "apps/server/src/orchestration-v2/Orchestrator.ts",
+    "sha256": "bb0741f1adb2ec934f1ef74d420f5849730b58dad21de54fc96516b28331fce1",
+    "url": "https://github.com/pingdotgg/t3code/blob/22840ab943b8418744b48223411e46ba4fdcef1a/apps/server/src/orchestration-v2/Orchestrator.ts"
+  },
+  {
+    "repo": "pingdotgg/t3code",
+    "sha": "22840ab943b8418744b48223411e46ba4fdcef1a",
+    "path": "apps/server/src/orchestration-v2/ProviderSessionManager.ts",
+    "sha256": "7cb7cde77cfb6477ac121df1c0982638cab15e414890b4970bb801ab7db47bf0",
+    "url": "https://github.com/pingdotgg/t3code/blob/22840ab943b8418744b48223411e46ba4fdcef1a/apps/server/src/orchestration-v2/ProviderSessionManager.ts"
+  },
+  {
+    "repo": "pingdotgg/t3code",
+    "sha": "22840ab943b8418744b48223411e46ba4fdcef1a",
+    "path": "apps/server/src/orchestration-v2/ProviderTurnStartService.ts",
+    "sha256": "288505f6d8474fd8a2ffdd5a5ed25bd93d97efabc9bf3978e80e6240124fb9ef",
+    "url": "https://github.com/pingdotgg/t3code/blob/22840ab943b8418744b48223411e46ba4fdcef1a/apps/server/src/orchestration-v2/ProviderTurnStartService.ts"
+  },
+  {
+    "repo": "pingdotgg/t3code",
+    "sha": "22840ab943b8418744b48223411e46ba4fdcef1a",
+    "path": "apps/server/src/orchestration-v2/RunExecutionService.ts",
+    "sha256": "f4b61652e266b89e52c91da6f7b82401cb6fcc04e549271c3375430b58db9b90",
+    "url": "https://github.com/pingdotgg/t3code/blob/22840ab943b8418744b48223411e46ba4fdcef1a/apps/server/src/orchestration-v2/RunExecutionService.ts"
+  },
+  {
+    "repo": "pingdotgg/t3code",
+    "sha": "22840ab943b8418744b48223411e46ba4fdcef1a",
+    "path": "apps/server/src/orchestration-v2/ShellStream.ts",
+    "sha256": "1c0f621161f2a66bcbdda4870569210915bd1931b364e231b0693636afb133fe",
+    "url": "https://github.com/pingdotgg/t3code/blob/22840ab943b8418744b48223411e46ba4fdcef1a/apps/server/src/orchestration-v2/ShellStream.ts"
+  },
+  {
+    "repo": "pingdotgg/t3code",
+    "sha": "22840ab943b8418744b48223411e46ba4fdcef1a",
+    "path": "apps/server/src/provider/CodexDeveloperInstructions.ts",
+    "sha256": "d7fa4e284681ee48cc7bc460b35151913497954599782f9ccc115fcca2cf3fb6",
+    "url": "https://github.com/pingdotgg/t3code/blob/22840ab943b8418744b48223411e46ba4fdcef1a/apps/server/src/provider/CodexDeveloperInstructions.ts"
+  },
+  {
+    "repo": "pingdotgg/t3code",
+    "sha": "22840ab943b8418744b48223411e46ba4fdcef1a",
+    "path": "apps/web/src/components/chat/usePendingThreadRequests.ts",
+    "sha256": "1fa3144d03993ba0b3c00f741616ac6eddd4f585e7a3a142d7fa17a02a0d3e8d",
+    "url": "https://github.com/pingdotgg/t3code/blob/22840ab943b8418744b48223411e46ba4fdcef1a/apps/web/src/components/chat/usePendingThreadRequests.ts"
+  },
+  {
+    "repo": "pingdotgg/t3code",
+    "sha": "22840ab943b8418744b48223411e46ba4fdcef1a",
+    "path": "packages/contracts/src/orchestratorMcp.ts",
+    "sha256": "db4c6ceef0dcf45051ce060c9d79e94407503250cfb42f71ab842e545bcfebd6",
+    "url": "https://github.com/pingdotgg/t3code/blob/22840ab943b8418744b48223411e46ba4fdcef1a/packages/contracts/src/orchestratorMcp.ts"
+  },
+  {
+    "repo": "pingdotgg/t3code",
+    "sha": "22840ab943b8418744b48223411e46ba4fdcef1a",
+    "path": "packages/provider-core/src/server/orchestrationInstructions.ts",
+    "sha256": "a1f095bc1cb7c54b7195c86ff263bb6b34a9cb7d55e3afaa56f16b2570493e30",
+    "url": "https://github.com/pingdotgg/t3code/blob/22840ab943b8418744b48223411e46ba4fdcef1a/packages/provider-core/src/server/orchestrationInstructions.ts"
+  },
+  {
+    "repo": "pingdotgg/t3code",
+    "sha": "22840ab943b8418744b48223411e46ba4fdcef1a",
+    "path": "packages/provider-opencode/src/server/v2/adapter.ts",
+    "sha256": "35744f7c477f2450ee1a6503f2a335bd6a25ccb7793a579b5c91a0e20ebb9ea8",
+    "url": "https://github.com/pingdotgg/t3code/blob/22840ab943b8418744b48223411e46ba4fdcef1a/packages/provider-opencode/src/server/v2/adapter.ts"
+  }
+]

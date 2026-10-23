@@ -1,0 +1,73 @@
+Browser tab: 326104976, Title: "Symphony workspace · Neokod design prototype", URL: "http://127.0.0.1:63035/index.html".
+0 AXWebArea Symphony workspace · Neokod design prototype, URL: 127.0.0.1:63035/index.html
+	1 container
+		2 link Description: N Neokod, Value: 127.0.0.1:63035/index.html
+		3 container Location
+			4 text Symphony
+			5 text Workspace preview
+		6 text Design prototype · Sample data
+		7 checkbox Description: Switch to light theme, Value: 1
+		8 heading Symphony, from selected work to reviewed result, Value: 1
+			9 text Symphony, from selected work to reviewed result
+		10 text Start with the issues you want worked on, assign agents and machines, then review the launch. Runs is the operating view. Execution and Plan and decisions are details of the selected work. Everything here uses fictional sample data; no real agents or machines are connected.
+		11 container Work: select issues, agents and machines
+			12 heading Work: select issues, agents and machines, Value: 2, ID: work-entry-title
+				13 text Work: select issues, agents and machines
+			14 text The new combined flow. Select individual stories, set a machine and agent team for each, save a draft, inspect the launch preview and queue demo work. Open its execution, plan and evidence together.
+			15 link Description: Open Work, Value: 127.0.0.1:63035/work.html
+		16 text Sample task NEO-4821, Preserve queued sends across reconnects Attempt 3, head 
+		17 text 7f3a9c2
+		18 text One open decision, D-3
+		19 content list
+			20 container
+				21 heading A. Runs, Value: 2
+					22 link Description: A. Runs, Value: 127.0.0.1:63035/runs.html
+				23 text The operating view for monitoring selected work.
+				24 definition list
+					25 container Centre
+						26 text Centre
+					27 text A searchable list of runs, with Needs you pinned above it and a side panel for the selected run.
+					28 container Good at
+						29 text Good at
+					30 text Many runs at once, fast triage, one clear blocker and next step per run.
+					31 container Weaker at
+						32 text Weaker at
+					33 text Showing how the stages, packages and repair rounds inside one run relate to each other.
+				34 link Description: Open runs, Value: 127.0.0.1:63035/runs.html
+			35 container
+				36 heading B. Workflow map, Value: 2
+					37 link Description: B. Workflow map, Value: 127.0.0.1:63035/workflow.html
+				38 text Execution detail for one work item, opened from its run.
+				39 definition list
+					40 container Centre
+						41 text Centre
+					42 text A stage map from Intake to PR: two parallel packages, critics and testers, a bounded two-round review, and a human merge gate. An inspector shows the selected step.
+					43 container Good at
+						44 text Good at
+					45 text Explaining where one run is stuck, what was sent back and which agent did what.
+					46 container Weaker at
+						47 text Weaker at
+					48 text Overview of many runs. Runs are reached through a small switcher.
+				49 link Description: Open map, Value: 127.0.0.1:63035/workflow.html
+			50 container
+				51 heading C. Plan and decisions, Value: 2
+					52 link Description: C. Plan and decisions, Value: 127.0.0.1:63035/planning.html
+				53 text Plan and decisions for the selected work, before and during execution.
+				54 definition list
+					55 container Centre
+						56 text Centre
+					57 text The canonical plan, editable with revisions, beside a Decisions view that keeps draft answer, saved decision and execution approval separate.
+					58 container Good at
+						59 text Good at
+					60 text Recording why work is shaped the way it is, and making sure no edit or answer silently starts work.
+					61 container Weaker at
+						62 text Weaker at
+					63 text Live operations. It assumes you already know which run you are planning.
+				64 link Description: Open plan, Value: 127.0.0.1:63035/planning.html
+		65 container
+			66 text Work combines intake, assignment and a launch preview. A, B and C remain detailed sample explorations of the operating view and its run details. Rationale, status rules and limits are in 
+			67 link Description: DESIGN.md, Value: 127.0.0.1:63035/DESIGN.md
+			68 text .
+		69 text Static HTML, CSS and JavaScript. No network, tracker, server or agent is connected. Actions change local demo state only. Work drafts are saved on this browser; Reset demo clears them.
+
+The focused UI element is 0 AXWebArea Symphony workspace · Neokod design prototype, URL: 127.0.0.1:63035/index.html

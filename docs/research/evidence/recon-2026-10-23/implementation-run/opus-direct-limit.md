@@ -1,0 +1,1 @@
+Direct onboard Opus 5.5 high review attempt returned: “You've hit your session limit · resets 1:50pm (Africa/Johannesburg)”. No verdict was produced. The authorised OpenCode Copilot fallback was then selected; its review result is recorded separately.

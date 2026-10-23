@@ -1,0 +1,589 @@
+{
+  "scope": "24-product refresh plus OpenAI Symphony primary specification follow-up (25 references total)",
+  "cutoffUtc": "2026-10-21T00:00:00Z",
+  "end": "Per-repository capture time, non-atomic snapshots; no future-inclusive completeness claim",
+  "proof": "Metadata/source research only, not all PRs semantically audited or any competitor runtime executed",
+  "repositories": [
+    {
+      "repo": "BytePioneer-AI/codex-host",
+      "capturedAt": "2026-10-22T19:54:32.458406+00:00",
+      "defaultBranch": "main",
+      "headSha": "758a8f36385f845b4e599f9d024cab865a124049",
+      "headDate": "2026-10-22T15:47:04Z",
+      "headChanged": true,
+      "mergedSince21Oct": 13,
+      "censusCompleteToCutoff": true,
+      "error": null,
+      "releasePins": [
+        {
+          "tag": "v0.13.3",
+          "prerelease": false,
+          "sha": "be3cc4ffac140898ee214adc7f0746115fa49540",
+          "publishedAt": "2026-10-17T15:44:07Z",
+          "url": "https://github.com/BytePioneer-AI/codex-host/releases/tag/v0.13.3"
+        },
+        {
+          "tag": "v0.12.2",
+          "prerelease": true,
+          "sha": "2cdf1656933e0307e555a15e265fd18e90c449a9",
+          "publishedAt": "2026-10-04T15:51:39Z",
+          "url": "https://github.com/BytePioneer-AI/codex-host/releases/tag/v0.12.2"
+        }
+      ],
+      "censusMethod": "Closed pulls ordered by updated time until all dates before cutoff; keep merged_at>=cutoff across all base branches"
+    },
+    {
+      "repo": "Dimillian/CodexMonitor",
+      "capturedAt": "2026-10-22T19:54:34.141914+00:00",
+      "defaultBranch": "main",
+      "headSha": "dd61b9abd37de5ded86e82b9fe8a83fd49d46fa5",
+      "headDate": "2026-03-26T07:01:43Z",
+      "headChanged": false,
+      "mergedSince21Oct": 0,
+      "censusCompleteToCutoff": true,
+      "error": null,
+      "releasePins": [
+        {
+          "tag": "v0.7.67",
+          "prerelease": false,
+          "sha": "b913e22a6931c536df69d1f725d9cafaa47acf30",
+          "publishedAt": "2026-03-24T06:04:24Z",
+          "url": "https://github.com/Dimillian/CodexMonitor/releases/tag/v0.7.67"
+        }
+      ],
+      "censusMethod": "Closed pulls ordered by updated time until all dates before cutoff; keep merged_at>=cutoff across all base branches"
+    },
+    {
+      "repo": "Emanuele-web04/synara",
+      "capturedAt": "2026-10-22T19:59:50.409708+00:00",
+      "headSha": "299fd573b1d6520c323a87c78d30be74e87e53e1",
+      "mergedSince21Oct": 0,
+      "censusCompleteToCutoff": true,
+      "censusMethod": "Full4-22Oct census276unique rows; newest merge18Oct",
+      "details": "synara/manifest.json",
+      "releaseScan": {
+        "records": 100,
+        "latest_stable": {
+          "tag": "v1.0.7",
+          "published_at": "2026-10-17T19:33:32Z",
+          "resolved_sha": "b8cf9382d36ac1120b3fe16241cfd96189a9a71e"
+        },
+        "latest_prerelease": {
+          "tag": "v1.0.6-remote.26",
+          "published_at": "2026-10-18T13:09:25Z",
+          "resolved_sha": "39a745feaccf942f43aae154373fe375a20a0e4d"
+        }
+      }
+    },
+    {
+      "repo": "HarnessRouter/harnessrouter",
+      "capturedAt": "2026-10-22T19:54:34.414343+00:00",
+      "defaultBranch": "main",
+      "headSha": "7f036edf545b5c55582c31f5750b70f24fa079c9",
+      "headDate": "2026-10-22T09:48:03Z",
+      "headChanged": true,
+      "mergedSince21Oct": 33,
+      "censusCompleteToCutoff": true,
+      "error": null,
+      "releasePins": [
+        {
+          "tag": "v0.35.17",
+          "prerelease": false,
+          "sha": "7f036edf545b5c55582c31f5750b70f24fa079c9",
+          "publishedAt": "2026-10-22T09:58:40Z",
+          "url": "https://github.com/HarnessRouter/harnessrouter/releases/tag/v0.35.17"
+        },
+        {
+          "tag": "v0.36.0-rc.3",
+          "prerelease": true,
+          "sha": "fa542ad91e3f45e87d03e1bfa724a9149ba28b63",
+          "publishedAt": "2026-10-22T08:06:58Z",
+          "url": "https://github.com/HarnessRouter/harnessrouter/releases/tag/v0.36.0-rc.3"
+        }
+      ],
+      "censusMethod": "Closed pulls ordered by updated time until all dates before cutoff; keep merged_at>=cutoff across all base branches"
+    },
+    {
+      "repo": "NousResearch/hermes-agent",
+      "capturedAt": "2026-10-22T19:54:44.152568+00:00",
+      "defaultBranch": "main",
+      "headSha": "7d0fb393b715d56fcbecad3c0ed0cd7f191da1bb",
+      "headDate": "2026-10-22T19:49:48Z",
+      "headChanged": true,
+      "mergedSince21Oct": 87,
+      "censusCompleteToCutoff": true,
+      "error": null,
+      "releasePins": [
+        {
+          "tag": "v0.22.4",
+          "prerelease": false,
+          "sha": "4d04303818b61bf3aa09278af48356315515965b",
+          "publishedAt": "2026-10-21T18:49:24Z",
+          "url": "https://github.com/NousResearch/hermes-agent/releases/tag/v0.22.4"
+        }
+      ],
+      "censusMethod": "Date-partitioned merged-only search replaces bounded closed-list attempt",
+      "searchDays": [
+        {
+          "day": "2026-10-21",
+          "totalCount": 59,
+          "captured": 59,
+          "incompleteResults": false
+        },
+        {
+          "day": "2026-10-22",
+          "totalCount": 28,
+          "captured": 28,
+          "incompleteResults": false
+        }
+      ]
+    },
+    {
+      "repo": "OrchestratorInc/agent-orchestrator",
+      "capturedAt": "2026-10-22T19:54:36.359671+00:00",
+      "defaultBranch": "main",
+      "headSha": "35b406f150c97e9779222c961bd8eb14af634a58",
+      "headDate": "2026-10-22T19:48:36Z",
+      "headChanged": true,
+      "mergedSince21Oct": 46,
+      "censusCompleteToCutoff": true,
+      "error": null,
+      "releasePins": [
+        {
+          "tag": "v0.14.5",
+          "prerelease": false,
+          "sha": "7b176b7ad3b166c7227cfe4a6bb03673ca4bea2b",
+          "publishedAt": "2026-10-22T12:37:44Z",
+          "url": "https://github.com/OrchestratorInc/agent-orchestrator/releases/tag/v0.14.5"
+        },
+        {
+          "tag": "v0.14.5-nightly.202610220502",
+          "prerelease": true,
+          "sha": "18315f06398fb8b7c191d53122eaee7fe77496af",
+          "publishedAt": "2026-10-22T05:32:29Z",
+          "url": "https://github.com/OrchestratorInc/agent-orchestrator/releases/tag/v0.14.5-nightly.202610220502"
+        }
+      ],
+      "censusMethod": "Closed pulls ordered by updated time until all dates before cutoff; keep merged_at>=cutoff across all base branches"
+    },
+    {
+      "repo": "aicodeking/pandacode",
+      "capturedAt": "2026-10-22T19:54:30.230680+00:00",
+      "defaultBranch": "main",
+      "headSha": "800b879680bc89fda1189f726864ca1a4ed61e2a",
+      "headDate": "2026-10-22T19:19:24Z",
+      "headChanged": true,
+      "mergedSince21Oct": 25,
+      "censusCompleteToCutoff": true,
+      "error": null,
+      "releasePins": [
+        {
+          "tag": "v0.3.26",
+          "prerelease": false,
+          "sha": "800b879680bc89fda1189f726864ca1a4ed61e2a",
+          "publishedAt": "2026-10-22T19:42:27Z",
+          "url": "https://github.com/aicodeking/pandacode/releases/tag/v0.3.26"
+        }
+      ],
+      "censusMethod": "Closed pulls ordered by updated time until all dates before cutoff; keep merged_at>=cutoff across all base branches"
+    },
+    {
+      "repo": "can1357/oh-my-pi",
+      "capturedAt": "2026-10-22T19:54:36.869078+00:00",
+      "defaultBranch": "main",
+      "headSha": "0b5c27ab24719c86a5986b95ee55f4e75bc1aaa0",
+      "headDate": "2026-10-22T10:22:25Z",
+      "headChanged": true,
+      "mergedSince21Oct": 58,
+      "censusCompleteToCutoff": true,
+      "error": null,
+      "releasePins": [
+        {
+          "tag": "v18.12.6",
+          "prerelease": false,
+          "sha": "45c35e40c46166dc726ccc52f5d27f40f2449f99",
+          "publishedAt": "2026-10-21T21:02:53Z",
+          "url": "https://github.com/can1357/oh-my-pi/releases/tag/v18.12.6"
+        }
+      ],
+      "censusMethod": "Closed pulls ordered by updated time until all dates before cutoff; keep merged_at>=cutoff across all base branches"
+    },
+    {
+      "repo": "dominikmartn/harp",
+      "capturedAt": "2026-10-22T19:54:41.916011+00:00",
+      "defaultBranch": "main",
+      "headSha": "bad92b3fee6224941c9de92eaa3968a53e61ae6b",
+      "headDate": "2026-10-21T10:07:22Z",
+      "headChanged": false,
+      "mergedSince21Oct": 0,
+      "censusCompleteToCutoff": true,
+      "error": null,
+      "releasePins": [
+        {
+          "tag": "v0.1.3",
+          "prerelease": false,
+          "sha": "bad92b3fee6224941c9de92eaa3968a53e61ae6b",
+          "publishedAt": "2026-10-21T10:29:54Z",
+          "url": "https://github.com/dominikmartn/harp/releases/tag/v0.1.3"
+        }
+      ],
+      "censusMethod": "Closed pulls ordered by updated time until all dates before cutoff; keep merged_at>=cutoff across all base branches"
+    },
+    {
+      "repo": "earendil-works/pi",
+      "capturedAt": "2026-10-22T19:54:38.599478+00:00",
+      "defaultBranch": "main",
+      "headSha": "8c03fef4d3b7ecf7a9e8cc5b1312ff60ec2be149",
+      "headDate": "2026-10-22T19:39:17Z",
+      "headChanged": true,
+      "mergedSince21Oct": 14,
+      "censusCompleteToCutoff": true,
+      "error": null,
+      "releasePins": [
+        {
+          "tag": "v1.4.0",
+          "prerelease": false,
+          "sha": "4a080252f06caf63a525d7873c5d94d3c23887e0",
+          "publishedAt": "2026-10-21T22:49:48Z",
+          "url": "https://github.com/earendil-works/pi/releases/tag/v1.4.0"
+        }
+      ],
+      "censusMethod": "Closed pulls ordered by updated time until all dates before cutoff; keep merged_at>=cutoff across all base branches"
+    },
+    {
+      "repo": "get-bb/bb",
+      "capturedAt": "2026-10-22T19:54:38.969581+00:00",
+      "defaultBranch": "main",
+      "headSha": "ccd6e1e60036051908def17232a8d3b71c777d8e",
+      "headDate": "2026-10-22T19:41:46Z",
+      "headChanged": true,
+      "mergedSince21Oct": 61,
+      "censusCompleteToCutoff": true,
+      "error": null,
+      "releasePins": [
+        {
+          "tag": "desktop-v0.46.1",
+          "prerelease": false,
+          "sha": "411eac54ac16d0a3cb57d1de8396d37564884a73",
+          "publishedAt": "2026-10-15T15:17:47Z",
+          "url": "https://github.com/get-bb/bb/releases/tag/desktop-v0.46.1"
+        },
+        {
+          "tag": "desktop-nightly",
+          "prerelease": true,
+          "sha": "9c3c56fa2b864b45104080a3a89ed39fb3196f0a",
+          "publishedAt": "2026-07-30T12:07:50Z",
+          "url": "https://github.com/get-bb/bb/releases/tag/desktop-nightly"
+        }
+      ],
+      "censusMethod": "Closed pulls ordered by updated time until all dates before cutoff; keep merged_at>=cutoff across all base branches"
+    },
+    {
+      "repo": "getpaseo/paseo",
+      "capturedAt": "2026-10-22T19:54:27.353367+00:00",
+      "defaultBranch": "main",
+      "headSha": "d972f67c3fea06fbc163608f5ddcc2c443de83ac",
+      "headDate": "2026-10-22T13:09:27Z",
+      "headChanged": true,
+      "mergedSince21Oct": 39,
+      "censusCompleteToCutoff": true,
+      "error": null,
+      "releasePins": [
+        {
+          "tag": "v0.12.0",
+          "prerelease": false,
+          "sha": "cafe4b01c8522ff39560241c5deb01427dc8dc5b",
+          "publishedAt": "2026-10-19T07:07:47Z",
+          "url": "https://github.com/getpaseo/paseo/releases/tag/v0.12.0"
+        },
+        {
+          "tag": "v0.13.0-beta.1",
+          "prerelease": true,
+          "sha": "3fa625701eae6b3a07ccae18299200b1a7cf2776",
+          "publishedAt": "2026-10-22T02:25:48Z",
+          "url": "https://github.com/getpaseo/paseo/releases/tag/v0.13.0-beta.1"
+        }
+      ],
+      "censusMethod": "Closed pulls ordered by updated time until all dates before cutoff; keep merged_at>=cutoff across all base branches"
+    },
+    {
+      "repo": "githubnext/chopin",
+      "capturedAt": "2026-10-22T19:54:45.196037+00:00",
+      "defaultBranch": "main",
+      "headSha": "2f180dfdecaf1a69e1279aa91a8b9d8b7ec2bdf9",
+      "headDate": "2026-10-21T22:44:51Z",
+      "headChanged": true,
+      "mergedSince21Oct": 16,
+      "censusCompleteToCutoff": true,
+      "error": null,
+      "releasePins": [
+        {
+          "tag": "cli-v0.0.20",
+          "prerelease": false,
+          "sha": "c36cf59db9d2d994ea6195ee373c85a3d77a2935",
+          "publishedAt": "2026-10-21T22:25:00Z",
+          "url": "https://github.com/githubnext/chopin/releases/tag/cli-v0.0.20"
+        }
+      ],
+      "censusMethod": "Closed pulls ordered by updated time until all dates before cutoff; keep merged_at>=cutoff across all base branches"
+    },
+    {
+      "repo": "goat-si/goat",
+      "capturedAt": "2026-10-22T19:54:32.520206+00:00",
+      "defaultBranch": "main",
+      "headSha": "587dd610db8761542f0af0f517c89296672f6ba8",
+      "headDate": "2026-10-22T05:06:55Z",
+      "headChanged": true,
+      "mergedSince21Oct": 109,
+      "censusCompleteToCutoff": true,
+      "error": null,
+      "releasePins": [],
+      "censusMethod": "Closed pulls ordered by updated time until all dates before cutoff; keep merged_at>=cutoff across all base branches"
+    },
+    {
+      "repo": "hardbeat920/monocode",
+      "capturedAt": "2026-10-22T19:54:26.901550+00:00",
+      "defaultBranch": "main",
+      "headSha": "74b8139c41e7235e7535bdc8ba60e63705351d3c",
+      "headDate": "2026-10-21T08:26:09Z",
+      "headChanged": false,
+      "mergedSince21Oct": 0,
+      "censusCompleteToCutoff": true,
+      "error": null,
+      "releasePins": [
+        {
+          "tag": "v0.16.0",
+          "prerelease": false,
+          "sha": "7508feaee84db638fb7a7c146d9f15de5d0f3689",
+          "publishedAt": "2026-10-19T13:08:45Z",
+          "url": "https://github.com/hardbeat920/monocode/releases/tag/v0.16.0"
+        }
+      ],
+      "censusMethod": "Closed pulls ordered by updated time until all dates before cutoff; keep merged_at>=cutoff across all base branches"
+    },
+    {
+      "repo": "lidge-jun/opencodex",
+      "capturedAt": "2026-10-22T19:54:27.913988+00:00",
+      "defaultBranch": "main",
+      "headSha": "83ec4f75a4cc97030c2fa7857e05e2ce222f376f",
+      "headDate": "2026-10-22T16:13:44Z",
+      "headChanged": true,
+      "mergedSince21Oct": 41,
+      "censusCompleteToCutoff": true,
+      "error": null,
+      "releasePins": [
+        {
+          "tag": "v2.91.0",
+          "prerelease": false,
+          "sha": "83ec4f75a4cc97030c2fa7857e05e2ce222f376f",
+          "publishedAt": "2026-10-22T17:34:36Z",
+          "url": "https://github.com/lidge-jun/opencodex/releases/tag/v2.91.0"
+        },
+        {
+          "tag": "v2.78.0-preview.20261005",
+          "prerelease": true,
+          "sha": "04e175f7e912b6073bce3997affc3867bde6a749",
+          "publishedAt": "2026-10-05T10:24:55Z",
+          "url": "https://github.com/lidge-jun/opencodex/releases/tag/v2.78.0-preview.20261005"
+        }
+      ],
+      "censusMethod": "Closed pulls ordered by updated time until all dates before cutoff; keep merged_at>=cutoff across all base branches"
+    },
+    {
+      "repo": "omnigent-ai/omnigent",
+      "capturedAt": "2026-10-22T19:54:29.041715+00:00",
+      "defaultBranch": "main",
+      "headSha": "777c4ae02d103fce5a1bc8e48c7390ff27414fe2",
+      "headDate": "2026-10-22T19:54:06Z",
+      "headChanged": true,
+      "mergedSince21Oct": 150,
+      "censusCompleteToCutoff": true,
+      "error": null,
+      "releasePins": [
+        {
+          "tag": "v0.19.1",
+          "prerelease": false,
+          "sha": "fbad2c7aaa990e2ff173383ca8dd42d983be7858",
+          "publishedAt": "2026-10-21T23:52:25Z",
+          "url": "https://github.com/omnigent-ai/omnigent/releases/tag/v0.19.1"
+        }
+      ],
+      "censusMethod": "Closed pulls ordered by updated time until all dates before cutoff; keep merged_at>=cutoff across all base branches"
+    },
+    {
+      "repo": "pingdotgg/t3code",
+      "capturedAt": "2026-10-22T19:56:53Z",
+      "headSha": "22840ab943b8418744b48223411e46ba4fdcef1a",
+      "nightly": {
+        "tag": "v0.1.2-nightly.20261022.3541",
+        "sha": "044f07257c9684ae4543bd1e1ebf9c394e9e3830",
+        "published_at": "2026-10-22T19:28:24Z"
+      },
+      "stable": {
+        "tag": "v0.1.1",
+        "sha": "fe27e8e3dc12dcbb108e9a28fd9b8cb65f34ae92",
+        "published_at": "2026-10-21T02:29:41Z"
+      },
+      "mergedSince21Oct": 255,
+      "censusCompleteToCutoff": true,
+      "censusMethod": "Three-page merged-only GitHub search; 20421Oct and5122Oct",
+      "details": "t3/manifest.json"
+    },
+    {
+      "repo": "proxysoul/Empryo",
+      "capturedAt": "2026-10-22T20:14:07.493469+00:00",
+      "defaultBranch": "main",
+      "headSha": "c27dac116d2ee1637abfc6634bebf08b5c379454",
+      "headDate": null,
+      "headChanged": null,
+      "mergedSince21Oct": 0,
+      "censusCompleteToCutoff": true,
+      "error": null,
+      "coverage": "Metadata only; initial endpoint failure retained in corrections"
+    },
+    {
+      "repo": "stablyai/orca",
+      "capturedAt": "2026-10-22T19:54:48.497908+00:00",
+      "defaultBranch": "main",
+      "headSha": "e710e8983218fede2f67a6aca2239c73c783849d",
+      "headDate": "2026-10-22T19:47:43Z",
+      "headChanged": true,
+      "mergedSince21Oct": 361,
+      "censusCompleteToCutoff": true,
+      "error": null,
+      "releasePins": [
+        {
+          "tag": "v1.4.237",
+          "prerelease": false,
+          "sha": "071747853f5995ee233b36751613f09a60007c2b",
+          "publishedAt": "2026-10-21T07:25:23Z",
+          "url": "https://github.com/stablyai/orca/releases/tag/v1.4.237"
+        },
+        {
+          "tag": "mobile-android-v0.0.58",
+          "prerelease": true,
+          "sha": "fb21729157270307bb49a14f1d1c7a7dd570bc71",
+          "publishedAt": "2026-10-20T20:05:17Z",
+          "url": "https://github.com/stablyai/orca/releases/tag/mobile-android-v0.0.58"
+        }
+      ],
+      "censusMethod": "Date-partitioned merged-only search replaces bounded closed-list attempt",
+      "searchDays": [
+        {
+          "day": "2026-10-21",
+          "totalCount": 210,
+          "captured": 210,
+          "incompleteResults": false
+        },
+        {
+          "day": "2026-10-22",
+          "totalCount": 151,
+          "captured": 151,
+          "incompleteResults": false
+        }
+      ]
+    },
+    {
+      "repo": "superset-sh/superset",
+      "capturedAt": "2026-10-22T19:54:41.760887+00:00",
+      "defaultBranch": "main",
+      "headSha": "bdf1e2e4fc7b960f79e8cefde87e0d7d62505f18",
+      "headDate": "2026-10-22T17:01:14Z",
+      "headChanged": true,
+      "mergedSince21Oct": 42,
+      "censusCompleteToCutoff": true,
+      "error": null,
+      "releasePins": [
+        {
+          "tag": "desktop-v1.39.0",
+          "prerelease": false,
+          "sha": "0fd0f9663122023b9fbdfec898224bde0efb772c",
+          "publishedAt": "2026-10-19T15:45:39Z",
+          "url": "https://github.com/superset-sh/superset/releases/tag/desktop-v1.39.0"
+        },
+        {
+          "tag": "desktop-canary",
+          "prerelease": true,
+          "sha": "bdf1e2e4fc7b960f79e8cefde87e0d7d62505f18",
+          "publishedAt": "2026-10-22T17:33:26Z",
+          "url": "https://github.com/superset-sh/superset/releases/tag/desktop-canary"
+        }
+      ],
+      "censusMethod": "Closed pulls ordered by updated time until all dates before cutoff; keep merged_at>=cutoff across all base branches"
+    },
+    {
+      "repo": "traycerai/traycer",
+      "capturedAt": "2026-10-22T19:54:43.605223+00:00",
+      "defaultBranch": "main",
+      "headSha": "0104d4a849a9db9f049e8fe3021829722fefa5f2",
+      "headDate": "2026-10-22T19:46:27Z",
+      "headChanged": true,
+      "mergedSince21Oct": 45,
+      "censusCompleteToCutoff": true,
+      "error": null,
+      "releasePins": [
+        {
+          "tag": "host-v1.5.1",
+          "prerelease": false,
+          "sha": "0aef435756106d260ca567ba99e0daeb3b7b3fbe",
+          "publishedAt": "2026-10-10T22:18:12Z",
+          "url": "https://github.com/traycerai/traycer/releases/tag/host-v1.5.1"
+        },
+        {
+          "tag": "host-v1.5.1-rc.1",
+          "prerelease": true,
+          "sha": "0aef435756106d260ca567ba99e0daeb3b7b3fbe",
+          "publishedAt": "2026-10-10T04:09:36Z",
+          "url": "https://github.com/traycerai/traycer/releases/tag/host-v1.5.1-rc.1"
+        }
+      ],
+      "censusMethod": "Closed pulls ordered by updated time until all dates before cutoff; keep merged_at>=cutoff across all base branches"
+    }
+  ],
+  "officialOnly": {
+    "method": "Web tool open of official changelog pages returned content; direct urllib HTML preservation hit403, so no raw-page archive claimed",
+    "sources": [
+      {
+        "product": "Conductor",
+        "url": "https://www.conductor.build/changelog",
+        "observedHeading": "0.91.0, 15October2026, plus pointrelease notes",
+        "selectedDocumentedFeatures": [
+          "contextual stop/send action",
+          "unread agent-directed messages remain faded",
+          "crash/reconnect fixes"
+        ],
+        "proof": "Official documentation, no code/runtime proof"
+      },
+      {
+        "product": "Maestri",
+        "url": "https://www.themaestri.app/en/changelog",
+        "observedHeading": "0.55.0, 21October2026; pointrelease0.55.2,22October2026",
+        "selectedDocumentedFeatures": [
+          "Bands collapsible terminal grouping",
+          "agents can notify when asked",
+          "remote terminal scroll is not working evidence"
+        ],
+        "proof": "Official documentation, no code/runtime proof"
+      }
+    ]
+  },
+  "corrections": [
+    {
+      "repo": "proxysoul/Empryo",
+      "initialError": "Initial helper failed with HTTP404 at an unisolated endpoint; do not attribute this to repository availability",
+      "recheck": "Authenticated metadata, commits, releases and merged-PR search succeeded; public repo, c27dac116d2ee1637abfc6634bebf08b5c379454, zero merged since21Oct. See empryo-recheck.json. No fresh semantic code audit."
+    },
+    {
+      "repo": "goat-si/goat",
+      "releaseRepository": "goat-si/goat-releases",
+      "nightly": "v0.1.2-nightly.20261022.236",
+      "packagedSource": "23901144ad840e8e19d074829983b3d065da2ccd",
+      "devPR789Included": false
+    }
+  ],
+  "additionalReference": {
+    "repo": "openai/symphony",
+    "headSha": "be10a1b79df723d6d7612b5651c8522704dafb2e",
+    "coverage": "Primary README and SPEC; bounded latest20 closed PR metadata, not full census; #83/#82/#81/#78 not merged. Specification is not implementation proof."
+  }
+}

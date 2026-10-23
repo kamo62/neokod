@@ -1,0 +1,2371 @@
+{
+  "note": "Actual tool calls across independent and consultation turns; includes failed/repeated requests, not unique reviewed claims. Auth-status shell queries excluded. No outputs or credentials.",
+  "queries": [
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/pingdotgg/t3code --jq '{default_branch, pushed_at, stargazers_count}'",
+        "description": "Fetch T3 Code repository metadata"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/commits/main\" --jq '{sha, date: .commit.committer.date, msg: (.commit.message|split(\"\\n\")[0])}'",
+        "description": "Get T3 Code main head commit"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/releases?per_page=8\" --jq '.[] | {tag: .tag_name, pre: .prerelease, pub: .published_at, target: .target_commitish, name}'",
+        "description": "List recent T3 Code releases"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:pingdotgg/t3code+is:pr+is:merged&sort=updated&order=desc&per_page=40\" --jq '.items[] | \"\\(.number) \\(.closed_at) \\(.title)\"'",
+        "description": "List recently merged T3 Code PRs"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/commits/main\" --jq '{sha, date: .commit.committer.date, msg: (.commit.message|split(\"\\n\")[0])}'",
+        "description": "Get T3 Code main head commit"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/releases?per_page=8\" --jq '.[] | {tag: .tag_name, pre: .prerelease, pub: .published_at, target: .target_commitish, name}'",
+        "description": "List recent T3 Code releases"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:pingdotgg/t3code+is:pr+is:merged&sort=updated&order=desc&per_page=40\" --jq '.items[] | \"\\(.number) \\(.closed_at) \\(.title)\"'",
+        "description": "List recently merged T3 Code PRs"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:pingdotgg/t3code+is:pr+is:merged+subagent&sort=updated&order=desc&per_page=30\" --jq '.items[] | \"\\(.number) \\(.closed_at) \\(.title)\"'",
+        "description": "Search merged T3 PRs mentioning subagent"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:pingdotgg/t3code+is:pr+is:merged+webhook&sort=updated&order=desc&per_page=30\" --jq '.items[] | \"\\(.number) \\(.closed_at) \\(.title)\"'",
+        "description": "Search merged T3 PRs mentioning webhook"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:pingdotgg/t3code+is:pr+is:merged+delegate&sort=updated&order=desc&per_page=30\" --jq '.items[] | \"\\(.number) \\(.closed_at) \\(.title)\"'",
+        "description": "Search merged T3 PRs mentioning delegate"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:pingdotgg/t3code+is:pr+is:merged+subagent&sort=updated&order=desc&per_page=30\" --jq '.items[] | \"\\(.number) \\(.closed_at) \\(.title)\"'",
+        "description": "Search merged T3 PRs mentioning subagent"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:pingdotgg/t3code+is:pr+is:merged+webhook&sort=updated&order=desc&per_page=30\" --jq '.items[] | \"\\(.number) \\(.closed_at) \\(.title)\"'",
+        "description": "Search merged T3 PRs mentioning webhook"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:pingdotgg/t3code+is:pr+is:merged+delegate&sort=updated&order=desc&per_page=30\" --jq '.items[] | \"\\(.number) \\(.closed_at) \\(.title)\"'",
+        "description": "Search merged T3 PRs mentioning delegate"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/pulls/22117\" --jq '{merge_commit_sha, merged_at, body: .body[0:2500]}'",
+        "description": "Read T3 PR 22117 subagent result delivery"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/pulls/22117/files?per_page=60\" --jq '.[] | \"\\(.status) +\\(.additions) -\\(.deletions) \\(.filename)\"'",
+        "description": "List files changed by T3 PR 22117"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/pulls/22709\" --jq '{merge_commit_sha, merged_at, body: .body[0:2000]}'",
+        "description": "Read T3 PR 22709 delegate settlement"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/pulls/22117\" --jq '{merge_commit_sha, merged_at, body: .body[0:2500]}'",
+        "description": "Read T3 PR 22117 subagent result delivery"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/pulls/22117/files?per_page=60\" --jq '.[] | \"\\(.status) +\\(.additions) -\\(.deletions) \\(.filename)\"'",
+        "description": "List files changed by T3 PR 22117"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/pulls/22709\" --jq '{merge_commit_sha, merged_at, body: .body[0:2000]}'",
+        "description": "Read T3 PR 22709 delegate settlement"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/contents/apps/server/src/orchestration-v2?ref=22840ab943b8418744b48223411e46ba4fdcef1a\" --jq '.[] | \"\\(.type) \\(.size) \\(.name)\"'",
+        "description": "List T3 orchestration-v2 directory at head"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/code?q=repo:pingdotgg/t3code+OrchestratorMcpToolkit+in:path\" --jq '.items[] | .path'",
+        "description": "Locate T3 OrchestratorMcpToolkit files"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/contents/apps/server/src/orchestration-v2/DelegatedTaskQuestionReactor.ts?ref=22840ab943b8418744b48223411e46ba4fdcef1a\" --jq '.content' --method GET -H \"Accept: application/vnd.github+json\"",
+        "description": "Fetch T3 delegated question reactor source (base64)"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/code?q=repo:pingdotgg/t3code+OrchestratorMcpToolkit+in:path\" --jq '.items[] | .path'",
+        "description": "Locate T3 OrchestratorMcpToolkit files"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/contents/apps/server/src/orchestration-v2/DelegatedTaskQuestionReactor.ts?ref=22840ab943b8418744b48223411e46ba4fdcef1a\" --jq '.content' --method GET -H \"Accept: application/vnd.github+json\"",
+        "description": "Fetch T3 delegated question reactor source (base64)"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/contents/apps/server/src/mcp?ref=22840ab943b8418744b48223411e46ba4fdcef1a\" --jq '.[] | \"\\(.type) \\(.size) \\(.name)\"'",
+        "description": "List T3 MCP server directory at head"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/contents/apps/server/src/mcp/toolkits?ref=22840ab943b8418744b48223411e46ba4fdcef1a\" --jq '.[] | \"\\(.type) \\(.size) \\(.name)\"'",
+        "description": "List T3 MCP toolkits directory"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/contents/apps/server/src/mcp/McpToolAccess.ts?ref=22840ab943b8418744b48223411e46ba4fdcef1a\" -H \"Accept: application/vnd.github.raw\"",
+        "description": "Read T3 MCP tool access policy source"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/contents/apps/server/src/mcp/toolkits?ref=22840ab943b8418744b48223411e46ba4fdcef1a\" --jq '.[] | \"\\(.type) \\(.size) \\(.name)\"'",
+        "description": "List T3 MCP toolkits directory"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/contents/apps/server/src/mcp/McpToolAccess.ts?ref=22840ab943b8418744b48223411e46ba4fdcef1a\" -H \"Accept: application/vnd.github.raw\"",
+        "description": "Read T3 MCP tool access policy source"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/contents/apps/server/src/mcp/toolkits/orchestrator?ref=22840ab943b8418744b48223411e46ba4fdcef1a\" --jq '.[] | \"\\(.size) \\(.name)\"'",
+        "description": "List T3 orchestrator toolkit files"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/contents/apps/server/src/mcp/threadAccess.ts?ref=22840ab943b8418744b48223411e46ba4fdcef1a\" -H \"Accept: application/vnd.github.raw\"",
+        "description": "Read T3 MCP thread access checks"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/contents/apps/server/src/mcp/toolkits/orchestrator?ref=22840ab943b8418744b48223411e46ba4fdcef1a\" --jq '.[] | \"\\(.size) \\(.name)\"'",
+        "description": "List T3 orchestrator toolkit files"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/contents/apps/server/src/mcp/threadAccess.ts?ref=22840ab943b8418744b48223411e46ba4fdcef1a\" -H \"Accept: application/vnd.github.raw\"",
+        "description": "Read T3 MCP thread access checks"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/contents/apps/server/src/mcp/toolkits/orchestrator/tools.ts?ref=22840ab943b8418744b48223411e46ba4fdcef1a\" -H \"Accept: application/vnd.github.raw\"",
+        "description": "Read T3 orchestrator MCP tool definitions"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/compare/163bdeaa119f32bf92f25d2841048b808df542a5...044f07257c9684ae4543bd1e1ebf9c394e9e3830\" --jq '{status, ahead_by, behind_by}'",
+        "description": "Check PR 22709 merge is in newest T3 nightly"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/git/ref/tags/v0.1.2-nightly.20261022.3541\" --jq '.object'",
+        "description": "Resolve newest T3 nightly tag object"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:pingdotgg/t3code+is:pr+is:merged+linear+OR+tracker+OR+issue+automation&sort=updated&order=desc&per_page=20\" --jq '.items[] | \"\\(.number) \\(.closed_at) \\(.title)\"'",
+        "description": "Search T3 PRs for tracker or issue automation"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/code?q=repo:pingdotgg/t3code+OrchestratorMcpDelegateTaskInput+path:packages/contracts\" --jq '.items[] | .path'",
+        "description": "Locate T3 delegate task contract file"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/pulls/23135\" --jq '{merge_commit_sha, body: .body[0:1500]}'",
+        "description": "Read T3 PR 23135 agent message folding"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/contents/packages/contracts/src/orchestratorMcp.ts?ref=22840ab943b8418744b48223411e46ba4fdcef1a\" --jq '.size'",
+        "description": "Check size of T3 orchestrator MCP contract"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/contents/packages/contracts/src/orchestratorMcp.ts?ref=22840ab943b8418744b48223411e46ba4fdcef1a\" --jq '.content | @base64d | split(\"\\n\") | to_entries | map(select(.value | test(\"DelegateTask|isolation|environmentId|machine|workState|completionWake|clientRequestId|mode:|hasPending|pendingApproval|maxDepth|depth|concurren\"; \"i\"))) | .[] | \"\\(.key+1): \\(.value)\"'",
+        "description": "Extract delegate contract fields from T3 schema"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/contents/packages/contracts/src/orchestratorMcp.ts?ref=22840ab943b8418744b48223411e46ba4fdcef1a\" --jq '.content | @base64d | split(\"\\n\") | .[95:232] | join(\"\\n\")'",
+        "description": "Read T3 delegate task input and result schemas"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/contents/apps/server/src/mcp/OrchestratorMcpService.ts?ref=22840ab943b8418744b48223411e46ba4fdcef1a\" --jq '.content | @base64d | split(\"\\n\") | to_entries | map(select(.value | test(\"depth|Depth|MAX_|maxChild|fanOut|limit\\\\b|tooMany|too many|nested\"; \"\"))) | .[] | \"\\(.key+1): \\(.value)\"'",
+        "description": "Search T3 MCP service for fan-out or depth limits"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/Emanuele-web04/synara --jq '{default_branch, pushed_at, stargazers_count, description, fork, parent: .parent.full_name}'",
+        "description": "Fetch Synara repository metadata"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/Emanuele-web04/synara/releases?per_page=6\" --jq '.[] | {tag: .tag_name, pre: .prerelease, pub: .published_at, target: .target_commitish}'",
+        "description": "List recent Synara releases"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:Emanuele-web04/synara+is:pr+is:merged&sort=updated&order=desc&per_page=40\" --jq '.items[] | \"\\(.number) \\(.closed_at) \\(.title)\"'",
+        "description": "List recently merged Synara PRs"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/Emanuele-web04/synara --jq '{default_branch, pushed_at, stargazers_count, description, fork, parent: .parent.full_name}'",
+        "description": "Fetch Synara repository metadata"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/Emanuele-web04/synara/releases?per_page=6\" --jq '.[] | {tag: .tag_name, pre: .prerelease, pub: .published_at, target: .target_commitish}'",
+        "description": "List recent Synara releases"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:Emanuele-web04/synara+is:pr+is:merged&sort=updated&order=desc&per_page=40\" --jq '.items[] | \"\\(.number) \\(.closed_at) \\(.title)\"'",
+        "description": "List recently merged Synara PRs"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/Emanuele-web04/synara/commits/main\" --jq '{sha, date: .commit.committer.date, msg: (.commit.message|split(\"\\n\")[0])}'",
+        "description": "Get Synara main head commit"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:Emanuele-web04/synara+is:pr+is:merged+hub+OR+worker+OR+subagent+OR+delegate+OR+orchestrat&sort=updated&order=desc&per_page=30\" --jq '.items[] | \"\\(.number) \\(.closed_at) \\(.title)\"'",
+        "description": "Search Synara PRs for hubs, workers and delegation"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/Emanuele-web04/synara/git/ref/tags/v1.0.6-remote.26\" --jq '.object'",
+        "description": "Resolve Synara newest remote prerelease tag"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/Emanuele-web04/synara/commits/main\" --jq '{sha, date: .commit.committer.date, msg: (.commit.message|split(\"\\n\")[0])}'",
+        "description": "Get Synara main head commit"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:Emanuele-web04/synara+is:pr+is:merged+hub+OR+worker+OR+subagent+OR+delegate+OR+orchestrat&sort=updated&order=desc&per_page=30\" --jq '.items[] | \"\\(.number) \\(.closed_at) \\(.title)\"'",
+        "description": "Search Synara PRs for hubs, workers and delegation"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/Emanuele-web04/synara/git/ref/tags/v1.0.6-remote.26\" --jq '.object'",
+        "description": "Resolve Synara newest remote prerelease tag"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/Emanuele-web04/synara/git/tags/4a3fe4d338640d76678874f8b381a3266edec97a\" --jq '{object: .object.sha, tagger_date: .tagger.date}'",
+        "description": "Dereference Synara annotated tag to commit"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/Emanuele-web04/synara/pulls/1704\" --jq '{merge_commit_sha, body: .body[0:2500]}'",
+        "description": "Read Synara PR 1704 worker approvals"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/Emanuele-web04/synara/pulls/1861\" --jq '{merge_commit_sha, body: .body[0:2500]}'",
+        "description": "Read Synara PR 1861 hub approval modes"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/Emanuele-web04/synara/git/tags/4a3fe4d338640d76678874f8b381a3266edec97a\" --jq '{object: .object.sha, tagger_date: .tagger.date}'",
+        "description": "Dereference Synara annotated tag to commit"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/Emanuele-web04/synara/pulls/1704\" --jq '{merge_commit_sha, body: .body[0:2500]}'",
+        "description": "Read Synara PR 1704 worker approvals"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/Emanuele-web04/synara/pulls/1861\" --jq '{merge_commit_sha, body: .body[0:2500]}'",
+        "description": "Read Synara PR 1861 hub approval modes"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/code?q=repo:Emanuele-web04/synara+hubs+in:path\" --jq '.items[] | .path'",
+        "description": "Locate Synara Hubs source and docs files"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/Emanuele-web04/synara/contents/docs/hubs.md?ref=299fd573b1d6520c323a87c78d30be74e87e53e1\" -H \"Accept: application/vnd.github.raw\"",
+        "description": "Read Synara Hubs documentation at head"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/code?q=repo:Emanuele-web04/synara+%22lost+its+session%22\" --jq '.items[] | .path'",
+        "description": "Find Synara source for lost-session detection"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/Emanuele-web04/synara/contents/apps/server/src/projectAgent/workerHealth.ts?ref=299fd573b1d6520c323a87c78d30be74e87e53e1\" -H \"Accept: application/vnd.github.raw\"",
+        "description": "Read Synara worker health rules at head"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/Emanuele-web04/synara/releases/tags/v1.0.6-remote.26\" --jq '{name, body: .body[0:2500]}'",
+        "description": "Read Synara remote prerelease notes"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/Emanuele-web04/synara/compare/39a745feaccf942f43aae154373fe375a20a0e4d...299fd573b1d6520c323a87c78d30be74e87e53e1\" --jq '{status, ahead_by, behind_by}'",
+        "description": "Compare Synara remote prerelease with main head"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/Emanuele-web04/synara/releases/tags/v1.0.6-remote.26\" --jq '{name, body: .body[0:2500]}'",
+        "description": "Read Synara remote prerelease notes"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/Emanuele-web04/synara/compare/39a745feaccf942f43aae154373fe375a20a0e4d...299fd573b1d6520c323a87c78d30be74e87e53e1\" --jq '{status, ahead_by, behind_by}'",
+        "description": "Compare Synara remote prerelease with main head"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/Emanuele-web04/synara/branches?per_page=30\" --jq '.[] | \"\\(.name) \\(.commit.sha)\"'",
+        "description": "List Synara branches with head SHAs"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:Emanuele-web04/synara+is:pr+remote+in:title&sort=updated&order=desc&per_page=15\" --jq '.items[] | \"\\(.number) \\(.state) \\(.closed_at) \\(.title)\"'",
+        "description": "Search Synara PRs about remote"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/Emanuele-web04/synara/branches?per_page=30\" --jq '.[] | \"\\(.name) \\(.commit.sha)\"'",
+        "description": "List Synara branches with head SHAs"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:Emanuele-web04/synara+is:pr+remote+in:title&sort=updated&order=desc&per_page=15\" --jq '.items[] | \"\\(.number) \\(.state) \\(.closed_at) \\(.title)\"'",
+        "description": "Search Synara PRs about remote"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/Emanuele-web04/synara/pulls/1065\" --jq '{head: .head.ref, head_sha: .head.sha, body: .body[0:2200]}'",
+        "description": "Read Synara accounts and remote hosts PR"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:Emanuele-web04/synara+is:pr+is:merged+linear+OR+issues+OR+automation&sort=updated&order=desc&per_page=15\" --jq '.items[] | \"\\(.number) \\(.closed_at) \\(.title)\"'",
+        "description": "Search Synara PRs for issue-tracker automation"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/code?q=repo:Emanuele-web04/synara+synara_project_report_result\" --jq '.items[] | .path'",
+        "description": "Find Synara structured worker result tool"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/Emanuele-web04/synara/contents/apps/server/src/agentGateway/projectAgentTools.ts?ref=299fd573b1d6520c323a87c78d30be74e87e53e1\" --jq '.content | @base64d | split(\"\\n\") | to_entries | map(select(.value | test(\"name: \\\"synara_|description:|MAX_|worker.*cannot|coordinator only|role\"; \"\"))) | .[0:60] | .[] | \"\\(.key+1): \\(.value[0:260])\"'",
+        "description": "Extract Synara project agent tool names and rules"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/Emanuele-web04/synara/contents/apps/server/src/agentGateway/projectAgentTools.ts?ref=299fd573b1d6520c323a87c78d30be74e87e53e1\" --jq '.content | @base64d | split(\"\\n\") | .[160:200] | join(\"\\n\")'",
+        "description": "Read Synara report_result tool definition"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/getpaseo/paseo --jq '{n: .full_name, b: .default_branch, p: .pushed_at, a: .archived, s: .stargazers_count, d: .description}'",
+        "description": "Fetch Paseo repository metadata"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/hardbeat920/monocode --jq '{n: .full_name, b: .default_branch, p: .pushed_at, a: .archived, s: .stargazers_count, d: .description}'",
+        "description": "Fetch Monocode repository metadata"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/lidge-jun/opencodex --jq '{n: .full_name, b: .default_branch, p: .pushed_at, a: .archived, s: .stargazers_count, d: .description}'",
+        "description": "Fetch OpenCodex repository metadata"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/omnigent-ai/omnigent --jq '{n: .full_name, b: .default_branch, p: .pushed_at, a: .archived, s: .stargazers_count, d: .description}'",
+        "description": "Fetch Omnigent repository metadata"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/proxysoul/Empryo --jq '{n: .full_name, b: .default_branch, p: .pushed_at, a: .archived, s: .stargazers_count, d: .description}'",
+        "description": "Fetch Empryo repository metadata"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/aicodeking/pandacode --jq '{n: .full_name, b: .default_branch, p: .pushed_at, a: .archived, s: .stargazers_count, d: .description}'",
+        "description": "Fetch Pandacode repository metadata"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/goat-si/goat --jq '{n: .full_name, b: .default_branch, p: .pushed_at, a: .archived, s: .stargazers_count, d: .description}'",
+        "description": "Fetch Goat repository metadata"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/getpaseo/paseo --jq '{n: .full_name, b: .default_branch, p: .pushed_at, a: .archived, s: .stargazers_count, d: .description}'",
+        "description": "Fetch Paseo repository metadata"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/hardbeat920/monocode --jq '{n: .full_name, b: .default_branch, p: .pushed_at, a: .archived, s: .stargazers_count, d: .description}'",
+        "description": "Fetch Monocode repository metadata"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/lidge-jun/opencodex --jq '{n: .full_name, b: .default_branch, p: .pushed_at, a: .archived, s: .stargazers_count, d: .description}'",
+        "description": "Fetch OpenCodex repository metadata"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/omnigent-ai/omnigent --jq '{n: .full_name, b: .default_branch, p: .pushed_at, a: .archived, s: .stargazers_count, d: .description}'",
+        "description": "Fetch Omnigent repository metadata"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/proxysoul/Empryo --jq '{n: .full_name, b: .default_branch, p: .pushed_at, a: .archived, s: .stargazers_count, d: .description}'",
+        "description": "Fetch Empryo repository metadata"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/aicodeking/pandacode --jq '{n: .full_name, b: .default_branch, p: .pushed_at, a: .archived, s: .stargazers_count, d: .description}'",
+        "description": "Fetch Pandacode repository metadata"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/goat-si/goat --jq '{n: .full_name, b: .default_branch, p: .pushed_at, a: .archived, s: .stargazers_count, d: .description}'",
+        "description": "Fetch Goat repository metadata"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/BytePioneer-AI/codex-host --jq '{n: .full_name, b: .default_branch, p: .pushed_at, a: .archived, s: .stargazers_count, d: .description}'",
+        "description": "Fetch codex-host repository metadata"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/Dimillian/CodexMonitor --jq '{n: .full_name, b: .default_branch, p: .pushed_at, a: .archived, s: .stargazers_count, d: .description}'",
+        "description": "Fetch CodexMonitor repository metadata"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/HarnessRouter/harnessrouter --jq '{n: .full_name, b: .default_branch, p: .pushed_at, a: .archived, s: .stargazers_count, d: .description}'",
+        "description": "Fetch HarnessRouter repository metadata"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/NousResearch/hermes-agent --jq '{n: .full_name, b: .default_branch, p: .pushed_at, a: .archived, s: .stargazers_count, d: .description}'",
+        "description": "Fetch Hermes Agent repository metadata"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/OrchestratorInc/agent-orchestrator --jq '{n: .full_name, b: .default_branch, p: .pushed_at, a: .archived, s: .stargazers_count, d: .description}'",
+        "description": "Fetch Agent Orchestrator repository metadata"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/can1357/oh-my-pi --jq '{n: .full_name, b: .default_branch, p: .pushed_at, a: .archived, s: .stargazers_count, d: .description}'",
+        "description": "Fetch oh-my-pi repository metadata"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/earendil-works/pi --jq '{n: .full_name, b: .default_branch, p: .pushed_at, a: .archived, s: .stargazers_count, d: .description}'",
+        "description": "Fetch Pi repository metadata"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/get-bb/bb --jq '{n: .full_name, b: .default_branch, p: .pushed_at, a: .archived, s: .stargazers_count, d: .description}'",
+        "description": "Fetch bb repository metadata"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/BytePioneer-AI/codex-host --jq '{n: .full_name, b: .default_branch, p: .pushed_at, a: .archived, s: .stargazers_count, d: .description}'",
+        "description": "Fetch codex-host repository metadata"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/Dimillian/CodexMonitor --jq '{n: .full_name, b: .default_branch, p: .pushed_at, a: .archived, s: .stargazers_count, d: .description}'",
+        "description": "Fetch CodexMonitor repository metadata"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/HarnessRouter/harnessrouter --jq '{n: .full_name, b: .default_branch, p: .pushed_at, a: .archived, s: .stargazers_count, d: .description}'",
+        "description": "Fetch HarnessRouter repository metadata"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/NousResearch/hermes-agent --jq '{n: .full_name, b: .default_branch, p: .pushed_at, a: .archived, s: .stargazers_count, d: .description}'",
+        "description": "Fetch Hermes Agent repository metadata"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/OrchestratorInc/agent-orchestrator --jq '{n: .full_name, b: .default_branch, p: .pushed_at, a: .archived, s: .stargazers_count, d: .description}'",
+        "description": "Fetch Agent Orchestrator repository metadata"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/can1357/oh-my-pi --jq '{n: .full_name, b: .default_branch, p: .pushed_at, a: .archived, s: .stargazers_count, d: .description}'",
+        "description": "Fetch oh-my-pi repository metadata"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/earendil-works/pi --jq '{n: .full_name, b: .default_branch, p: .pushed_at, a: .archived, s: .stargazers_count, d: .description}'",
+        "description": "Fetch Pi repository metadata"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/get-bb/bb --jq '{n: .full_name, b: .default_branch, p: .pushed_at, a: .archived, s: .stargazers_count, d: .description}'",
+        "description": "Fetch bb repository metadata"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/stablyai/orca --jq '{n: .full_name, b: .default_branch, p: .pushed_at, a: .archived, s: .stargazers_count, d: .description}'",
+        "description": "Fetch Orca repository metadata"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/superset-sh/superset --jq '{n: .full_name, b: .default_branch, p: .pushed_at, a: .archived, s: .stargazers_count, d: .description}'",
+        "description": "Fetch Superset repository metadata"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/traycerai/traycer --jq '{n: .full_name, b: .default_branch, p: .pushed_at, a: .archived, s: .stargazers_count, d: .description}'",
+        "description": "Fetch Traycer repository metadata"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/dominikmartn/harp --jq '{n: .full_name, b: .default_branch, p: .pushed_at, a: .archived, s: .stargazers_count, d: .description}'",
+        "description": "Fetch Harp repository metadata"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/githubnext/chopin --jq '{n: .full_name, b: .default_branch, p: .pushed_at, a: .archived, s: .stargazers_count, d: .description}'",
+        "description": "Fetch Chopin repository metadata"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/stablyai/orca --jq '{n: .full_name, b: .default_branch, p: .pushed_at, a: .archived, s: .stargazers_count, d: .description}'",
+        "description": "Fetch Orca repository metadata"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/superset-sh/superset --jq '{n: .full_name, b: .default_branch, p: .pushed_at, a: .archived, s: .stargazers_count, d: .description}'",
+        "description": "Fetch Superset repository metadata"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/traycerai/traycer --jq '{n: .full_name, b: .default_branch, p: .pushed_at, a: .archived, s: .stargazers_count, d: .description}'",
+        "description": "Fetch Traycer repository metadata"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/dominikmartn/harp --jq '{n: .full_name, b: .default_branch, p: .pushed_at, a: .archived, s: .stargazers_count, d: .description}'",
+        "description": "Fetch Harp repository metadata"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/githubnext/chopin --jq '{n: .full_name, b: .default_branch, p: .pushed_at, a: .archived, s: .stargazers_count, d: .description}'",
+        "description": "Fetch Chopin repository metadata"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/getpaseo/paseo/commits/main --jq '\"\\(.sha) \\(.commit.committer.date) \\(.commit.message|split(\"\\n\")[0])\"'",
+        "description": "Pin Paseo main head"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/hardbeat920/monocode/commits/main --jq '\"\\(.sha) \\(.commit.committer.date) \\(.commit.message|split(\"\\n\")[0])\"'",
+        "description": "Pin Monocode main head"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/lidge-jun/opencodex/commits/main --jq '\"\\(.sha) \\(.commit.committer.date) \\(.commit.message|split(\"\\n\")[0])\"'",
+        "description": "Pin OpenCodex main head"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/omnigent-ai/omnigent/commits/main --jq '\"\\(.sha) \\(.commit.committer.date) \\(.commit.message|split(\"\\n\")[0])\"'",
+        "description": "Pin Omnigent main head"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/proxysoul/Empryo/commits/main --jq '\"\\(.sha) \\(.commit.committer.date) \\(.commit.message|split(\"\\n\")[0])\"'",
+        "description": "Pin Empryo main head"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/aicodeking/pandacode/commits/main --jq '\"\\(.sha) \\(.commit.committer.date) \\(.commit.message|split(\"\\n\")[0])\"'",
+        "description": "Pin Pandacode main head"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/goat-si/goat/commits/main --jq '\"\\(.sha) \\(.commit.committer.date) \\(.commit.message|split(\"\\n\")[0])\"'",
+        "description": "Pin Goat main head"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/BytePioneer-AI/codex-host/commits/main --jq '\"\\(.sha) \\(.commit.committer.date) \\(.commit.message|split(\"\\n\")[0])\"'",
+        "description": "Pin codex-host main head"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/Dimillian/CodexMonitor/commits/main --jq '\"\\(.sha) \\(.commit.committer.date) \\(.commit.message|split(\"\\n\")[0])\"'",
+        "description": "Pin CodexMonitor main head"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/HarnessRouter/harnessrouter/commits/main --jq '\"\\(.sha) \\(.commit.committer.date) \\(.commit.message|split(\"\\n\")[0])\"'",
+        "description": "Pin HarnessRouter main head"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/NousResearch/hermes-agent/commits/main --jq '\"\\(.sha) \\(.commit.committer.date) \\(.commit.message|split(\"\\n\")[0])\"'",
+        "description": "Pin Hermes Agent main head"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/getpaseo/paseo/commits/main --jq '\"\\(.sha) \\(.commit.committer.date) \\(.commit.message|split(\"\\n\")[0])\"'",
+        "description": "Pin Paseo main head"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/hardbeat920/monocode/commits/main --jq '\"\\(.sha) \\(.commit.committer.date) \\(.commit.message|split(\"\\n\")[0])\"'",
+        "description": "Pin Monocode main head"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/lidge-jun/opencodex/commits/main --jq '\"\\(.sha) \\(.commit.committer.date) \\(.commit.message|split(\"\\n\")[0])\"'",
+        "description": "Pin OpenCodex main head"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/omnigent-ai/omnigent/commits/main --jq '\"\\(.sha) \\(.commit.committer.date) \\(.commit.message|split(\"\\n\")[0])\"'",
+        "description": "Pin Omnigent main head"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/proxysoul/Empryo/commits/main --jq '\"\\(.sha) \\(.commit.committer.date) \\(.commit.message|split(\"\\n\")[0])\"'",
+        "description": "Pin Empryo main head"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/aicodeking/pandacode/commits/main --jq '\"\\(.sha) \\(.commit.committer.date) \\(.commit.message|split(\"\\n\")[0])\"'",
+        "description": "Pin Pandacode main head"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/goat-si/goat/commits/main --jq '\"\\(.sha) \\(.commit.committer.date) \\(.commit.message|split(\"\\n\")[0])\"'",
+        "description": "Pin Goat main head"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/BytePioneer-AI/codex-host/commits/main --jq '\"\\(.sha) \\(.commit.committer.date) \\(.commit.message|split(\"\\n\")[0])\"'",
+        "description": "Pin codex-host main head"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/Dimillian/CodexMonitor/commits/main --jq '\"\\(.sha) \\(.commit.committer.date) \\(.commit.message|split(\"\\n\")[0])\"'",
+        "description": "Pin CodexMonitor main head"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/HarnessRouter/harnessrouter/commits/main --jq '\"\\(.sha) \\(.commit.committer.date) \\(.commit.message|split(\"\\n\")[0])\"'",
+        "description": "Pin HarnessRouter main head"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/NousResearch/hermes-agent/commits/main --jq '\"\\(.sha) \\(.commit.committer.date) \\(.commit.message|split(\"\\n\")[0])\"'",
+        "description": "Pin Hermes Agent main head"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/OrchestratorInc/agent-orchestrator/commits/main --jq '\"\\(.sha) \\(.commit.committer.date) \\(.commit.message|split(\"\\n\")[0])\"'",
+        "description": "Pin Agent Orchestrator main head"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/can1357/oh-my-pi/commits/main --jq '\"\\(.sha) \\(.commit.committer.date) \\(.commit.message|split(\"\\n\")[0])\"'",
+        "description": "Pin oh-my-pi main head"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/earendil-works/pi/commits/main --jq '\"\\(.sha) \\(.commit.committer.date) \\(.commit.message|split(\"\\n\")[0])\"'",
+        "description": "Pin Pi main head"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/get-bb/bb/commits/main --jq '\"\\(.sha) \\(.commit.committer.date) \\(.commit.message|split(\"\\n\")[0])\"'",
+        "description": "Pin bb main head"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/stablyai/orca/commits/main --jq '\"\\(.sha) \\(.commit.committer.date) \\(.commit.message|split(\"\\n\")[0])\"'",
+        "description": "Pin Orca main head"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/superset-sh/superset/commits/main --jq '\"\\(.sha) \\(.commit.committer.date) \\(.commit.message|split(\"\\n\")[0])\"'",
+        "description": "Pin Superset main head"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/traycerai/traycer/commits/main --jq '\"\\(.sha) \\(.commit.committer.date) \\(.commit.message|split(\"\\n\")[0])\"'",
+        "description": "Pin Traycer main head"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/dominikmartn/harp/commits/main --jq '\"\\(.sha) \\(.commit.committer.date) \\(.commit.message|split(\"\\n\")[0])\"'",
+        "description": "Pin Harp main head"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/githubnext/chopin/commits/main --jq '\"\\(.sha) \\(.commit.committer.date) \\(.commit.message|split(\"\\n\")[0])\"'",
+        "description": "Pin Chopin main head"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/OrchestratorInc/agent-orchestrator/commits/main --jq '\"\\(.sha) \\(.commit.committer.date) \\(.commit.message|split(\"\\n\")[0])\"'",
+        "description": "Pin Agent Orchestrator main head"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/can1357/oh-my-pi/commits/main --jq '\"\\(.sha) \\(.commit.committer.date) \\(.commit.message|split(\"\\n\")[0])\"'",
+        "description": "Pin oh-my-pi main head"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/earendil-works/pi/commits/main --jq '\"\\(.sha) \\(.commit.committer.date) \\(.commit.message|split(\"\\n\")[0])\"'",
+        "description": "Pin Pi main head"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/get-bb/bb/commits/main --jq '\"\\(.sha) \\(.commit.committer.date) \\(.commit.message|split(\"\\n\")[0])\"'",
+        "description": "Pin bb main head"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/stablyai/orca/commits/main --jq '\"\\(.sha) \\(.commit.committer.date) \\(.commit.message|split(\"\\n\")[0])\"'",
+        "description": "Pin Orca main head"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/superset-sh/superset/commits/main --jq '\"\\(.sha) \\(.commit.committer.date) \\(.commit.message|split(\"\\n\")[0])\"'",
+        "description": "Pin Superset main head"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/traycerai/traycer/commits/main --jq '\"\\(.sha) \\(.commit.committer.date) \\(.commit.message|split(\"\\n\")[0])\"'",
+        "description": "Pin Traycer main head"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/dominikmartn/harp/commits/main --jq '\"\\(.sha) \\(.commit.committer.date) \\(.commit.message|split(\"\\n\")[0])\"'",
+        "description": "Pin Harp main head"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/githubnext/chopin/commits/main --jq '\"\\(.sha) \\(.commit.committer.date) \\(.commit.message|split(\"\\n\")[0])\"'",
+        "description": "Pin Chopin main head"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/getpaseo/paseo/releases?per_page=3\" --jq '.[] | \"\\(.tag_name) pre=\\(.prerelease) \\(.published_at) \\(.target_commitish)\"'",
+        "description": "List Paseo recent releases"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/hardbeat920/monocode/releases?per_page=3\" --jq '.[] | \"\\(.tag_name) pre=\\(.prerelease) \\(.published_at) \\(.target_commitish)\"'",
+        "description": "List Monocode recent releases"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/lidge-jun/opencodex/releases?per_page=3\" --jq '.[] | \"\\(.tag_name) pre=\\(.prerelease) \\(.published_at) \\(.target_commitish)\"'",
+        "description": "List OpenCodex recent releases"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/omnigent-ai/omnigent/releases?per_page=3\" --jq '.[] | \"\\(.tag_name) pre=\\(.prerelease) \\(.published_at) \\(.target_commitish)\"'",
+        "description": "List Omnigent recent releases"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/proxysoul/Empryo/releases?per_page=3\" --jq '.[] | \"\\(.tag_name) pre=\\(.prerelease) \\(.published_at) \\(.target_commitish)\"'",
+        "description": "List Empryo recent releases"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/aicodeking/pandacode/releases?per_page=3\" --jq '.[] | \"\\(.tag_name) pre=\\(.prerelease) \\(.published_at) \\(.target_commitish)\"'",
+        "description": "List Pandacode recent releases"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/goat-si/goat/releases?per_page=3\" --jq '.[] | \"\\(.tag_name) pre=\\(.prerelease) \\(.published_at) \\(.target_commitish)\"'",
+        "description": "List Goat recent releases"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/BytePioneer-AI/codex-host/releases?per_page=3\" --jq '.[] | \"\\(.tag_name) pre=\\(.prerelease) \\(.published_at) \\(.target_commitish)\"'",
+        "description": "List codex-host recent releases"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/Dimillian/CodexMonitor/releases?per_page=2\" --jq '.[] | \"\\(.tag_name) pre=\\(.prerelease) \\(.published_at) \\(.target_commitish)\"'",
+        "description": "List CodexMonitor recent releases"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/HarnessRouter/harnessrouter/releases?per_page=3\" --jq '.[] | \"\\(.tag_name) pre=\\(.prerelease) \\(.published_at) \\(.target_commitish)\"'",
+        "description": "List HarnessRouter recent releases"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/NousResearch/hermes-agent/releases?per_page=3\" --jq '.[] | \"\\(.tag_name) pre=\\(.prerelease) \\(.published_at) \\(.target_commitish)\"'",
+        "description": "List Hermes Agent recent releases"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/getpaseo/paseo/releases?per_page=3\" --jq '.[] | \"\\(.tag_name) pre=\\(.prerelease) \\(.published_at) \\(.target_commitish)\"'",
+        "description": "List Paseo recent releases"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/hardbeat920/monocode/releases?per_page=3\" --jq '.[] | \"\\(.tag_name) pre=\\(.prerelease) \\(.published_at) \\(.target_commitish)\"'",
+        "description": "List Monocode recent releases"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/lidge-jun/opencodex/releases?per_page=3\" --jq '.[] | \"\\(.tag_name) pre=\\(.prerelease) \\(.published_at) \\(.target_commitish)\"'",
+        "description": "List OpenCodex recent releases"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/omnigent-ai/omnigent/releases?per_page=3\" --jq '.[] | \"\\(.tag_name) pre=\\(.prerelease) \\(.published_at) \\(.target_commitish)\"'",
+        "description": "List Omnigent recent releases"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/proxysoul/Empryo/releases?per_page=3\" --jq '.[] | \"\\(.tag_name) pre=\\(.prerelease) \\(.published_at) \\(.target_commitish)\"'",
+        "description": "List Empryo recent releases"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/aicodeking/pandacode/releases?per_page=3\" --jq '.[] | \"\\(.tag_name) pre=\\(.prerelease) \\(.published_at) \\(.target_commitish)\"'",
+        "description": "List Pandacode recent releases"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/goat-si/goat/releases?per_page=3\" --jq '.[] | \"\\(.tag_name) pre=\\(.prerelease) \\(.published_at) \\(.target_commitish)\"'",
+        "description": "List Goat recent releases"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/BytePioneer-AI/codex-host/releases?per_page=3\" --jq '.[] | \"\\(.tag_name) pre=\\(.prerelease) \\(.published_at) \\(.target_commitish)\"'",
+        "description": "List codex-host recent releases"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/Dimillian/CodexMonitor/releases?per_page=2\" --jq '.[] | \"\\(.tag_name) pre=\\(.prerelease) \\(.published_at) \\(.target_commitish)\"'",
+        "description": "List CodexMonitor recent releases"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/HarnessRouter/harnessrouter/releases?per_page=3\" --jq '.[] | \"\\(.tag_name) pre=\\(.prerelease) \\(.published_at) \\(.target_commitish)\"'",
+        "description": "List HarnessRouter recent releases"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/NousResearch/hermes-agent/releases?per_page=3\" --jq '.[] | \"\\(.tag_name) pre=\\(.prerelease) \\(.published_at) \\(.target_commitish)\"'",
+        "description": "List Hermes Agent recent releases"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/OrchestratorInc/agent-orchestrator/releases?per_page=3\" --jq '.[] | \"\\(.tag_name) pre=\\(.prerelease) \\(.published_at) \\(.target_commitish)\"'",
+        "description": "List Agent Orchestrator recent releases"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/can1357/oh-my-pi/releases?per_page=2\" --jq '.[] | \"\\(.tag_name) pre=\\(.prerelease) \\(.published_at) \\(.target_commitish)\"'",
+        "description": "List oh-my-pi recent releases"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/earendil-works/pi/releases?per_page=2\" --jq '.[] | \"\\(.tag_name) pre=\\(.prerelease) \\(.published_at) \\(.target_commitish)\"'",
+        "description": "List Pi recent releases"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/get-bb/bb/releases?per_page=3\" --jq '.[] | \"\\(.tag_name) pre=\\(.prerelease) \\(.published_at) \\(.target_commitish)\"'",
+        "description": "List bb recent releases"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/stablyai/orca/releases?per_page=3\" --jq '.[] | \"\\(.tag_name) pre=\\(.prerelease) \\(.published_at) \\(.target_commitish)\"'",
+        "description": "List Orca recent releases"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/superset-sh/superset/releases?per_page=3\" --jq '.[] | \"\\(.tag_name) pre=\\(.prerelease) \\(.published_at) \\(.target_commitish)\"'",
+        "description": "List Superset recent releases"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/traycerai/traycer/releases?per_page=3\" --jq '.[] | \"\\(.tag_name) pre=\\(.prerelease) \\(.published_at) \\(.target_commitish)\"'",
+        "description": "List Traycer recent releases"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/dominikmartn/harp/releases?per_page=2\" --jq '.[] | \"\\(.tag_name) pre=\\(.prerelease) \\(.published_at) \\(.target_commitish)\"'",
+        "description": "List Harp recent releases"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/githubnext/chopin/releases?per_page=2\" --jq '.[] | \"\\(.tag_name) pre=\\(.prerelease) \\(.published_at) \\(.target_commitish)\"'",
+        "description": "List Chopin recent releases"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/OrchestratorInc/agent-orchestrator/releases?per_page=3\" --jq '.[] | \"\\(.tag_name) pre=\\(.prerelease) \\(.published_at) \\(.target_commitish)\"'",
+        "description": "List Agent Orchestrator recent releases"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/can1357/oh-my-pi/releases?per_page=2\" --jq '.[] | \"\\(.tag_name) pre=\\(.prerelease) \\(.published_at) \\(.target_commitish)\"'",
+        "description": "List oh-my-pi recent releases"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/earendil-works/pi/releases?per_page=2\" --jq '.[] | \"\\(.tag_name) pre=\\(.prerelease) \\(.published_at) \\(.target_commitish)\"'",
+        "description": "List Pi recent releases"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/get-bb/bb/releases?per_page=3\" --jq '.[] | \"\\(.tag_name) pre=\\(.prerelease) \\(.published_at) \\(.target_commitish)\"'",
+        "description": "List bb recent releases"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/stablyai/orca/releases?per_page=3\" --jq '.[] | \"\\(.tag_name) pre=\\(.prerelease) \\(.published_at) \\(.target_commitish)\"'",
+        "description": "List Orca recent releases"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/superset-sh/superset/releases?per_page=3\" --jq '.[] | \"\\(.tag_name) pre=\\(.prerelease) \\(.published_at) \\(.target_commitish)\"'",
+        "description": "List Superset recent releases"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/traycerai/traycer/releases?per_page=3\" --jq '.[] | \"\\(.tag_name) pre=\\(.prerelease) \\(.published_at) \\(.target_commitish)\"'",
+        "description": "List Traycer recent releases"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/dominikmartn/harp/releases?per_page=2\" --jq '.[] | \"\\(.tag_name) pre=\\(.prerelease) \\(.published_at) \\(.target_commitish)\"'",
+        "description": "List Harp recent releases"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/githubnext/chopin/releases?per_page=2\" --jq '.[] | \"\\(.tag_name) pre=\\(.prerelease) \\(.published_at) \\(.target_commitish)\"'",
+        "description": "List Chopin recent releases"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/get-bb/bb/git/ref/tags/desktop-nightly\" --jq '.object'",
+        "description": "Resolve bb desktop-nightly tag SHA"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/superset-sh/superset/git/ref/tags/desktop-canary\" --jq '.object'",
+        "description": "Resolve Superset desktop-canary tag SHA"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/getpaseo/paseo/git/ref/tags/v0.13.0-beta.1\" --jq '.object'",
+        "description": "Resolve Paseo beta tag SHA"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/get-bb/bb/git/ref/tags/desktop-nightly\" --jq '.object'",
+        "description": "Resolve bb desktop-nightly tag SHA"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/superset-sh/superset/git/ref/tags/desktop-canary\" --jq '.object'",
+        "description": "Resolve Superset desktop-canary tag SHA"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/getpaseo/paseo/git/ref/tags/v0.13.0-beta.1\" --jq '.object'",
+        "description": "Resolve Paseo beta tag SHA"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/get-bb/bb/commits/9c3c56fa2b864b45104080a3a89ed39fb3196f0a\" --jq '\"\\(.commit.committer.date) \\(.commit.message|split(\"\\n\")[0])\"'",
+        "description": "Get date of bb nightly tag commit"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/getpaseo/paseo/git/tags/6f0509f50e97c6b4bbed7c3bb9e65c6ad0871204\" --jq '{c: .object.sha, d: .tagger.date}'",
+        "description": "Dereference Paseo beta annotated tag"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/get-bb/bb/commits/9c3c56fa2b864b45104080a3a89ed39fb3196f0a\" --jq '\"\\(.commit.committer.date) \\(.commit.message|split(\"\\n\")[0])\"'",
+        "description": "Get date of bb nightly tag commit"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/getpaseo/paseo/git/tags/6f0509f50e97c6b4bbed7c3bb9e65c6ad0871204\" --jq '{c: .object.sha, d: .tagger.date}'",
+        "description": "Dereference Paseo beta annotated tag"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:getpaseo/paseo+is:pr+is:merged&sort=updated&order=desc&per_page=12\" --jq '.items[] | \"\\(.number) \\(.closed_at[0:10]) \\(.title)\"'",
+        "description": "List Paseo recent merged PRs"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:OrchestratorInc/agent-orchestrator+is:pr+is:merged&sort=updated&order=desc&per_page=12\" --jq '.items[] | \"\\(.number) \\(.closed_at[0:10]) \\(.title)\"'",
+        "description": "List Agent Orchestrator recent merged PRs"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:get-bb/bb+is:pr+is:merged&sort=updated&order=desc&per_page=12\" --jq '.items[] | \"\\(.number) \\(.closed_at[0:10]) \\(.title)\"'",
+        "description": "List bb recent merged PRs"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:omnigent-ai/omnigent+is:pr+is:merged&sort=updated&order=desc&per_page=12\" --jq '.items[] | \"\\(.number) \\(.closed_at[0:10]) \\(.title)\"'",
+        "description": "List Omnigent recent merged PRs"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:stablyai/orca+is:pr+is:merged&sort=updated&order=desc&per_page=12\" --jq '.items[] | \"\\(.number) \\(.closed_at[0:10]) \\(.title)\"'",
+        "description": "List Orca recent merged PRs"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:superset-sh/superset+is:pr+is:merged&sort=updated&order=desc&per_page=12\" --jq '.items[] | \"\\(.number) \\(.closed_at[0:10]) \\(.title)\"'",
+        "description": "List Superset recent merged PRs"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:traycerai/traycer+is:pr+is:merged&sort=updated&order=desc&per_page=12\" --jq '.items[] | \"\\(.number) \\(.closed_at[0:10]) \\(.title)\"'",
+        "description": "List Traycer recent merged PRs"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:getpaseo/paseo+is:pr+is:merged&sort=updated&order=desc&per_page=12\" --jq '.items[] | \"\\(.number) \\(.closed_at[0:10]) \\(.title)\"'",
+        "description": "List Paseo recent merged PRs"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:OrchestratorInc/agent-orchestrator+is:pr+is:merged&sort=updated&order=desc&per_page=12\" --jq '.items[] | \"\\(.number) \\(.closed_at[0:10]) \\(.title)\"'",
+        "description": "List Agent Orchestrator recent merged PRs"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:get-bb/bb+is:pr+is:merged&sort=updated&order=desc&per_page=12\" --jq '.items[] | \"\\(.number) \\(.closed_at[0:10]) \\(.title)\"'",
+        "description": "List bb recent merged PRs"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:omnigent-ai/omnigent+is:pr+is:merged&sort=updated&order=desc&per_page=12\" --jq '.items[] | \"\\(.number) \\(.closed_at[0:10]) \\(.title)\"'",
+        "description": "List Omnigent recent merged PRs"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:stablyai/orca+is:pr+is:merged&sort=updated&order=desc&per_page=12\" --jq '.items[] | \"\\(.number) \\(.closed_at[0:10]) \\(.title)\"'",
+        "description": "List Orca recent merged PRs"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:superset-sh/superset+is:pr+is:merged&sort=updated&order=desc&per_page=12\" --jq '.items[] | \"\\(.number) \\(.closed_at[0:10]) \\(.title)\"'",
+        "description": "List Superset recent merged PRs"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:traycerai/traycer+is:pr+is:merged&sort=updated&order=desc&per_page=12\" --jq '.items[] | \"\\(.number) \\(.closed_at[0:10]) \\(.title)\"'",
+        "description": "List Traycer recent merged PRs"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:dominikmartn/harp+is:pr+is:merged&sort=updated&order=desc&per_page=8\" --jq '.items[] | \"\\(.number) \\(.closed_at[0:10]) \\(.title)\"'",
+        "description": "List Harp recent merged PRs"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:githubnext/chopin+is:pr+is:merged&sort=updated&order=desc&per_page=10\" --jq '.items[] | \"\\(.number) \\(.closed_at[0:10]) \\(.title)\"'",
+        "description": "List Chopin recent merged PRs"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:goat-si/goat+is:pr+is:merged&sort=updated&order=desc&per_page=10\" --jq '.items[] | \"\\(.number) \\(.closed_at[0:10]) \\(.title)\"'",
+        "description": "List Goat recent merged PRs"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:NousResearch/hermes-agent+is:pr+is:merged+delegate+OR+subagent&sort=updated&order=desc&per_page=10\" --jq '.items[] | \"\\(.number) \\(.closed_at[0:10]) \\(.title)\"'",
+        "description": "Search Hermes PRs on delegation and subagents"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:can1357/oh-my-pi+is:pr+is:merged&sort=updated&order=desc&per_page=8\" --jq '.items[] | \"\\(.number) \\(.closed_at[0:10]) \\(.title)\"'",
+        "description": "List oh-my-pi recent merged PRs"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:earendil-works/pi+is:pr+is:merged&sort=updated&order=desc&per_page=8\" --jq '.items[] | \"\\(.number) \\(.closed_at[0:10]) \\(.title)\"'",
+        "description": "List Pi recent merged PRs"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:HarnessRouter/harnessrouter+is:pr+is:merged&sort=updated&order=desc&per_page=8\" --jq '.items[] | \"\\(.number) \\(.closed_at[0:10]) \\(.title)\"'",
+        "description": "List HarnessRouter recent merged PRs"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:dominikmartn/harp+is:pr+is:merged&sort=updated&order=desc&per_page=8\" --jq '.items[] | \"\\(.number) \\(.closed_at[0:10]) \\(.title)\"'",
+        "description": "List Harp recent merged PRs"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:githubnext/chopin+is:pr+is:merged&sort=updated&order=desc&per_page=10\" --jq '.items[] | \"\\(.number) \\(.closed_at[0:10]) \\(.title)\"'",
+        "description": "List Chopin recent merged PRs"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:goat-si/goat+is:pr+is:merged&sort=updated&order=desc&per_page=10\" --jq '.items[] | \"\\(.number) \\(.closed_at[0:10]) \\(.title)\"'",
+        "description": "List Goat recent merged PRs"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:NousResearch/hermes-agent+is:pr+is:merged+delegate+OR+subagent&sort=updated&order=desc&per_page=10\" --jq '.items[] | \"\\(.number) \\(.closed_at[0:10]) \\(.title)\"'",
+        "description": "Search Hermes PRs on delegation and subagents"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:can1357/oh-my-pi+is:pr+is:merged&sort=updated&order=desc&per_page=8\" --jq '.items[] | \"\\(.number) \\(.closed_at[0:10]) \\(.title)\"'",
+        "description": "List oh-my-pi recent merged PRs"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:earendil-works/pi+is:pr+is:merged&sort=updated&order=desc&per_page=8\" --jq '.items[] | \"\\(.number) \\(.closed_at[0:10]) \\(.title)\"'",
+        "description": "List Pi recent merged PRs"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:HarnessRouter/harnessrouter+is:pr+is:merged&sort=updated&order=desc&per_page=8\" --jq '.items[] | \"\\(.number) \\(.closed_at[0:10]) \\(.title)\"'",
+        "description": "List HarnessRouter recent merged PRs"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:hardbeat920/monocode+is:pr+is:merged&sort=updated&order=desc&per_page=6\" --jq '.items[] | \"\\(.number) \\(.closed_at[0:10]) \\(.title)\"'",
+        "description": "List Monocode recent merged PRs"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:lidge-jun/opencodex+is:pr+is:merged&sort=updated&order=desc&per_page=6\" --jq '.items[] | \"\\(.number) \\(.closed_at[0:10]) \\(.title)\"'",
+        "description": "List OpenCodex recent merged PRs"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:proxysoul/Empryo+is:pr+is:merged&sort=updated&order=desc&per_page=6\" --jq '.items[] | \"\\(.number) \\(.closed_at[0:10]) \\(.title)\"'",
+        "description": "List Empryo recent merged PRs"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:aicodeking/pandacode+is:pr+is:merged&sort=updated&order=desc&per_page=6\" --jq '.items[] | \"\\(.number) \\(.closed_at[0:10]) \\(.title)\"'",
+        "description": "List Pandacode recent merged PRs"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:BytePioneer-AI/codex-host+is:pr+is:merged&sort=updated&order=desc&per_page=6\" --jq '.items[] | \"\\(.number) \\(.closed_at[0:10]) \\(.title)\"'",
+        "description": "List codex-host recent merged PRs"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:Dimillian/CodexMonitor+is:pr+is:merged&sort=updated&order=desc&per_page=4\" --jq '.items[] | \"\\(.number) \\(.closed_at[0:10]) \\(.title)\"'",
+        "description": "List CodexMonitor recent merged PRs"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:hardbeat920/monocode+is:pr+is:merged&sort=updated&order=desc&per_page=6\" --jq '.items[] | \"\\(.number) \\(.closed_at[0:10]) \\(.title)\"'",
+        "description": "List Monocode recent merged PRs"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:lidge-jun/opencodex+is:pr+is:merged&sort=updated&order=desc&per_page=6\" --jq '.items[] | \"\\(.number) \\(.closed_at[0:10]) \\(.title)\"'",
+        "description": "List OpenCodex recent merged PRs"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:proxysoul/Empryo+is:pr+is:merged&sort=updated&order=desc&per_page=6\" --jq '.items[] | \"\\(.number) \\(.closed_at[0:10]) \\(.title)\"'",
+        "description": "List Empryo recent merged PRs"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:aicodeking/pandacode+is:pr+is:merged&sort=updated&order=desc&per_page=6\" --jq '.items[] | \"\\(.number) \\(.closed_at[0:10]) \\(.title)\"'",
+        "description": "List Pandacode recent merged PRs"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:BytePioneer-AI/codex-host+is:pr+is:merged&sort=updated&order=desc&per_page=6\" --jq '.items[] | \"\\(.number) \\(.closed_at[0:10]) \\(.title)\"'",
+        "description": "List codex-host recent merged PRs"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:Dimillian/CodexMonitor+is:pr+is:merged&sort=updated&order=desc&per_page=4\" --jq '.items[] | \"\\(.number) \\(.closed_at[0:10]) \\(.title)\"'",
+        "description": "List CodexMonitor recent merged PRs"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/get-bb/bb/pulls/6120\" --jq '{m: .merge_commit_sha, body: .body[0:1800]}'",
+        "description": "Read bb PR 6120 child execution defaults"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/get-bb/bb/pulls/6054\" --jq '{m: .merge_commit_sha, body: .body[0:1500]}'",
+        "description": "Read bb PR 6054 project machine routing"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/traycerai/traycer/pulls/2713\" --jq '{m: .merge_commit_sha, body: .body[0:1800]}'",
+        "description": "Read Traycer PR 2713 idle evidence"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/NousResearch/hermes-agent/pulls/141944\" --jq '{m: .merge_commit_sha, body: .body[0:1800]}'",
+        "description": "Read Hermes PR 141944 kanban delegate"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/OrchestratorInc/agent-orchestrator/pulls/5603\" --jq '{m: .merge_commit_sha, body: .body[0:1500]}'",
+        "description": "Read Agent Orchestrator PR 5603 liveness"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/OrchestratorInc/agent-orchestrator/pulls/6801\" --jq '{m: .merge_commit_sha, body: .body[0:1500]}'",
+        "description": "Read Agent Orchestrator PR 6801 orphan identity"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/get-bb/bb/pulls/6120\" --jq '{m: .merge_commit_sha, body: .body[0:1800]}'",
+        "description": "Read bb PR 6120 child execution defaults"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/get-bb/bb/pulls/6054\" --jq '{m: .merge_commit_sha, body: .body[0:1500]}'",
+        "description": "Read bb PR 6054 project machine routing"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/traycerai/traycer/pulls/2713\" --jq '{m: .merge_commit_sha, body: .body[0:1800]}'",
+        "description": "Read Traycer PR 2713 idle evidence"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/NousResearch/hermes-agent/pulls/141944\" --jq '{m: .merge_commit_sha, body: .body[0:1800]}'",
+        "description": "Read Hermes PR 141944 kanban delegate"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/OrchestratorInc/agent-orchestrator/pulls/5603\" --jq '{m: .merge_commit_sha, body: .body[0:1500]}'",
+        "description": "Read Agent Orchestrator PR 5603 liveness"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/OrchestratorInc/agent-orchestrator/pulls/6801\" --jq '{m: .merge_commit_sha, body: .body[0:1500]}'",
+        "description": "Read Agent Orchestrator PR 6801 orphan identity"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:OrchestratorInc/agent-orchestrator+is:pr+is:merged+linear+OR+jira+OR+github+issue+OR+tracker&sort=updated&order=desc&per_page=15\" --jq '.items[] | \"\\(.number) \\(.closed_at[0:10]) \\(.title)\"'",
+        "description": "Search Agent Orchestrator PRs on tracker intake"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:NousResearch/hermes-agent+is:pr+is:merged+kanban&sort=updated&order=desc&per_page=10\" --jq '.items[] | \"\\(.number) \\(.closed_at[0:10]) \\(.title)\"'",
+        "description": "Search Hermes PRs on Kanban workers"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:stablyai/orca+is:pr+is:merged+jira+OR+linear&sort=updated&order=desc&per_page=10\" --jq '.items[] | \"\\(.number) \\(.closed_at[0:10]) \\(.title)\"'",
+        "description": "Search Orca PRs on Jira and Linear"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:getpaseo/paseo+is:pr+is:merged+direct+connection+OR+daemon+OR+pairing&sort=updated&order=desc&per_page=10\" --jq '.items[] | \"\\(.number) \\(.closed_at[0:10]) \\(.title)\"'",
+        "description": "Search Paseo PRs on direct connections"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:OrchestratorInc/agent-orchestrator+is:pr+is:merged+linear+OR+jira+OR+github+issue+OR+tracker&sort=updated&order=desc&per_page=15\" --jq '.items[] | \"\\(.number) \\(.closed_at[0:10]) \\(.title)\"'",
+        "description": "Search Agent Orchestrator PRs on tracker intake"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:NousResearch/hermes-agent+is:pr+is:merged+kanban&sort=updated&order=desc&per_page=10\" --jq '.items[] | \"\\(.number) \\(.closed_at[0:10]) \\(.title)\"'",
+        "description": "Search Hermes PRs on Kanban workers"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:stablyai/orca+is:pr+is:merged+jira+OR+linear&sort=updated&order=desc&per_page=10\" --jq '.items[] | \"\\(.number) \\(.closed_at[0:10]) \\(.title)\"'",
+        "description": "Search Orca PRs on Jira and Linear"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/issues?q=repo:getpaseo/paseo+is:pr+is:merged+direct+connection+OR+daemon+OR+pairing&sort=updated&order=desc&per_page=10\" --jq '.items[] | \"\\(.number) \\(.closed_at[0:10]) \\(.title)\"'",
+        "description": "Search Paseo PRs on direct connections"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/getpaseo/paseo/pulls/7370\" --jq '{m: .merge_commit_sha, merged_at, body: .body[0:3000]}'",
+        "description": "Read Paseo PR 7370 cross-daemon delegation"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/getpaseo/paseo/pulls/7507\" --jq '{m: .merge_commit_sha, merged_at, body: .body[0:2500]}'",
+        "description": "Read Paseo PR 7507 cross-host agents"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/getpaseo/paseo/compare/91dca5702b10e9320ca5b71f22f3026bfaacae99...3fa625701eae6b3a07ccae18299200b1a7cf2776\" --jq '{status, ahead_by, behind_by}'",
+        "description": "Check Paseo cross-host merge in v0.13.0-beta.1"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/OrchestratorInc/agent-orchestrator/contents?ref=35b406f150c97e9779222c961bd8eb14af634a58\" --jq '.[] | \"\\(.type) \\(.name)\"'",
+        "description": "List Agent Orchestrator repository root"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/OrchestratorInc/agent-orchestrator/contents/README.md?ref=35b406f150c97e9779222c961bd8eb14af634a58\" --jq '.content | @base64d | split(\"\\n\") | map(select(test(\"task|review|merge|supervis|board|issue|plan|approv|autonom|team\"; \"i\"))) | .[0:45] | join(\"\\n\")'",
+        "description": "Extract Agent Orchestrator README workflow lines"
+      }
+    },
+    {
+      "tool": "WebFetch",
+      "query": {
+        "url": "https://www.conductor.build/changelog",
+        "prompt": "List the 8 most recent changelog entries with their dates/versions. For each, quote any items about: parallel agents/workspaces, delegation or subagents, automation from issues (Linear/GitHub), review/feedback loops, remote machines or SSH, notifications/needs-attention, worktrees, and checkpoints. State the newest date shown."
+      }
+    },
+    {
+      "tool": "WebFetch",
+      "query": {
+        "url": "https://www.themaestri.app/en/changelog",
+        "prompt": "List the 8 most recent changelog entries with dates/versions. For each, quote items about: multiple agents, delegation, canvas/graph views, automation, issue trackers, review loops, remote machines, notifications or attention, and UI layout. State the newest date shown."
+      }
+    },
+    {
+      "tool": "WebFetch",
+      "query": {
+        "url": "https://githubnext.com/projects/chopin/",
+        "prompt": "Summarise Chopin's concept: what it does, how planning, decisions, human questions, task execution and machines work, and its stated status (research prototype, availability). Quote key sentences."
+      }
+    },
+    {
+      "tool": "WebSearch",
+      "query": {
+        "query": "openai symphony orchestration Linear issues Codex agents WORKFLOW.md",
+        "mode": "standard"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/openai/symphony/commits/main --jq '\"\\(.sha) \\(.commit.committer.date) \\(.commit.message|split(\"\\n\")[0])\"'",
+        "description": "Pin openai/symphony main head"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/openai/symphony/commits/main --jq '\"\\(.sha) \\(.commit.committer.date) \\(.commit.message|split(\"\\n\")[0])\"'",
+        "description": "Pin openai/symphony main head"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/githubnext/chopin/pulls/719\" --jq '{m: .merge_commit_sha, body: .body[0:1500]}'",
+        "description": "Read Chopin PR 719 batched decision answers"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/dominikmartn/harp/commits/bad92b3fee6224941c9de92eaa3968a53e61ae6b\" --jq '.commit.message[0:1800]'",
+        "description": "Read Harp 0.1.3 commit message"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/aicodeking/pandacode/pulls/79\" --jq '{m: .merge_commit_sha, body: .body[0:1200]}'",
+        "description": "Read Pandacode PR 79 lead guidance"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/githubnext/chopin/pulls/719\" --jq '{m: .merge_commit_sha, body: .body[0:1500]}'",
+        "description": "Read Chopin PR 719 batched decision answers"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/dominikmartn/harp/commits/bad92b3fee6224941c9de92eaa3968a53e61ae6b\" --jq '.commit.message[0:1800]'",
+        "description": "Read Harp 0.1.3 commit message"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/aicodeking/pandacode/pulls/79\" --jq '{m: .merge_commit_sha, body: .body[0:1200]}'",
+        "description": "Read Pandacode PR 79 lead guidance"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/compare/4f5ff17172c5f2bde61a09aafb23011ae4d38538...044f07257c9684ae4543bd1e1ebf9c394e9e3830\" --jq '{status, ahead_by, behind_by}'",
+        "description": "Check T3 PR 22117 is in newest nightly"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/contents/apps/server/src/orchestration-v2/DelegatedTaskQuestionReactor.ts?ref=044f07257c9684ae4543bd1e1ebf9c394e9e3830\" --jq '.sha'",
+        "description": "Confirm question reactor exists at T3 nightly"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/contents/apps/server/src/orchestration-v2/DelegatedTaskQuestionReactor.ts?ref=22840ab943b8418744b48223411e46ba4fdcef1a\" --jq '.sha'",
+        "description": "Get question reactor blob SHA at T3 head"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/compare/4f5ff17172c5f2bde61a09aafb23011ae4d38538...044f07257c9684ae4543bd1e1ebf9c394e9e3830\" --jq '{status, ahead_by, behind_by}'",
+        "description": "Check T3 PR 22117 is in newest nightly"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/contents/apps/server/src/orchestration-v2/DelegatedTaskQuestionReactor.ts?ref=044f07257c9684ae4543bd1e1ebf9c394e9e3830\" --jq '.sha'",
+        "description": "Confirm question reactor exists at T3 nightly"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/contents/apps/server/src/orchestration-v2/DelegatedTaskQuestionReactor.ts?ref=22840ab943b8418744b48223411e46ba4fdcef1a\" --jq '.sha'",
+        "description": "Get question reactor blob SHA at T3 head"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/contents/apps/server/src/mcp/toolkits/orchestrator/tools.ts?ref=044f07257c9684ae4543bd1e1ebf9c394e9e3830\" --jq '.sha'",
+        "description": "Get T3 orchestrator tools blob at nightly"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/contents/apps/server/src/mcp/toolkits/orchestrator/tools.ts?ref=22840ab943b8418744b48223411e46ba4fdcef1a\" --jq '.sha'",
+        "description": "Get T3 orchestrator tools blob at head"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/contents/apps/server/src/mcp/threadAccess.ts?ref=044f07257c9684ae4543bd1e1ebf9c394e9e3830\" --jq '.sha'",
+        "description": "Get T3 thread access blob at nightly"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/contents/apps/server/src/mcp/threadAccess.ts?ref=22840ab943b8418744b48223411e46ba4fdcef1a\" --jq '.sha'",
+        "description": "Get T3 thread access blob at head"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/contents/apps/server/src/mcp/toolkits/orchestrator/tools.ts?ref=044f07257c9684ae4543bd1e1ebf9c394e9e3830\" --jq '.sha'",
+        "description": "Get T3 orchestrator tools blob at nightly"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/contents/apps/server/src/mcp/toolkits/orchestrator/tools.ts?ref=22840ab943b8418744b48223411e46ba4fdcef1a\" --jq '.sha'",
+        "description": "Get T3 orchestrator tools blob at head"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/contents/apps/server/src/mcp/threadAccess.ts?ref=044f07257c9684ae4543bd1e1ebf9c394e9e3830\" --jq '.sha'",
+        "description": "Get T3 thread access blob at nightly"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/contents/apps/server/src/mcp/threadAccess.ts?ref=22840ab943b8418744b48223411e46ba4fdcef1a\" --jq '.sha'",
+        "description": "Get T3 thread access blob at head"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/contents/apps/server/src/orchestration-v2/Orchestrator.ts?ref=044f07257c9684ae4543bd1e1ebf9c394e9e3830\" --jq '.content | @base64d | split(\"\\n\") | to_entries | map(select(.value | test(\"finalizeAppOwnedSubagent|waiting_for_children|backgroundRoster|hasLiveBackground|liveNestedWork|backgroundTasks|roster\"; \"\"))) | .[0:40] | .[] | \"\\(.key+1): \\(.value[0:200])\"'",
+        "description": "Locate T3 delegate closure logic at nightly"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/githubnext/chopin/contents/apps/server/src/questions/answer-turns.ts?ref=2f180dfdecaf1a69e1279aa91a8b9d8b7ec2bdf9\" --jq '.content | @base64d | split(\"\\n\") | to_entries | map(select(.value | test(\"waiter|QUIET|MAX|5_000|30_000|immediate|live|generation\"; \"i\"))) | .[0:40] | .[] | \"\\(.key+1): \\(.value[0:200])\"'",
+        "description": "Check Chopin answer-turns live versus batched paths"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "date -u +%Y-%m-%dT%H:%M:%SZ; gh api -i repos/proxysoul/Empryo --jq '{full_name, private, visibility, default_branch, pushed_at}' 2>&1",
+        "description": "Fetch Empryo metadata with timestamp and status"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/contents/apps/server/src/orchestration-v2/Orchestrator.ts?ref=044f07257c9684ae4543bd1e1ebf9c394e9e3830\" --jq '.content | @base64d | split(\"\\n\") | to_entries | map(select(.value | test(\"finalizeAppOwnedSubagent|waiting_for_children|backgroundRoster|hasLiveBackground|liveNestedWork|backgroundTasks|roster\"; \"\"))) | .[0:40] | .[] | \"\\(.key+1): \\(.value[0:200])\"'",
+        "description": "Locate T3 delegate closure logic at nightly"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/githubnext/chopin/contents/apps/server/src/questions/answer-turns.ts?ref=2f180dfdecaf1a69e1279aa91a8b9d8b7ec2bdf9\" --jq '.content | @base64d | split(\"\\n\") | to_entries | map(select(.value | test(\"waiter|QUIET|MAX|5_000|30_000|immediate|live|generation\"; \"i\"))) | .[0:40] | .[] | \"\\(.key+1): \\(.value[0:200])\"'",
+        "description": "Check Chopin answer-turns live versus batched paths"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "date -u +%Y-%m-%dT%H:%M:%SZ; gh api -i repos/proxysoul/Empryo --jq '{full_name, private, visibility, default_branch, pushed_at}' 2>&1",
+        "description": "Fetch Empryo metadata with timestamp and status"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/contents/apps/server/src/orchestration-v2/Orchestrator.ts?ref=044f07257c9684ae4543bd1e1ebf9c394e9e3830\" --jq '.content | @base64d | split(\"\\n\") | .[10586:10700] | join(\"\\n\")'",
+        "description": "Read T3 finalizeAppOwnedSubagentTask at nightly"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/contents/apps/server/src/orchestration-v2/Orchestrator.ts?ref=044f07257c9684ae4543bd1e1ebf9c394e9e3830\" --jq '.content | @base64d | split(\"\\n\") | .[11874:11945] | join(\"\\n\")'",
+        "description": "Read T3 leftover-work settle listener at nightly"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/contents/apps/server/src/orchestration-v2/Orchestrator.ts?ref=044f07257c9684ae4543bd1e1ebf9c394e9e3830\" --jq '.content | @base64d | split(\"\\n\") | .[10586:10700] | join(\"\\n\")'",
+        "description": "Read T3 finalizeAppOwnedSubagentTask at nightly"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/contents/apps/server/src/orchestration-v2/Orchestrator.ts?ref=044f07257c9684ae4543bd1e1ebf9c394e9e3830\" --jq '.content | @base64d | split(\"\\n\") | .[11874:11945] | join(\"\\n\")'",
+        "description": "Read T3 leftover-work settle listener at nightly"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/contents/apps/server/src/orchestration-v2/Orchestrator.ts?ref=044f07257c9684ae4543bd1e1ebf9c394e9e3830\" --jq '.content | @base64d | split(\"\\n\") | to_entries | .[10700:10890] | map(select(.value | test(\"pendingBackgroundTasks|isOrchestrationV2WorkActive|liveWork|hasLive|waiting_for|childWork|nested|background\"; \"i\"))) | .[] | \"\\(.key+1): \\(.value[0:220])\"'",
+        "description": "Find T3 live-work checks inside the finaliser"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/contents/apps/server/src/orchestration-v2/Orchestrator.ts?ref=044f07257c9684ae4543bd1e1ebf9c394e9e3830\" --jq '.content | @base64d | split(\"\\n\") | to_entries | map(select(.value | test(\"const (childHasLiveWork|hasActiveChildWork|childWorkActive|delegatedWorkState|liveChildWork)|function (childHasLiveWork|hasActiveChildWork)|workState:\"; \"\"))) | .[] | \"\\(.key+1): \\(.value[0:220])\"'",
+        "description": "Find T3 workState derivation definitions"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/contents/apps/server/src/orchestration-v2/Orchestrator.ts?ref=044f07257c9684ae4543bd1e1ebf9c394e9e3830\" --jq '.content | @base64d | split(\"\\n\") | to_entries | .[10700:10890] | map(select(.value | test(\"pendingBackgroundTasks|isOrchestrationV2WorkActive|liveWork|hasLive|waiting_for|childWork|nested|background\"; \"i\"))) | .[] | \"\\(.key+1): \\(.value[0:220])\"'",
+        "description": "Find T3 live-work checks inside the finaliser"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/contents/apps/server/src/orchestration-v2/Orchestrator.ts?ref=044f07257c9684ae4543bd1e1ebf9c394e9e3830\" --jq '.content | @base64d | split(\"\\n\") | to_entries | map(select(.value | test(\"const (childHasLiveWork|hasActiveChildWork|childWorkActive|delegatedWorkState|liveChildWork)|function (childHasLiveWork|hasActiveChildWork)|workState:\"; \"\"))) | .[] | \"\\(.key+1): \\(.value[0:220])\"'",
+        "description": "Find T3 workState derivation definitions"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/contents/apps/server/src/orchestration-v2/Orchestrator.ts?ref=044f07257c9684ae4543bd1e1ebf9c394e9e3830\" --jq '.content | @base64d | split(\"\\n\") | to_entries | map(select(.value | test(\"pendingBackgroundTasks\"; \"\"))) | .[] | \"\\(.key+1): \\(.value[0:220])\"'",
+        "description": "Find every pendingBackgroundTasks use in T3 orchestrator"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/code?q=repo:pingdotgg/t3code+waiting_for_children+path:apps/server\" --jq '.items[] | .path'",
+        "description": "Locate T3 waiting_for_children derivation"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/contents/apps/server/src/orchestration-v2/Orchestrator.ts?ref=044f07257c9684ae4543bd1e1ebf9c394e9e3830\" --jq '.content | @base64d | split(\"\\n\") | .[10005:10035] | join(\"\\n\")'",
+        "description": "Read T3 child live-work check near line 10019"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/contents/apps/server/src/mcp/OrchestratorMcpService.ts?ref=044f07257c9684ae4543bd1e1ebf9c394e9e3830\" --jq '.content | @base64d | split(\"\\n\") | to_entries | map(select(.value | test(\"waiting_for_children|result_available\"; \"\"))) | .[] | \"\\(.key+1): \\(.value[0:220])\"'",
+        "description": "Find T3 workState mapping in MCP service"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/contents/apps/server/src/orchestration-v2/Orchestrator.ts?ref=044f07257c9684ae4543bd1e1ebf9c394e9e3830\" --jq '.content | @base64d | split(\"\\n\") | .[10005:10035] | join(\"\\n\")'",
+        "description": "Read T3 child live-work check near line 10019"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/contents/apps/server/src/mcp/OrchestratorMcpService.ts?ref=044f07257c9684ae4543bd1e1ebf9c394e9e3830\" --jq '.content | @base64d | split(\"\\n\") | to_entries | map(select(.value | test(\"waiting_for_children|result_available\"; \"\"))) | .[] | \"\\(.key+1): \\(.value[0:220])\"'",
+        "description": "Find T3 workState mapping in MCP service"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/contents/apps/server/src/mcp/OrchestratorMcpService.ts?ref=044f07257c9684ae4543bd1e1ebf9c394e9e3830\" --jq '.content | @base64d | split(\"\\n\") | .[1515:1572] | join(\"\\n\")'",
+        "description": "Read T3 delegated task workState derivation"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/code?q=repo:pingdotgg/t3code+delegatedTaskProgress\" --jq '.items[] | .path'",
+        "description": "Locate T3 delegatedTaskProgress definition"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/contents/apps/server/src/orchestration-v2/Orchestrator.ts?ref=044f07257c9684ae4543bd1e1ebf9c394e9e3830\" --jq '.content | @base64d | split(\"\\n\") | .[8835:8875] | join(\"\\n\")'",
+        "description": "Read T3 roster reconciliation near line 8850"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"search/code?q=repo:pingdotgg/t3code+delegatedTaskProgress\" --jq '.items[] | .path'",
+        "description": "Locate T3 delegatedTaskProgress definition"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/contents/apps/server/src/orchestration-v2/Orchestrator.ts?ref=044f07257c9684ae4543bd1e1ebf9c394e9e3830\" --jq '.content | @base64d | split(\"\\n\") | .[8835:8875] | join(\"\\n\")'",
+        "description": "Read T3 roster reconciliation near line 8850"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/pingdotgg/t3code/contents/packages/provider-core/src/server/subagentProjection.ts?ref=044f07257c9684ae4543bd1e1ebf9c394e9e3830\" --jq '.content | @base64d | split(\"\\n\") | to_entries | map(select(.value | test(\"delegatedTaskProgress|waiting_for_children|pendingBackgroundTasks|status === \\\"active\\\"\"; \"\"))) | .[] | \"\\(.key+1): \\(.value[0:220])\"'",
+        "description": "Find T3 waiting_for_children rule in provider-core"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/githubnext/chopin/contents/apps/server/src/questions/answer-turns.ts?ref=2f180dfdecaf1a69e1279aa91a8b9d8b7ec2bdf9\" --jq '.content | @base64d | split(\"\\n\") | .[0:18] | join(\"\\n\")'",
+        "description": "Read Chopin answer-turns header comment"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/goat-si/goat-releases/releases?per_page=2\" --jq '.[] | \"\\(.tag_name) pre=\\(.prerelease) \\(.published_at) \\(.target_commitish)\"'",
+        "description": "List GOAT public releases repository"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/goat-si/goat/compare/23901144ad840e8e19d074829983b3d065da2ccd...587dd610db8761542f0af0f517c89296672f6ba8\" --jq '{status, ahead_by, behind_by}'",
+        "description": "Relate GOAT nightly source to main head"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/get-bb/bb/commits/main --jq '\"\\(.sha) \\(.commit.committer.date)\"'",
+        "description": "Re-pin bb main head for drift"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/openai/symphony/pulls?state=closed&per_page=20&sort=updated&direction=desc\" --jq '.[] | \"\\(.number) merged=\\(.merged_at != null) \\(.title[0:80])\"'",
+        "description": "List openai/symphony recently closed PRs"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/githubnext/chopin/contents/apps/server/src/questions/answer-turns.ts?ref=2f180dfdecaf1a69e1279aa91a8b9d8b7ec2bdf9\" --jq '.content | @base64d | split(\"\\n\") | .[0:18] | join(\"\\n\")'",
+        "description": "Read Chopin answer-turns header comment"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/goat-si/goat-releases/releases?per_page=2\" --jq '.[] | \"\\(.tag_name) pre=\\(.prerelease) \\(.published_at) \\(.target_commitish)\"'",
+        "description": "List GOAT public releases repository"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/goat-si/goat/compare/23901144ad840e8e19d074829983b3d065da2ccd...587dd610db8761542f0af0f517c89296672f6ba8\" --jq '{status, ahead_by, behind_by}'",
+        "description": "Relate GOAT nightly source to main head"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api repos/get-bb/bb/commits/main --jq '\"\\(.sha) \\(.commit.committer.date)\"'",
+        "description": "Re-pin bb main head for drift"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/openai/symphony/pulls?state=closed&per_page=20&sort=updated&direction=desc\" --jq '.[] | \"\\(.number) merged=\\(.merged_at != null) \\(.title[0:80])\"'",
+        "description": "List openai/symphony recently closed PRs"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/goat-si/goat/pulls/789\" --jq '{merged_at, base: .base.ref, m: .merge_commit_sha}'",
+        "description": "Get GOAT PR 789 merge details"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/goat-si/goat/pulls/789\" --jq '{merged_at, base: .base.ref, m: .merge_commit_sha}'",
+        "description": "Get GOAT PR 789 merge details"
+      }
+    },
+    {
+      "tool": "Bash",
+      "query": {
+        "command": "gh api \"repos/goat-si/goat/compare/4aef08083a2afd5ff1457d0fdbe8df302b0b4098...23901144ad840e8e19d074829983b3d065da2ccd\" --jq '{status, ahead_by, behind_by}'",
+        "description": "Check GOAT PR 789 against nightly source"
+      }
+    }
+  ]
+}

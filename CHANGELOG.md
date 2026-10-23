@@ -1,3 +1,10 @@
+## 3.7.2 - 2026-10-23 (Patch)
+
+Release impact: Patch because this preserves valid normal Code questions and adds a conservative lifecycle projection for the pending Symphony Work UI. This is unreleased dev source; builds and release publication have not been performed.
+
+- Preserve Codex questions with omitted, null or empty options, stable question IDs and supported custom answers. Requests containing secret questions show an explicit unsupported warning instead of exposing a plain-text answer field.
+- Add one lifecycle, attention and action projection for Symphony Work. Capped, stale or disconnected evidence stays unknown, and cancelled work requires confirmed closure for the exact current attempt. Production Work UI integration remains gated separately.
+
 ## 3.7.1 - 2026-10-21 (Patch)
 
 Release impact: Patch because this corrects unsafe workspace reads/writes, editor save handling and diff-root selection. This is unreleased dev work; builds and release publication have not been performed.

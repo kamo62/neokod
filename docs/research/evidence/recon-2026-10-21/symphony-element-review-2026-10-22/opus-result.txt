@@ -1,0 +1,427 @@
+# Symphony and thread orchestration: read-only adversarial review, 22 October 2026
+
+## Decision
+
+1. **Code threads and Symphony stay separate.** Agent-launched children in an ordinary Code thread belong to W6. They do not exist in source yet. Symphony is a policy-driven autonomous runner that should contact the person only when it needs something.
+2. **The prototype's main interaction is wrong for Symphony.** It answers a live worker question, then makes the person press a separate Resume and an execution approval. It also disables Automatic intake, which is the central workflow. Fix both before any application UI follows the prototype.
+3. **Symphony's current answer contract cannot support inline answers.** It sends one plain-text answer to every question in a request. On timeout it sends an empty answer and the agent carries on. It also discards the answer text and any rejection reason. Three small backend slices must land before an inline question card can ship.
+4. **Go/no-go:**
+   - Revising the static prototype: go, once you authorise it.
+   - Application UI: go only for the parts the existing contracts support.
+   - Backend answer-contract slices: ready to start.
+   - W6-C1 to C3: still blocked by the plan's formal core exit gate.
+   - Shipping: no, for everything here.
+   - Compiler builds: not authorised.
+
+This review was interrupted once so I could take in your two-flow correction. The source trace done before the interruption is kept and re-read under the corrected model. Nothing was edited, built, run or dispatched.
+
+## Evidence and limits
+
+- **Source read:** ChatView, ComposerPendingUserInputPanel, pendingUserInput, session-logic, CodexAdapter, the orchestration and Symphony contracts, ws.ts handlers, ApprovalService, ApprovalRepository, LiveRequests, AgentRuntime, HandoffService, the Dispatcher event names, the MCP capability files, SymphonyApprovalActions, SymphonyAttentionList, SymphonyRunDetailView, attention.logic, and all five prototype pages with their scripts and fixtures.
+- **Rendered evidence:** only the existing captures `01-work-1137.png` and `03-runs-1137.png`. I did not view `02`.
+  - Work shows Automatic as a disabled option.
+  - Runs shows NEO-4821 as "Paused, decision saved" after its question was answered.
+- **Source only, no rendered proof:** the Workflow map, Plan and decisions, Preview, Saved requests, the machine panel, the model picker, narrow layouts and keyboard behaviour.
+- **Not done:** no live core app, provider, tracker or competitor runtime was checked. Statements about T3Code and Synara come only from plan 16.4, which records static inspection.
+- **The Runs status-filter list** was read up to `runs.js:327`. The Queued and "Accepted, not running" chips are confirmed from the capture.
+
+## Two separate flows
+
+### Flow 1: managed children in an ordinary Code thread (W6, not Symphony)
+
+- **Intended:** you ask the current agent to "use two agents". The agent calls scoped MCP tools. Neokod creates durable child threads, which may use another provider. Each child's result is pinned and queued back to the same conversation as an attributed turn. There is no Delegate button and no mode switch (plan 16.4 and 16.6).
+- **Current source: not implemented.**
+  - `McpInvocationContext.ts:10` defines only the `"preview"` capability, and `McpSessionRegistry.ts:117` grants only preview.
+  - There is no `contracts/src/delegation.ts`, no `shared/src/delegation/`, no `managedChild/` and no delegation toolkit.
+  - The question in 16.4/16.6 is still open.
+- **Not managed children:**
+  - `SubagentsPanel` shows provider-native subagents that Neokod observes but does not manage.
+  - `symphony.delegateFromThread` turns a thread into a Symphony work item. That is a handoff, not a child.
+- **Answering:** the existing thread question and approval UI applies unchanged. A child's question reaches the parent only after W6-C4 (`child_answer`). Approvals are only ever answered by a person, on the child thread.
+
+### Flow 2: Symphony autonomous delivery
+
+- **Intended:** under the configured policy, Symphony pulls eligible tracker work automatically or as an explicitly bounded "Selected only" launch. It then plans, implements, validates, reviews and delivers, and contacts the person only for a blocker, a question or an approval.
+- **Current source:**
+  - The "orchestrator" is a server scheduler (`SymphonyOrchestratorLive`), not an AI model.
+  - Each work item gets one Codex app-server worker (`AgentRuntime.ts:31-40`).
+  - There are no Symphony-managed children, no reviewer-role sub-agents and no DeepSeek/OpenCode route.
+  - Run events cover lifecycle only. The appends I sampled were `issue_claimed`, `agent_started`, `continuation_turn` and validation and review events. I found no question, answer or agent-message events, but that search was not exhaustive.
+  - The prototype's tree of a root agent plus managed C1 to C3 is a D-series design target. It is not a shipped capability.
+
+## Question and answer paths compared
+
+| Concern | Ordinary thread | Symphony |
+|---|---|---|
+| Structured options | Rendered as buttons with descriptions, multi-select and keys 1 to 9 (`ComposerPendingUserInputPanel.tsx:119-147,172-223`) | Flattened into prompt text as "(options: a, b)" (`AgentRuntime.ts:349-377`). The person has to retype a label. |
+| Multiple questions | One question at a time, answers keyed by question ID (`pendingUserInput.ts:105-120`, `ChatView.tsx:4883-4900`) | One text applied to every question ID (`AgentRuntime.ts:119-132`) |
+| Free text | The composer becomes the custom answer for the active question (`ChatView.tsx:4109-4112,4849-4881`) | Textarea only (`SymphonyApprovalActions.tsx:139-158`) |
+| Contract | `thread.user-input.respond` with an `answers` record (`orchestration.ts:153,783-790`) | `{ requestId, text }` only (`symphony.ts:1220-1223`) |
+| Acknowledgement | A per-request "responding" state, cleared by the server's `user-input.resolved` activity (`session-logic.ts:554`) | RPC success then a refresh. The durable row is set to `approved` (`ApprovalService.ts:195`) and the answer text is not stored. |
+| Stale or restart | Removed from view when the provider's error text matches (`session-logic.ts:402-416`); fragile | A row that is not pending returns `approval_request_not_found`, shown as "no longer pending" (`ws.ts:425-426`, `SymphonyApprovalActions.tsx:15,84`). Live requests are in memory; settlement fails them on every exit path (`LiveRequests.ts:275-307`). |
+| Same-scope continuation | The provider continues the same turn | The answer resolves the request and Codex continues the same turn (`AgentRuntime.ts:502-508`). No Resume is needed in the runtime. |
+| Who asked | The thread's provider session | The work item's Codex worker. No orchestrator agent, no children. |
+| Feedback with no question pending | The composer sends a new turn; a queued-send path exists (`ChatView.tsx:4082-4097`) | Not supported while a run is going. `requestChanges` is post-review only. `takeOver` cancels the run and hands the workspace to a Code thread (`HandoffService.ts:38-45`). |
+| Cancellation | Interrupt is hidden in the run banner while a question is pending (`ChatView.tsx:5639`). The composer's stop path was not traced. | cancelRun, stopAllRuns and takeOver settle pending requests (`LiveRequests.ts:275-307`) |
+| Timeout | No app-side timeout in the traced web path | After 30 minutes by default (`Config.ts:48`), the agent receives an empty answer and continues (`AgentRuntime.ts:431-444,502-505`) |
+
+Your questions answered:
+
+- **Is the plain-text reply contract sufficient?** Only for a single free-text question.
+- **Does it apply one answer to several questions?** Yes.
+- **Do answering a pending question and sending a message need separate paths?** Yes. Answering a pending question resolves a live request. Sending unsolicited feedback is a different command, and Symphony does not have one mid-run today.
+
+## Continuation and approval rules
+
+| Situation | Rule |
+|---|---|
+| Live question in the same scope, no hold | Answering resolves the request and the worker continues. No Resume and no execution approval. |
+| Approval request (command, file change, privilege, tracker write, merge) | A separate card with Approve and Reject. It is never answered by free text. A parent agent can never approve. Only offer a note field if the note is actually delivered or stored. |
+| Stale, expired or interrupted request | Refuse with a typed reason. Keep the person's typed text locally. Show it in history. No automatic retry. |
+| Answer that changes the plan, scope, permissions, target or machine | This is not an answer. It goes through the amendment path or a new linked attempt with a fresh preview (16.11). |
+| Human pause or policy stage hold | Resume is its own command, scoped to the exact attempt and machine. This is the only case where Resume appears. |
+| Cancel or take over | Pending requests settle as interrupted. The answer box closes. |
+| Feedback with no question pending | Only through a supported command: Request changes at review, Cancel, or Take over in Code mode. Never through the pending-answer endpoint. |
+| Question timeout | Proposed: hold the run and keep it in Needs your attention. Never send an empty answer. |
+| W6 child question | `child_answer` from the parent (C4), or a person opens the child. Child approvals are answered only by a person on the child thread. |
+
+## Findings, in priority order
+
+### Source-backed defects in production code
+
+| ID | Severity | Location | Scenario |
+|---|---|---|---|
+| S1 | P1 | `AgentRuntime.ts:431-444,502-508`; `Config.ts:48` | An unattended question times out after 30 minutes. Every question gets `""`, the row becomes `expired`, and the agent continues without the input. This fails open on a need the agent declared blocking. What the provider does after an empty answer has not been observed live. |
+| S2 | P1 | `AgentRuntime.ts:119-132,349-377`; `symphony.ts:1220-1223`; `SymphonyApprovalActions.tsx:139-158` | Codex asks two questions (approach, confirm path). Both receive the same text. Choice answers depend on retyping an option label exactly. This blocks a trustworthy inline answer. |
+| S3 | P2 | `AgentRuntime.ts:490-501` | Only a flattened question text is stored. The question IDs, options and multi-select flag are lost, so an inline card cannot render structure after a reload. |
+| S4 | P2 | `ApprovalService.ts:182-197`; `ApprovalRepository.ts:30-33` | An answered question is recorded as `approved` and the answer text is never stored. History and audit cannot show what the person said. |
+| S5 | P2 | `SymphonyApprovalActions.tsx:70-75,114-123`; `ApprovalService.ts:153-174` | The "Optional note" box sits beside Approve, but Approve never sends it. Reject sends it as a reason, and `decide` ignores that reason. The person's text is silently thrown away. |
+| S6 | P2 (consequence untraced) | `CodexAdapter.ts:341-357,672-675`; `session-logic.ts:509-511` | Ordinary thread: a Codex question with no options is dropped, so no question appears in the thread. In a mixed request, the answers leave out the dropped question's ID. Whether the turn hangs has not been traced at runtime. |
+
+### Prototype design defects (static artifact at `d89c4f3aa`)
+
+| ID | Severity | Location | Problem |
+|---|---|---|---|
+| D1 | P1 | `fixtures.js:95`; `runs.js:595-642`; `workflow.js:228-268`; `planning.js:348-476`; rendered in capture 03 | A live worker question (C2 "Asked a question") is answered by Save decision, then Request resume, then a three-step "execution approval" with a checkbox that also requires plan approval. This contradicts the rule that answering continues the same scoped work. |
+| D2 | P1 | `work.js:2285-2289`; rendered in capture 01 | Automatic is disabled and labelled "not offered". It is the central workflow and needs to be visible and editable as project policy. The flow also forces Select, Preview, Start and a per-item plan and decision, which must not apply to every automatic item. |
+| D3 | P1 | `fixtures.js:153-210`; `runs.js:958-970`; `workflow.js:333-342`; `planning.js:679-689` | Shows a root run with managed children inside Symphony. The runtime is one Codex worker per item. Keep this only as a labelled D-series target, and keep the Managed versus Observed-native distinction. |
+| D4 | P2 | Runs Needs-you section `runs.js:453-493`; map popover `workflow.js:375-389`; Work Needs-you `work.js:3892-3937`; the same D-3 answer form in Runs, map and Plan | Attention and the answer form are duplicated across four places. |
+| D5 | P2 | Work Details and Selected tabs (`work.js:3041-3062` vs `3263-3287`); plan editor in the inspector, the request Plan tab and `planning.js` | The same model and reviewer controls appear twice, and the same plan editor appears three times. |
+| D6 | P2 | `shared.js:613-620` vs the in-page request tabs (`runs.js:711-722`, `work.js:4277-4286`) | Item "tabs" jump between pages, while request tabs switch in place. That is two tab models for one concept. |
+| D7 | P2 | Throughout (listed under copy below) | Explanatory copy makes up for a broken flow. |
+
+F1 to F6 and F8 to F10 from REVIEW-FLOW stay open unchanged.
+
+### Untraced risks
+
+- **U1:** After a server restart, how pending rows display between the restart and recovery's `interrupt` call.
+- **U2:** In the ordinary thread, the stop and interrupt path while a question is pending.
+- **U3:** Whether any existing run event carries agent messages, which a run activity view would need.
+- **U4:** The earlier C2 forked-dispatch failure path.
+
+The broader core-app review also stays open: Home, chat and composer, provider selection, terminal, editor and save, Git, worktrees and checkpoints, and Settings, connections and auth.
+
+## Element inventory
+
+Dispositions are Keep, Move, Combine, Remove or Defer. "Prototype-only" means the element exists for the demo and has no product counterpart.
+
+### Shared chrome (all pages)
+
+| Element | User job or value | Disposition | Reason or condition |
+|---|---|---|---|
+| Brand link and breadcrumb | Know where you are | Keep | Becomes app navigation |
+| Concept nav (Work, Runs, Workflow map, Plan and decisions) | Move between concepts | Remove | Map and Plan become item detail tabs. Runs folds into Work. |
+| "Design prototype · Sample data" notice | Honesty about the demo | Prototype-only | Remove in the product |
+| Reset demo (plain button on 3 pages; popover with Cancel and Reset on Work) | Clear local demo state | Prototype-only | The Work popover's confirmation is the better pattern if any reset is kept |
+| Theme toggle | Preference | Move | To app settings |
+| Toast (live region) | Confirm actions | Keep | Only for real acknowledgements |
+| Skip link | Keyboard access | Keep | |
+
+### index.html
+
+| Element | User job or value | Disposition | Reason or condition |
+|---|---|---|---|
+| Title and lede | Orientation | Remove | The lede describes a launch-first flow that contradicts autonomous intake |
+| Work entry card and "Open Work" | Entry point | Remove | Work becomes Symphony's home |
+| Facts strip (NEO-4821, attempt 3, D-3) | Sample context | Prototype-only | |
+| Three concept cards (wireframe, link, role, Centre / Good at / Weaker at, Open button) | Compare A, B and C | Remove | The decision is made: B and C are details of A |
+| Footer and DESIGN.md link | Rationale | Keep in docs | Not in the product |
+| Static / no-network disclaimer | Honesty | Prototype-only | |
+
+### work.html: global states
+
+| Element | User job or value | Disposition | Reason or condition |
+|---|---|---|---|
+| Flowbar steps (Select and assign, Preview, Saved requests) with sub-status and stale marker | Know where you are in a launch | Combine | Becomes the Assign → Brief and plan → Review and Start setup, used for Selected-only launches only. "Saved requests" is removed (it is the Work list). |
+| Flow note "Sample data…" | Honesty | Prototype-only | |
+| Save state (dirty dot, "recovery copy failed") | Trust that the draft is saved | Keep | Inside setup only |
+| Banners: storage unavailable, receipts unreadable, recovery error, start error | Explicit failure | Keep | The product equivalent is server errors with acknowledgement-unknown handling (C1) |
+| "Sample source changed" banner | Preview is invalidated | Keep | It is the real rule that a changed source needs a new preview |
+| "Recovered unsaved work" banner with Discard | Recover edits | Keep | In setup |
+| Keyboard shortcuts (/, arrows, X, Enter, Cmd/Ctrl-S, Esc) | Speed | Keep behaviour | Move the legend to help |
+
+### work.html: sidebar
+
+| Element | User job or value | Disposition | Reason or condition |
+|---|---|---|---|
+| Project name | Context | Combine | Into a compact project and source control |
+| Connection, Project scope and Repository selects | Choose the source | Combine | Into the same compact control (REVIEW-FLOW 1) |
+| Coverage pill (Loading, Partial, Empty, Unavailable, Complete) and status text | Know the list is complete | Keep | A short indicator stays visible; detail goes in a disclosure |
+| Facts (connection ID, scope and native ID, revision) | Stable identity | Move | Into a disclosure |
+| Load more, Refresh | Complete or refresh coverage | Keep | |
+| Connection unavailable and Repair | Recover the source | Keep | The route returns to the same list |
+| Fixture hint and unsupported-filters text | Honesty about filters | Keep | Only the unsupported-filters part |
+| Start mode radios (Selected only, Automatic disabled) | Choose intake policy | Move and change | Into a visible project policy strip: mode, eligibility, concurrency, approval policy, Edit. Automatic must be shown and editable (D2). Selected-only is a launch option, not the default way to see work. |
+| Machines list (dot, name, status, OS, model count) | Machine health | Move | To Settings > Connections > Machines. Keep the chips on rows. |
+| Keyboard legend | Discoverability | Move | To help |
+
+### work.html: list
+
+| Element | User job or value | Disposition | Reason or condition |
+|---|---|---|---|
+| Heading and coverage line | Scope and coverage | Keep | Shorter |
+| Search over loaded issues | Find an issue | Keep | |
+| Label select (only when supported) | Filter | Combine | Into one filter control with machine, workflow and tracker |
+| Workflow chips with counts | Filter | Combine | Into the same filter control |
+| Unsupported-filters line | Honesty | Keep | |
+| Select visible (tri-state) and column headers | Bulk select | Keep | Selected-only launch |
+| Row checkbox (disabled: recorded, existing, other scope) | Select | Keep | |
+| Row ID and "other scope" tag | Identity | Keep | Fix F9: the scope is hard-coded |
+| Title button with subline (workflow, labels, edited, Shared sample, Requires) | Peek | Keep | Opens the drawer (REVIEW-FLOW 2). Remove the "Shared sample" tag. |
+| Run-on chip and "This issue only" | Target pin | Keep | |
+| Readiness pill and blocked reason | Can it start | Keep | Selected-only launches only |
+| Open request link and "Open existing run" link | Reach active work | Combine | Into one status column with In progress / Needs your attention |
+| "Not selectable" | Prevent duplicates | Keep | |
+| Empty states (no scope, loading, error with Repair, empty with Fetch again, no filter match with Clear) | Accurate empties | Keep | All five are distinct and correct |
+| Load-more block | Coverage | Keep | |
+| Hidden-selected notice and Show all | Hidden selection stays visible | Keep | |
+| Batch bar (count, blocked count, defaults, Clear, Assign, Save draft, Preview) | Launch a batch | Keep | Becomes "Configure run" for Selected-only. Not shown for Automatic. |
+
+### work.html: inspector and drawer
+
+| Element | User job or value | Disposition | Reason or condition |
+|---|---|---|---|
+| Empty state, back button, tabs (Details, Plan, Selected(n)) | Navigate | Combine | Drawer: Details only. Selected moves to setup. Plan moves to setup or item detail. |
+| Meta, title, tags | Identity | Keep | |
+| Scope note (separate sample / shared sample with three links) | Explain the demo duplicate | Remove | Exists only to explain prototype sample sharing (D7) |
+| Gate card (blocking or advisory, "Open plan and decision") | See questions | Combine | Into the item's attention and the inline question card |
+| Required capability vs Preference sections | Explain why something is blocked | Keep | UX-12 |
+| Description and acceptance criteria (with missing warning) | Understand the work | Keep | Read-only |
+| Assignment section (four variants: recorded, existing with repair, selected with full controls, not selected with Select) | Assign | Combine | Selected-item controls move to setup. Recorded and existing variants become status with one link. |
+| Fix buttons (apply-fix, open-fix-settings) | Repair a block | Keep | In setup |
+| Change assignment, Remove, Select | Edit the draft | Keep | In setup |
+| Native reference note | Stable ID | Move | Into a disclosure |
+
+### work.html: model control (all contexts)
+
+| Element | User job or value | Disposition | Reason or condition |
+|---|---|---|---|
+| Trigger (instance, summary), inherited label, disabled reason, warning | Choose an exact target | Keep, but replace | With the production thread model, effort and provider-instance control (UX-04). Do not build a second picker. |
+| Popover note, search, instance list, model rows (tags, slug, effort, disabled reason) | Same | Keep, same condition | |
+| "Nothing is substituted" empty state | Honesty | Keep | |
+| Effort buttons and "no effort offered" text | Same | Keep | |
+| Use project default / Clear override | Revert | Keep | |
+| Duplicate instances in the Details and Selected tabs | | Remove one | D5 |
+
+### work.html: plan and decision
+
+| Element | User job or value | Disposition | Reason or condition |
+|---|---|---|---|
+| Plan editor (revision, saved time, unsaved state, textarea, Save, Discard, hint) | Shape the brief | Keep once | In setup for Selected-only, and in item detail Plan. Optional for automatic items unless the workflow requires approval. |
+| Decision block (radios, Suggested, Save decision, hint) | Answer a pre-run question | Change | A question raised during setup is an input to the brief. A live worker question uses the inline card instead (D1). Remove "does not start, resume or approve" copy where it no longer applies. |
+| Shared-sample provenance note | | Remove | Prototype-only |
+
+### work.html: Selected tab
+
+| Element | User job or value | Disposition | Reason or condition |
+|---|---|---|---|
+| Batch defaults (machine select, implementer, reviewers, hints) | Defaults | Keep | Setup Assign step |
+| Selected list (ID link, title, remove, run-on override, repository, implementer, reviewers, readiness, fix buttons) | Per-item overrides | Keep | Setup Assign step, as the only place these controls live |
+
+### work.html: machine panel
+
+| Element | User job or value | Disposition | Reason or condition |
+|---|---|---|---|
+| Back, name, status pill, sample-facts note, problem text | Machine health | Move | To Connections |
+| Key facts (ID, address, route, system, last check, access, capabilities, queue) | Identity | Move | To Connections |
+| Agents table, or "unknown while offline" with last known | Which agents are available | Move | To Connections. Keep "unknown" distinct from idle. |
+| Settings fixture (Restore, Enable provider, Add path, Back to Work) | Repair | Move | Real repair goes in Connections, returning to the draft (acceptance 8) |
+| Used by this draft and items recorded here | Impact of a change | Keep | As a line in Connections |
+
+### work.html: Preview
+
+| Element | User job or value | Disposition | Reason or condition |
+|---|---|---|---|
+| Empty states (Create preview, Back) | Guide | Keep | Review step of setup |
+| Header (created, request key, Back, Preview again / Create new) | Re-check | Keep | |
+| Start button and start reason | Launch | Keep | |
+| Simulation note | Honesty | Prototype-only | |
+| Stale banner and Create new | Invalidation | Keep | |
+| Recorded banner and Open request detail | Replay with no duplicate | Keep | |
+| Demo outcome radios (accepted, refused, unknown) | Simulate a server | Prototype-only | |
+| Summary line by machine | Per-machine result | Keep | |
+| Stages, gates and permissions disclosure | Know authority | Keep | It must be bound to a workflow digest and permission snapshot (F6) |
+| Preview item cards (Ready/Blocked, will-not-start with Change in Work, details: run on, implementer, reviewers, workflow, validation, base, issue, plan, gate, approval, if started; sample checks) | Exactly what will start | Keep | Remove "Simulated" wording; keep the checks, labelled as preview checks |
+
+### work.html: Saved requests and request detail
+
+| Element | User job or value | Disposition | Reason or condition |
+|---|---|---|---|
+| Saved requests view (empty state, header note, receipt blocks, blocked items with Change in Work) | Receipts | Combine | Into Work list rows and their history. Remove the separate view (F1, F4). |
+| Detail header (Back, meta, title, "Open this request in Runs", pin row with identity note) | Identity | Combine | Into the one item detail. Remove the cross-link. |
+| Detail tabs (Summary, Execution, Plan and decisions, Evidence) | Detail | Keep as local tabs | Add Activity |
+| Summary: Needs-you list (blocking, answered, advisory, unknown acknowledgement, withdrawal, closure unknown, nothing waiting) | Attention | Combine | Into the Activity tab's cards |
+| Summary: "Now" box | Current state | Keep | One semantic projection |
+| Summary: Agent team | Pins | Keep | |
+| Summary: Request details | Pinned snapshot | Keep | |
+| Summary: lifecycle actions (reconcile unknown accepted/refused, Request withdrawal, withdrawal reconciliation, Prepare a new request) | Lifecycle | Keep the real actions | Request withdrawal and Prepare a new request are real. The "Simulate…" buttons are prototype-only (F11 rules apply). |
+| Summary: machine note and attempt-3 note | | Remove the attempt-3 note | Keep a one-line machine pin |
+| Execution: notes, gate card, stage list, legend, who-does-what table, map link note | Planned vs observed | Keep | Stages and the legend keep the planned/observed distinction. The gate card moves to Activity. |
+| Plan: pinned plan, "changed since" warning, current plan editor, shared note | Plan | Keep the pinned plan and the warning | Remove the duplicate editor. Link to the single plan surface instead. |
+| Evidence: host validation, reviews, preview checks, receipt details | Proof | Keep | Production also needs PR, diffs and tests from `EvidencePanel` and `PullRequestPanel` |
+
+### runs.html (folds into the Work list)
+
+| Element | User job or value | Disposition | Reason or condition |
+|---|---|---|---|
+| Sidebar project and workflow buttons (attention dot, count) | Filter by workflow | Combine | Into the Work filter control |
+| Keyboard legend | | Move | To help |
+| Search | Find | Combine | Into Work search |
+| Scope toggle (Active, History, All) | Lifecycle view | Combine | Into Not started / In progress / Needs your attention / All, with History secondary (16.14) |
+| Status chips (All, Needs you, Running, Paused, Failed, Tracking lost, Queued, Accepted not running) | Triage | Combine | Into quick filters plus secondary lifecycle filters. One projection (F2). |
+| Machine chips with IDs and the filtered note | Filter by machine | Combine | Into the Work filter. Keep the machine chip on rows. |
+| Needs-you section (cards, "shown regardless of filters", empty state) | See what is waiting | Combine | Into one attention filter and count, plus a scoped notice (REVIEW-FLOW 4, D4) |
+| "Resolved in this demo" with Reopen / Withdraw | Undo | Remove | Rows keep their history instead |
+| Receipt read error, empty state | Errors | Keep | Fix F10 |
+| Groups (Demo requests from Work, Active, History) | | Remove "Demo requests" | It is an artifact of having two lists |
+| Row (glyph, ID, title and status, sub-line, stage strip or receipt chip, machine chip, elapsed or last observed) | Compact scanning | Keep | This is the row the owner likes. Keep last-observed for orphaned work. |
+| Original detail: back, meta, title, machine line | Identity | Keep | |
+| Item tabs that jump between pages | | Change | To in-page tabs (D6) |
+| Map and plan links | | Remove | Tabs cover them |
+| "Now" box (blocker, next) | Current state | Keep | |
+| Action: decide (D-3 radios, note, Save, then Request resume / Withdraw / Reopen) | Answer | Replace | With the inline question card. Answering continues the work. No Resume (D1). |
+| Actions: paused Resume; stop / withdraw stop; retry with review, confirm and cancel; merge checklist with record and withdraw approval; running elapsed note | Real lifecycle commands | Keep | As approval cards and commands scoped to the exact attempt and machine |
+| Root task | Context | Keep | |
+| Attempt and head details | Pins | Keep | |
+| Validation with the "only current-head host checks pass" rule | Proof | Keep | |
+| Review findings | Proof | Keep | |
+| Agents tree (Managed / Observed native tags, model, status, elapsed, cost) | Lineage | Defer | Managed nodes wait for D-series runtime roles. Observed native stays. Cost stays "not reported". |
+| Recent events | History | Combine | Into the Activity tab |
+| Request detail (tabs, receipt, execution, plan, evidence, secondary Work link) | | Combine | Into one item detail (F1) |
+| Reference detail (reference box, source, evidence, why separate) | Explain an existing record | Combine | Into the same row and history. Remove the "why separate" copy. |
+
+### workflow.html (becomes the Execution tab)
+
+| Element | User job or value | Disposition | Reason or condition |
+|---|---|---|---|
+| Run switcher popover (active runs, note) | Switch item | Remove | Navigation comes from the list |
+| Run facts (attempt, machine, head, status, stages and agents count) | Pins | Keep | In the item header |
+| Machine chip and selected-attempt note | Pins | Keep | |
+| Item tabs | | Change | To in-page tabs |
+| Needs-you button and popover | Attention | Remove | Duplicate (D4) |
+| Fold packages, zoom out / value / in, Fit, 100% | Navigate a big graph | Defer | Until an observed graph contract exists |
+| SVG map (agent / host / human node shapes, status, edges, keyboard and drag) | Where it is stuck | Defer the detailed graph | Keep a simple stage list with planned versus observed now |
+| Inspector: empty state, generic stage (prev/next, sample note, open in runs) | Step detail | Keep the stage detail | Remove the sample note |
+| Inspector: attempt-mismatch note | Avoid wrong-attempt reads | Keep | |
+| Inspector: decision panel (D-3 copy) | | Remove | D1, D4 |
+| Inspector: summary, evidence list, agent details (agent, machine, lineage, model, state, elapsed, cost, also-on-steps) | Who did what | Keep | Lineage only for real roles |
+| Linked steps and Show packages | | Defer | |
+| Agents tree | | Defer | Same as Runs |
+| Footer stage stepper | Stage navigation | Keep | |
+| Legend (Done, Not yet, Sent back, Blocked on you, Agent, Host, Human gate) | Read the map | Keep | |
+
+### planning.html (becomes the Plan and Evidence tabs)
+
+| Element | User job or value | Disposition | Reason or condition |
+|---|---|---|---|
+| Tabs (Plan, Decisions(n), Evidence) | | Combine | Into item detail tabs. Decisions merges into Plan and Activity. |
+| Identity and status pills (plan revision, machine, attempt, draft, execution-approval state) | Pins | Keep | The execution-approval pill only when the workflow requires plan approval |
+| Outline: headings | Navigate the plan | Keep | |
+| Outline: decisions with unresolved anchors | | Combine | Into Plan |
+| Outline: revisions (view, unavailable) | History | Keep | |
+| Recovered draft banner (Resume, Discard) | Recover | Keep | |
+| Plan doc bar, Edit, rendered doc, decision-branch diagram | Plan | Keep the doc | Defer the diagram |
+| Editing mode (state, Discard, Save as rN, invalidation banner, local-store banner, textarea) | Revise | Keep | The invalidation rule is correct |
+| Viewing an old revision (banner, Back, Restore as draft) | History | Keep | |
+| Decisions list (open/saved, anchor state) | | Combine | Into Activity |
+| Decision detail: meta, context, scope line, anchor, evidence chips | Context | Keep the context | |
+| Three-step rail (Draft answer, Saved decision, Execution approval) | | Remove for live questions | D1. Keep only for policy-required plan approval. |
+| Step 1: Save draft and Save decision | | Combine | Into the inline answer, with local draft recovery |
+| Step 2: Reopen | | Remove for answered live requests | A delivered answer cannot be recalled. A changed scope needs an amendment. |
+| Step 3: Execution approval (scope details, checkbox, Approve resume, Revoke) | | Remove for live questions | Keep the pattern for genuine approvals: privilege, merge, policy holds |
+| History list | Audit | Keep | Needs S4 to store the answer text |
+| Evidence rows (status, source, head, machine, used-by, agent) | Proof | Keep | |
+| Rail: run card | Pins | Keep | In the header |
+| Rail: Stages | | Remove | Duplicate of Execution |
+| Rail: Agents | | Defer | |
+| Rail: Approvals (plan execution review/confirm, Resume package B, Merge locked) | | Change | Approvals only where policy needs them. Remove "Resume package B". |
+| Rail: links to Runs and Map | | Remove | |
+| Unavailable state (Use sample, Open summary, Open execution) | | Prototype-only | |
+
+### Copy that compensates for the broken flow (D7)
+
+**Remove these, because they explain a problem the flow should not have:**
+
+- "Saving the answer does not resume work; resuming is a separate step" (`fixtures.js:95`) and its variants in Runs, the map and Plan.
+- "This row comes from Work's local demo receipt…".
+- "Open the secondary receipt detail in Work".
+- "The canonical Runs operating view is runs.html".
+- The repeated "not attempt 3" and "Shared sample" notes.
+- "Would start matching issues… not offered".
+
+**Keep these, because they state real rules:**
+
+- "Unknown is not refusal or closure."
+- "Nothing is substituted."
+- "Preview reserves nothing."
+- "Only current-head host checks pass."
+- "Offline is not closure."
+
+## Recommended interaction design
+
+1. **Work is the single Symphony home.**
+   - A project policy strip at the top shows: Automatic or Selected-only, eligibility rules, concurrency, approval and merge policy, and an Edit link.
+   - Automatic items flow in without a wizard. "Configure run" appears only when you select stories for a bounded launch.
+   - Quick filters: Not started, In progress, Needs your attention, All. History is secondary. Every count states its scope and coverage.
+   - Rows keep their machine and repository pins. Unknown and tracking-lost stay visible and are never shown as idle.
+2. **Opening an item gives one detail view with local tabs:** Activity (the default when something needs you), Execution, Plan, Evidence.
+3. **Activity is a contextual run log, not a chat.** It shows:
+   - lifecycle events;
+   - question cards inline, with structured options, several questions handled one at a time, and free text, reusing the `pendingUserInput.ts` logic;
+   - approval cards kept separate from questions;
+   - stale and expired history.
+
+   There is no permanent free-form composer. "Request changes", "Cancel" and "Take over in Code mode" appear only where their commands exist.
+4. **Execution** shows planned stages and observed progress. The detailed graph and the agent tree are deferred until the D-series contracts exist.
+5. **Plan** is a single editor with revisions, and it binds into preview and the accepted snapshot.
+6. **Machines** live in Settings > Connections.
+7. **Code-thread W6** stays in ChatView: a Managed children section next to `SubagentsPanel`, with attributed wake turns, and nothing in Symphony.
+
+## Technical slices (on the existing W6/W5/H/D plan, no new tracker)
+
+| Slice | Content | Depends on | Acceptance |
+|---|---|---|---|
+| Q1: Symphony structured questions (D-series, runner contract) | Store question IDs, options and multi-select on the request. Accept `answers` keyed by question ID, reusing the `ProviderUserInputAnswers` shape. Map each answer to its own question in `toCodexUserInputResponse`. Record an "answered" state distinct from `approved`. Store the answer text and who answered. | None | A two-question request delivers different answers. A reload renders the options. History shows the answer text. Legacy rows still decode. A stale request is refused with a typed reason. |
+| Q2: hold on timeout | Replace the empty fallback with a hold. Keep the request in Needs your attention. Workflow policy may set an explicit timeout outcome; the default is to hold. | None | With a fake clock past the timeout, no empty answer is sent and the attempt shows held. An answer that arrives later either continues the work (if the request is still live) or is refused as stale. |
+| Q3: approval note honesty | Remove the note beside Approve. Store the reject reason. Do not claim the agent receives it unless the provider contract supports that. | None | No text field whose content is thrown away. The reason appears in history. |
+| Q4: Activity events | Append question-asked, question-answered, approval-requested and approval-decided run events from existing request points. No agent-message chat stream. | Q1 | Activity rebuilds from durable events after a restart. |
+| UI-A: inline question card and approval cards in `SymphonyRunDetailView` | Reuse `pendingUserInput.ts` and the panel's patterns. Separate the approval card. | Q1, Q3 | Browser check: answering continues with no Resume button; a stale request shows typed history. |
+| UI-B: Work list consolidation | One projection drives labels, filters, attention and actions (F1 to F5). Visible, editable policy strip. | 16.11 selected-only admission and policy display | All eight REVIEW-FLOW scenarios. Automatic items need no per-item preview or plan unless policy requires one. |
+| W5 machines and 16.11 admission | As already planned | Existing | 16.11 criteria 1 to 10 |
+| W6-C1 to C3 (Code thread) | Unchanged, a separate track | Formal core exit gate (16.12 says it is unverified) | 16.6: closure, stop and restart tests plus one live OpenCode run |
+
+Implementer: DeepSeek V4.1 Flash through OpenCode ACP (actual model `deepseek/deepseek-flash`, per 16.5), with Sol and Opus review. Each lane runs focused tests plus `vp check` and `vp run typecheck`. No builds.
+
+## Go/no-go
+
+| Action | Call | Condition |
+|---|---|---|
+| Revise the static prototype to this design (remove Resume after answers, restore Automatic policy, merge duplicates, add Activity) | Go, once you authorise it | This review authorises nothing |
+| Start Q1 to Q3 | Ready | Source understood, small, Symphony-only. Needs your authorisation for a lane. |
+| Start UI-A | Not yet | Start after Q1 and Q3. Moving the existing free-text answer box into the detail view without changing its meaning is acceptable now. |
+| Start UI-B | Partly | Policy display and the attention filter can start against existing reads. Admission-dependent states wait for 16.11. |
+| Start W6-C1 to C3 | No-go under the plan | Blocked by the formal core exit gate, unless you declare it closed |
+| Ship Symphony inline answers | No | Needs Q1 and Q2 tests plus one observed live Codex run where a question is answered |
+| Ship DeepSeek/OpenCode Symphony routing | No | The runtime is Codex-only |
+| Claim W6 works | No | Needs C3 closure tests and a live OpenCode run |
+| Compiler builds | Not authorised | |

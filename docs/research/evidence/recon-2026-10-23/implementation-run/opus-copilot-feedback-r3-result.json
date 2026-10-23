@@ -1,0 +1,12 @@
+{
+  "stopReason": "end_turn",
+  "usage": {
+    "inputTokens": 90,
+    "outputTokens": 9084,
+    "totalTokens": 5393995,
+    "thoughtTokens": 24001,
+    "cachedReadTokens": 5180708,
+    "cachedWriteTokens": 180112
+  },
+  "_meta": {}
+}

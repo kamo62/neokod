@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "version": "0.1.2-nightly.20261022.236",
+  "commit": "23901144ad840e8e19d074829983b3d065da2ccd",
+  "commitTime": 1792688235,
+  "protocol": {
+    "ssh": { "min": 1001, "max": 1001 },
+    "orchestration": { "min": 1001, "max": 1001 }
+  },
+  "capabilities": ["memory-scopes"],
+  "platforms": {
+    "darwin-arm64": {
+      "asset": "goat-0.1.2-nightly.20261022.236-darwin-arm64.tar.gz",
+      "sha256": "3f0040c5455ef68ebc9b9fb76672b8e726151ce3133dd6f66141e2d1c2d900f6"
+    },
+    "linux-arm64": {
+      "asset": "goat-0.1.2-nightly.20261022.236-linux-arm64.tar.gz",
+      "sha256": "a68dec4c0f4fba904345be52bcdffaea19a14431a66ee0b5e4cc50a9a3ec6e5a"
+    },
+    "linux-x64": {
+      "asset": "goat-0.1.2-nightly.20261022.236-linux-x64.tar.gz",
+      "sha256": "cf818038f9d7e87ab256e8870ad35324f4a9732b414c467fecac69fbe23a31f3"
+    },
+    "win32-arm64": {
+      "asset": "goat-0.1.2-nightly.20261022.236-win32-arm64.zip",
+      "sha256": "c9eaaa49ec9724e0b8fc643195a52e3c4197d60bc5cce7ce667fe9d127316bb6"
+    },
+    "win32-x64": {
+      "asset": "goat-0.1.2-nightly.20261022.236-win32-x64.zip",
+      "sha256": "95a143884a29b1aa93376549b66069f8ac3d6ccb3123ce3e982a57794ba7fe4b"
+    }
+  }
+}

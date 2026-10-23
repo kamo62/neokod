@@ -1,0 +1,11 @@
+{
+  "capturedUtc": "2026-10-22T20:14:07.493469+00:00",
+  "command": ["gh", "api", "repos/proxysoul/Empryo"],
+  "returncode": 0,
+  "full_name": "proxysoul/Empryo",
+  "private": false,
+  "visibility": "public",
+  "default_branch": "main",
+  "pushed_at": "2026-10-16T01:37:27Z",
+  "headSha": "c27dac116d2ee1637abfc6634bebf08b5c379454"
+}

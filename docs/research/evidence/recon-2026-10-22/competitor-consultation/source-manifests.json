@@ -1,0 +1,716 @@
+[
+  {
+    "repo": "aicodeking/pandacode",
+    "sha": "800b879680bc89fda1189f726864ca1a4ed61e2a",
+    "path": "src-tauri/src/architect/profiles.rs",
+    "sha256": "22762abc5882e65495369ef34d3923ea76d4e58f0e8c11a50a0c718d3312c78f",
+    "url": "https://github.com/aicodeking/pandacode/blob/800b879680bc89fda1189f726864ca1a4ed61e2a/src-tauri/src/architect/profiles.rs"
+  },
+  {
+    "repo": "aicodeking/pandacode",
+    "sha": "800b879680bc89fda1189f726864ca1a4ed61e2a",
+    "path": "src/turn-checks.ts",
+    "sha256": "f31f031cde6cb6856b74363410c4a4492e615d4c9159db9abe8f09bec07c662e",
+    "url": "https://github.com/aicodeking/pandacode/blob/800b879680bc89fda1189f726864ca1a4ed61e2a/src/turn-checks.ts"
+  },
+  {
+    "repo": "aicodeking/pandacode",
+    "sha": "800b879680bc89fda1189f726864ca1a4ed61e2a",
+    "path": "docs/architect-workers.md",
+    "sha256": "396cbe63a128191e9bda7ab90befd4983a08da0bec30e30e0147d7604a96aa2e",
+    "url": "https://github.com/aicodeking/pandacode/blob/800b879680bc89fda1189f726864ca1a4ed61e2a/docs/architect-workers.md"
+  },
+  {
+    "repo": "aicodeking/pandacode",
+    "sha": "800b879680bc89fda1189f726864ca1a4ed61e2a",
+    "path": "README.md",
+    "sha256": "fa1b38bd1d6ee721ab7f24047e78028d6c3b3c44680a5c279124e1355003c620",
+    "url": "https://github.com/aicodeking/pandacode/blob/800b879680bc89fda1189f726864ca1a4ed61e2a/README.md"
+  },
+  {
+    "repo": "aicodeking/pandacode",
+    "sha": "800b879680bc89fda1189f726864ca1a4ed61e2a",
+    "path": "docs/settings.md",
+    "sha256": "8ea6124adcc2f92bbfadabe464455112f8577a0b26c32ac0cba7840318eeac81",
+    "url": "https://github.com/aicodeking/pandacode/blob/800b879680bc89fda1189f726864ca1a4ed61e2a/docs/settings.md"
+  },
+  {
+    "repo": "aicodeking/pandacode",
+    "sha": "800b879680bc89fda1189f726864ca1a4ed61e2a",
+    "path": "src-tauri/src/architect.rs",
+    "sha256": "3fc4551c7868b50555a2cd75bf849391d1fdf738b64c1f0e90d099d84b4b326f",
+    "url": "https://github.com/aicodeking/pandacode/blob/800b879680bc89fda1189f726864ca1a4ed61e2a/src-tauri/src/architect.rs"
+  },
+  {
+    "repo": "aicodeking/pandacode",
+    "sha": "800b879680bc89fda1189f726864ca1a4ed61e2a",
+    "path": "src/agent-teams.ts",
+    "sha256": "ac4166e656c1f5d06da5ddcd13f63e349ee3afdfd61031467db1f6789bab42e5",
+    "url": "https://github.com/aicodeking/pandacode/blob/800b879680bc89fda1189f726864ca1a4ed61e2a/src/agent-teams.ts"
+  },
+  {
+    "repo": "githubnext/chopin",
+    "sha": "2f180dfdecaf1a69e1279aa91a8b9d8b7ec2bdf9",
+    "path": "apps/server/src/storage/decision-answer-contract.ts",
+    "sha256": "8ddfbbfd9eb76c02fb09e23daca6b598e51164b3329fd73b9bb76672b1a16360",
+    "url": "https://github.com/githubnext/chopin/blob/2f180dfdecaf1a69e1279aa91a8b9d8b7ec2bdf9/apps/server/src/storage/decision-answer-contract.ts"
+  },
+  {
+    "repo": "githubnext/chopin",
+    "sha": "2f180dfdecaf1a69e1279aa91a8b9d8b7ec2bdf9",
+    "path": "docs/decisions.md",
+    "sha256": "5592e309423b9a4117089551f3c364e976f9fdf807fbaa277ad3cb527060b9b4",
+    "url": "https://github.com/githubnext/chopin/blob/2f180dfdecaf1a69e1279aa91a8b9d8b7ec2bdf9/docs/decisions.md"
+  },
+  {
+    "repo": "githubnext/chopin",
+    "sha": "2f180dfdecaf1a69e1279aa91a8b9d8b7ec2bdf9",
+    "path": "apps/server/src/questions/answer-turns.ts",
+    "sha256": "13f7edd1b9c72e584ddf33eba1bc9fe8bb7461a7c27f3dad7f840a6749534def",
+    "url": "https://github.com/githubnext/chopin/blob/2f180dfdecaf1a69e1279aa91a8b9d8b7ec2bdf9/apps/server/src/questions/answer-turns.ts"
+  },
+  {
+    "repo": "githubnext/chopin",
+    "sha": "2f180dfdecaf1a69e1279aa91a8b9d8b7ec2bdf9",
+    "path": "docs/implementation-lifecycle.md",
+    "sha256": "b0335c9aac29d89be2805b553e767929b8a6f8d6905add54fd7625ac77aa1e30",
+    "url": "https://github.com/githubnext/chopin/blob/2f180dfdecaf1a69e1279aa91a8b9d8b7ec2bdf9/docs/implementation-lifecycle.md"
+  },
+  {
+    "repo": "githubnext/chopin",
+    "sha": "2f180dfdecaf1a69e1279aa91a8b9d8b7ec2bdf9",
+    "path": "apps/server/src/tasks/connector.ts",
+    "sha256": "25807cf5bad27314dae7d242ce97b60c164fcce7e4f4097d78901e993998a206",
+    "url": "https://github.com/githubnext/chopin/blob/2f180dfdecaf1a69e1279aa91a8b9d8b7ec2bdf9/apps/server/src/tasks/connector.ts"
+  },
+  {
+    "repo": "githubnext/chopin",
+    "sha": "2f180dfdecaf1a69e1279aa91a8b9d8b7ec2bdf9",
+    "path": "apps/server/src/storage/postgres/migrations/027_decision_answers.sql",
+    "sha256": "25229f42c8920010030e21ec60e81f4530917cbccdbee591cd1cff9d9e4c508e",
+    "url": "https://github.com/githubnext/chopin/blob/2f180dfdecaf1a69e1279aa91a8b9d8b7ec2bdf9/apps/server/src/storage/postgres/migrations/027_decision_answers.sql"
+  },
+  {
+    "repo": "OrchestratorInc/agent-orchestrator",
+    "sha": "35b406f150c97e9779222c961bd8eb14af634a58",
+    "path": "README.md",
+    "sha256": "b7f83ced172b6baa8d0fda77c80f66947205c9257ac1d1e4e93a8a1fd6763935",
+    "url": "https://github.com/OrchestratorInc/agent-orchestrator/blob/35b406f150c97e9779222c961bd8eb14af634a58/README.md"
+  },
+  {
+    "repo": "dominikmartn/harp",
+    "sha": "bad92b3fee6224941c9de92eaa3968a53e61ae6b",
+    "path": "README.md",
+    "sha256": "c20c1c7951cc4521c5119139fbc2d62c3b4baefa99a5fa8b60fa5c78d27bac32",
+    "url": "https://github.com/dominikmartn/harp/blob/bad92b3fee6224941c9de92eaa3968a53e61ae6b/README.md"
+  },
+  {
+    "repo": "superset-sh/superset",
+    "sha": "bdf1e2e4fc7b960f79e8cefde87e0d7d62505f18",
+    "path": "apps/desktop/src/renderer/routes/_authenticated/_dashboard/v2-workspace/$workspaceId/hooks/usePaneRegistry/components/ChatSession/components/WorkDrawer/WorkDrawer.tsx",
+    "sha256": "1cb56fd328993ef6198b87d995c4653cfcd024b8478c6297627946575c51430d",
+    "url": "https://github.com/superset-sh/superset/blob/bdf1e2e4fc7b960f79e8cefde87e0d7d62505f18/apps/desktop/src/renderer/routes/_authenticated/_dashboard/v2-workspace/$workspaceId/hooks/usePaneRegistry/components/ChatSession/components/WorkDrawer/WorkDrawer.tsx"
+  },
+  {
+    "repo": "goat-si/goat",
+    "sha": "587dd610db8761542f0af0f517c89296672f6ba8",
+    "path": "docs/internals/agent-surface.md",
+    "sha256": "b44438eb40e0138def21bbf1742010286ad1d6c1eb14b2fc995a6e710272d43c",
+    "url": "https://github.com/goat-si/goat/blob/587dd610db8761542f0af0f517c89296672f6ba8/docs/internals/agent-surface.md"
+  },
+  {
+    "repo": "dominikmartn/harp",
+    "sha": "bad92b3fee6224941c9de92eaa3968a53e61ae6b",
+    "path": "app/src/workspace/view/vertical_tabs.rs",
+    "sha256": "168935437799ff5a383f08263c624d7db7635cc87f434da323f88cbb95d5a95e",
+    "url": "https://github.com/dominikmartn/harp/blob/bad92b3fee6224941c9de92eaa3968a53e61ae6b/app/src/workspace/view/vertical_tabs.rs"
+  },
+  {
+    "repo": "getpaseo/paseo",
+    "sha": "d972f67c3fea06fbc163608f5ddcc2c443de83ac",
+    "path": "README.md",
+    "bytes": 9777,
+    "sha256": "0748adcf4c93e2e9e6868a6b0caadc9988503bcd2f10f555f69b70f26931cbe9",
+    "url": "https://github.com/getpaseo/paseo/blob/d972f67c3fea06fbc163608f5ddcc2c443de83ac/README.md"
+  },
+  {
+    "repo": "getpaseo/paseo",
+    "sha": "d972f67c3fea06fbc163608f5ddcc2c443de83ac",
+    "path": "docs/connected-hosts.md",
+    "bytes": 6527,
+    "sha256": "029ad02c42023c8a4ccf40b41d21d443402a2a93c13d9e26fd6139e194e39234",
+    "url": "https://github.com/getpaseo/paseo/blob/d972f67c3fea06fbc163608f5ddcc2c443de83ac/docs/connected-hosts.md"
+  },
+  {
+    "repo": "getpaseo/paseo",
+    "sha": "d972f67c3fea06fbc163608f5ddcc2c443de83ac",
+    "path": "skills/paseo/SKILL.md",
+    "bytes": 10366,
+    "sha256": "4081a50ae285a7a4e48eda8f95ad230e660d3cf629e647e44aa0bf94b27279c3",
+    "url": "https://github.com/getpaseo/paseo/blob/d972f67c3fea06fbc163608f5ddcc2c443de83ac/skills/paseo/SKILL.md"
+  },
+  {
+    "repo": "getpaseo/paseo",
+    "sha": "d972f67c3fea06fbc163608f5ddcc2c443de83ac",
+    "path": "packages/server/src/server/connected-hosts/session.ts",
+    "bytes": 8851,
+    "sha256": "1f687621e6bab7c07928cb485aefa0f7de16bf46d6b43ee6dd7bef3450793668",
+    "url": "https://github.com/getpaseo/paseo/blob/d972f67c3fea06fbc163608f5ddcc2c443de83ac/packages/server/src/server/connected-hosts/session.ts"
+  },
+  {
+    "repo": "getpaseo/paseo",
+    "sha": "d972f67c3fea06fbc163608f5ddcc2c443de83ac",
+    "path": "packages/server/src/server/connected-hosts/link.ts",
+    "bytes": 7659,
+    "sha256": "6733afd8e402751b87926435018881a68285f2d4f6e8f41d0d3c72b36219a141",
+    "url": "https://github.com/getpaseo/paseo/blob/d972f67c3fea06fbc163608f5ddcc2c443de83ac/packages/server/src/server/connected-hosts/link.ts"
+  },
+  {
+    "repo": "getpaseo/paseo",
+    "sha": "d972f67c3fea06fbc163608f5ddcc2c443de83ac",
+    "path": "packages/server/src/server/agent/tools/paseo-tools.ts",
+    "bytes": 109760,
+    "sha256": "97f4e193507ba1b865a00d3849479e6d7e860a89eaa9755e9de45f4bbc16a74f",
+    "url": "https://github.com/getpaseo/paseo/blob/d972f67c3fea06fbc163608f5ddcc2c443de83ac/packages/server/src/server/agent/tools/paseo-tools.ts"
+  },
+  {
+    "repo": "getpaseo/paseo",
+    "sha": "d972f67c3fea06fbc163608f5ddcc2c443de83ac",
+    "path": "packages/server/src/server/agent/host-operations/index.ts",
+    "bytes": 16031,
+    "sha256": "f81087cb71fc0120e1a6084eb1a5e96adc551bf07e45c02d5b7ccb16c803a476",
+    "url": "https://github.com/getpaseo/paseo/blob/d972f67c3fea06fbc163608f5ddcc2c443de83ac/packages/server/src/server/agent/host-operations/index.ts"
+  },
+  {
+    "repo": "omnigent-ai/omnigent",
+    "sha": "777c4ae02d103fce5a1bc8e48c7390ff27414fe2",
+    "path": "README.md",
+    "bytes": 29333,
+    "sha256": "154b2d19b85d25b09f71bd81dd7f68f708a2e4dd5bae1a19c8ee06c48500bc81",
+    "url": "https://github.com/omnigent-ai/omnigent/blob/777c4ae02d103fce5a1bc8e48c7390ff27414fe2/README.md"
+  },
+  {
+    "repo": "omnigent-ai/omnigent",
+    "sha": "777c4ae02d103fce5a1bc8e48c7390ff27414fe2",
+    "path": "omnigent/runner/subagent_recovery.py",
+    "bytes": 10966,
+    "sha256": "4511c0898053083bbc3b2f03c36c1750188580e992d021ea32ac15d4985b2af7",
+    "url": "https://github.com/omnigent-ai/omnigent/blob/777c4ae02d103fce5a1bc8e48c7390ff27414fe2/omnigent/runner/subagent_recovery.py"
+  },
+  {
+    "repo": "omnigent-ai/omnigent",
+    "sha": "777c4ae02d103fce5a1bc8e48c7390ff27414fe2",
+    "path": "omnigent/runner/subagent_work.py",
+    "bytes": 49782,
+    "sha256": "80e26684c5f2d0aa8f3c66944cc4e3e610f8e6a06dcdbad8517cdbb286692cbd",
+    "url": "https://github.com/omnigent-ai/omnigent/blob/777c4ae02d103fce5a1bc8e48c7390ff27414fe2/omnigent/runner/subagent_work.py"
+  },
+  {
+    "repo": "omnigent-ai/omnigent",
+    "sha": "777c4ae02d103fce5a1bc8e48c7390ff27414fe2",
+    "path": "omnigent/server/child_session_recovery.py",
+    "bytes": 14182,
+    "sha256": "742a65ee72bfc18efc531e4320bdb8431279d53c8014b3f695b09741082cc2c3",
+    "url": "https://github.com/omnigent-ai/omnigent/blob/777c4ae02d103fce5a1bc8e48c7390ff27414fe2/omnigent/server/child_session_recovery.py"
+  },
+  {
+    "repo": "omnigent-ai/omnigent",
+    "sha": "777c4ae02d103fce5a1bc8e48c7390ff27414fe2",
+    "path": "omnigent/server/app.py",
+    "bytes": 231798,
+    "sha256": "b2ff7a28a10b0db22405f6617d58f82575c944142aeea4a1f53706f09d5c23c3",
+    "url": "https://github.com/omnigent-ai/omnigent/blob/777c4ae02d103fce5a1bc8e48c7390ff27414fe2/omnigent/server/app.py"
+  },
+  {
+    "repo": "omnigent-ai/omnigent",
+    "sha": "777c4ae02d103fce5a1bc8e48c7390ff27414fe2",
+    "path": "omnigent/entities/scheduled_task.py",
+    "bytes": 6280,
+    "sha256": "b2e98890c381907a26346e05ac1c0242777a21a999c52bf7f626ad5697944637",
+    "url": "https://github.com/omnigent-ai/omnigent/blob/777c4ae02d103fce5a1bc8e48c7390ff27414fe2/omnigent/entities/scheduled_task.py"
+  },
+  {
+    "repo": "omnigent-ai/omnigent",
+    "sha": "777c4ae02d103fce5a1bc8e48c7390ff27414fe2",
+    "path": "omnigent/server/scheduled/config.py",
+    "bytes": 1095,
+    "sha256": "f754202ead4f7400ecf6088169921954e86be356640752ff512a10ecec6fdbe6",
+    "url": "https://github.com/omnigent-ai/omnigent/blob/777c4ae02d103fce5a1bc8e48c7390ff27414fe2/omnigent/server/scheduled/config.py"
+  },
+  {
+    "repo": "omnigent-ai/omnigent",
+    "sha": "777c4ae02d103fce5a1bc8e48c7390ff27414fe2",
+    "path": "omnigent/server/scheduled/fire.py",
+    "bytes": 57061,
+    "sha256": "a8649e9179e470d3127b8af121f74b3182589eb879c149ee45ab6b0098304e6b",
+    "url": "https://github.com/omnigent-ai/omnigent/blob/777c4ae02d103fce5a1bc8e48c7390ff27414fe2/omnigent/server/scheduled/fire.py"
+  },
+  {
+    "repo": "omnigent-ai/omnigent",
+    "sha": "777c4ae02d103fce5a1bc8e48c7390ff27414fe2",
+    "path": "omnigent/server/scheduled/run_reconciler.py",
+    "bytes": 5370,
+    "sha256": "8cc868c72fdc30bbcd5f1186d0c935b1e64acc4e93f2b38ef3b07772a051bb19",
+    "url": "https://github.com/omnigent-ai/omnigent/blob/777c4ae02d103fce5a1bc8e48c7390ff27414fe2/omnigent/server/scheduled/run_reconciler.py"
+  },
+  {
+    "repo": "omnigent-ai/omnigent",
+    "sha": "777c4ae02d103fce5a1bc8e48c7390ff27414fe2",
+    "path": "omnigent/server/scheduled/README.md",
+    "bytes": 3559,
+    "sha256": "6f4044e208136c0599b251dbdfae4b3cca2d7cc3fa5f664134a0ba75641d091d",
+    "url": "https://github.com/omnigent-ai/omnigent/blob/777c4ae02d103fce5a1bc8e48c7390ff27414fe2/omnigent/server/scheduled/README.md"
+  },
+  {
+    "repo": "omnigent-ai/omnigent",
+    "sha": "777c4ae02d103fce5a1bc8e48c7390ff27414fe2",
+    "path": "omnigent/server/scheduled/scheduler.py",
+    "bytes": 14215,
+    "sha256": "4aeed9b2b5f84f1d48caf68d2a0bf3e17e9ce74bb4d4d8a2595433fdf7ea23d7",
+    "url": "https://github.com/omnigent-ai/omnigent/blob/777c4ae02d103fce5a1bc8e48c7390ff27414fe2/omnigent/server/scheduled/scheduler.py"
+  },
+  {
+    "repo": "omnigent-ai/omnigent",
+    "sha": "777c4ae02d103fce5a1bc8e48c7390ff27414fe2",
+    "path": "omnigent/server/scheduled/dispatch_scheduler.py",
+    "bytes": 16281,
+    "sha256": "844cc634dd49cb1b096ae1b9358b4271c9eae9870c3d2e40b1f14cb53453bb70",
+    "url": "https://github.com/omnigent-ai/omnigent/blob/777c4ae02d103fce5a1bc8e48c7390ff27414fe2/omnigent/server/scheduled/dispatch_scheduler.py"
+  },
+  {
+    "repo": "omnigent-ai/omnigent",
+    "sha": "777c4ae02d103fce5a1bc8e48c7390ff27414fe2",
+    "path": "omnigent/stores/scheduled_task_store/dispatch.py",
+    "bytes": 3834,
+    "sha256": "e9c6e38a5efb7d7e5101a39b071e1c3e626af8400b1520dc8793cd3110bee03a",
+    "url": "https://github.com/omnigent-ai/omnigent/blob/777c4ae02d103fce5a1bc8e48c7390ff27414fe2/omnigent/stores/scheduled_task_store/dispatch.py"
+  },
+  {
+    "repo": "omnigent-ai/omnigent",
+    "sha": "777c4ae02d103fce5a1bc8e48c7390ff27414fe2",
+    "path": "omnigent/stores/scheduled_task_store/sqlalchemy_store.py",
+    "bytes": 47047,
+    "sha256": "8c446a6f95156302c2f4d54e91556e29663a375fa96e5480d6dd313cf3d10e30",
+    "url": "https://github.com/omnigent-ai/omnigent/blob/777c4ae02d103fce5a1bc8e48c7390ff27414fe2/omnigent/stores/scheduled_task_store/sqlalchemy_store.py"
+  },
+  {
+    "repo": "omnigent-ai/omnigent",
+    "sha": "777c4ae02d103fce5a1bc8e48c7390ff27414fe2",
+    "path": "omnigent/harnesses/codex_native/side_chat.py",
+    "bytes": 18872,
+    "sha256": "034d2ddb21c22cbd6e799e1d661ede51928efbf99516985034bcf43f426b3879",
+    "url": "https://github.com/omnigent-ai/omnigent/blob/777c4ae02d103fce5a1bc8e48c7390ff27414fe2/omnigent/harnesses/codex_native/side_chat.py"
+  },
+  {
+    "repo": "stablyai/orca",
+    "sha": "e710e8983218fede2f67a6aca2239c73c783849d",
+    "path": "README.md",
+    "bytes": 17474,
+    "sha256": "859864c42d8e59b5fd20c52e1996ec5d81a1f875509e9297373629c8c85691c4",
+    "url": "https://github.com/stablyai/orca/blob/e710e8983218fede2f67a6aca2239c73c783849d/README.md"
+  },
+  {
+    "repo": "stablyai/orca",
+    "sha": "e710e8983218fede2f67a6aca2239c73c783849d",
+    "path": "skill-guides/orchestration.md",
+    "bytes": 13298,
+    "sha256": "f0009a1bbe18ff6a8efd6a64c75a8fb047ebb6f01788fcf9b9ecede6378d9f89",
+    "url": "https://github.com/stablyai/orca/blob/e710e8983218fede2f67a6aca2239c73c783849d/skill-guides/orchestration.md"
+  },
+  {
+    "repo": "stablyai/orca",
+    "sha": "e710e8983218fede2f67a6aca2239c73c783849d",
+    "path": "src/shared/execution-host.ts",
+    "bytes": 13667,
+    "sha256": "3afba9899368690c9429583a531574510de988107e3f82635bcb7fdc58369d5e",
+    "url": "https://github.com/stablyai/orca/blob/e710e8983218fede2f67a6aca2239c73c783849d/src/shared/execution-host.ts"
+  },
+  {
+    "repo": "stablyai/orca",
+    "sha": "e710e8983218fede2f67a6aca2239c73c783849d",
+    "path": "src/main/repo-execution-host.ts",
+    "bytes": 1434,
+    "sha256": "4494c386f8ec77faa27a56878775fe7b91320f60b91f567b8405edf67fe3e802",
+    "url": "https://github.com/stablyai/orca/blob/e710e8983218fede2f67a6aca2239c73c783849d/src/main/repo-execution-host.ts"
+  },
+  {
+    "repo": "stablyai/orca",
+    "sha": "e710e8983218fede2f67a6aca2239c73c783849d",
+    "path": "src/main/runtime/orchestration/chat-assignee.ts",
+    "bytes": 4443,
+    "sha256": "da776b5e80c42ee569e62a1aa6057be2299704b68fffe32f8dc3a006872bce3f",
+    "url": "https://github.com/stablyai/orca/blob/e710e8983218fede2f67a6aca2239c73c783849d/src/main/runtime/orchestration/chat-assignee.ts"
+  },
+  {
+    "repo": "stablyai/orca",
+    "sha": "e710e8983218fede2f67a6aca2239c73c783849d",
+    "path": "src/main/runtime/orchestration/structured-mailbox-pointer-delivery.ts",
+    "bytes": 14912,
+    "sha256": "59f2e38ccb836a8067442184d89a1c728faf07405e83e0c8bb4757db29f5a641",
+    "url": "https://github.com/stablyai/orca/blob/e710e8983218fede2f67a6aca2239c73c783849d/src/main/runtime/orchestration/structured-mailbox-pointer-delivery.ts"
+  },
+  {
+    "repo": "stablyai/orca",
+    "sha": "e710e8983218fede2f67a6aca2239c73c783849d",
+    "path": "src/main/runtime/rpc/methods/orchestration/worker/worker-start-validation.ts",
+    "bytes": 5959,
+    "sha256": "a1d47a8c5edcb6c4976c896dea107a3a61da35a688213e59f0ddf9402311a2ea",
+    "url": "https://github.com/stablyai/orca/blob/e710e8983218fede2f67a6aca2239c73c783849d/src/main/runtime/rpc/methods/orchestration/worker/worker-start-validation.ts"
+  },
+  {
+    "repo": "stablyai/orca",
+    "sha": "e710e8983218fede2f67a6aca2239c73c783849d",
+    "path": "src/main/runtime/rpc/methods/orchestration/worker/worker-start-budgets.ts",
+    "bytes": 1161,
+    "sha256": "12c2790f8919129fb714e6209c652cbebc0163543d497e6125b33ce602fded49",
+    "url": "https://github.com/stablyai/orca/blob/e710e8983218fede2f67a6aca2239c73c783849d/src/main/runtime/rpc/methods/orchestration/worker/worker-start-budgets.ts"
+  },
+  {
+    "repo": "stablyai/orca",
+    "sha": "e710e8983218fede2f67a6aca2239c73c783849d",
+    "path": "src/main/runtime/orchestration/db/messages/structured-pointer-operation-store.ts",
+    "bytes": 2066,
+    "sha256": "aac86685c53b382878e30cfd3a276960890d3fef8b251a1910b259d4cdbb9548",
+    "url": "https://github.com/stablyai/orca/blob/e710e8983218fede2f67a6aca2239c73c783849d/src/main/runtime/orchestration/db/messages/structured-pointer-operation-store.ts"
+  },
+  {
+    "repo": "stablyai/orca",
+    "sha": "e710e8983218fede2f67a6aca2239c73c783849d",
+    "path": "skill-guides/orchestration/references/worker-contract.md",
+    "bytes": 3436,
+    "sha256": "8cad6c7540fa5fa6dbf264077492855710eff71c06b7f63c84854c7e943baa91",
+    "url": "https://github.com/stablyai/orca/blob/e710e8983218fede2f67a6aca2239c73c783849d/skill-guides/orchestration/references/worker-contract.md"
+  },
+  {
+    "repo": "stablyai/orca",
+    "sha": "e710e8983218fede2f67a6aca2239c73c783849d",
+    "path": "skill-guides/orchestration/references/coordinator-loop.md",
+    "bytes": 2975,
+    "sha256": "4eb2229faf6179b4a4578840a0f461ce36923c2094f46ec48db7879f27259742",
+    "url": "https://github.com/stablyai/orca/blob/e710e8983218fede2f67a6aca2239c73c783849d/skill-guides/orchestration/references/coordinator-loop.md"
+  },
+  {
+    "repo": "get-bb/bb",
+    "sha": "ccd6e1e60036051908def17232a8d3b71c777d8e",
+    "path": "README.md",
+    "bytes": 11338,
+    "sha256": "877e007a45c9af60416dabb0920d1d6513465b63e85c93e23284a8395da90084",
+    "url": "https://github.com/get-bb/bb/blob/ccd6e1e60036051908def17232a8d3b71c777d8e/README.md"
+  },
+  {
+    "repo": "get-bb/bb",
+    "sha": "ccd6e1e60036051908def17232a8d3b71c777d8e",
+    "path": "apps/server/src/services/threads/thread-default-policy.ts",
+    "bytes": 15521,
+    "sha256": "f2b38004da36bc85771017214d879db3b91be3643204c9acef5b5a58ad04b123",
+    "url": "https://github.com/get-bb/bb/blob/ccd6e1e60036051908def17232a8d3b71c777d8e/apps/server/src/services/threads/thread-default-policy.ts"
+  },
+  {
+    "repo": "get-bb/bb",
+    "sha": "ccd6e1e60036051908def17232a8d3b71c777d8e",
+    "path": "apps/server/src/services/threads/thread-create.ts",
+    "bytes": 28063,
+    "sha256": "1a37852a387a2ac8369a029ce548fdec085c52e717e15692350716754f222fcb",
+    "url": "https://github.com/get-bb/bb/blob/ccd6e1e60036051908def17232a8d3b71c777d8e/apps/server/src/services/threads/thread-create.ts"
+  },
+  {
+    "repo": "get-bb/bb",
+    "sha": "ccd6e1e60036051908def17232a8d3b71c777d8e",
+    "path": "apps/server/src/services/threads/child-thread-notifications.ts",
+    "bytes": 15984,
+    "sha256": "92ee2a25a4c32b654b1b20a22a3a0570184b8163f8afd45b6eedb987d18334a5",
+    "url": "https://github.com/get-bb/bb/blob/ccd6e1e60036051908def17232a8d3b71c777d8e/apps/server/src/services/threads/child-thread-notifications.ts"
+  },
+  {
+    "repo": "get-bb/bb",
+    "sha": "ccd6e1e60036051908def17232a8d3b71c777d8e",
+    "path": "apps/app/src/lib/thread-creation-placement.ts",
+    "bytes": 835,
+    "sha256": "090b16ab8fd36ad004327f6147574699d9e073259ba9c669464db654f52bb779",
+    "url": "https://github.com/get-bb/bb/blob/ccd6e1e60036051908def17232a8d3b71c777d8e/apps/app/src/lib/thread-creation-placement.ts"
+  },
+  {
+    "repo": "get-bb/bb",
+    "sha": "ccd6e1e60036051908def17232a8d3b71c777d8e",
+    "path": "packages/domain/src/thread-parent-notifications.ts",
+    "bytes": 303,
+    "sha256": "da904944a96a5d5790c4d2ac2640f8daf072e9dbf1005b05844d76949ee7fb5b",
+    "url": "https://github.com/get-bb/bb/blob/ccd6e1e60036051908def17232a8d3b71c777d8e/packages/domain/src/thread-parent-notifications.ts"
+  },
+  {
+    "repo": "get-bb/bb",
+    "sha": "ccd6e1e60036051908def17232a8d3b71c777d8e",
+    "path": "plugins/automations/src/run.ts",
+    "bytes": 13003,
+    "sha256": "064a49ede1002e73e947e2e86fc8ef530b18d8de3c276cd8978c0275a0892995",
+    "url": "https://github.com/get-bb/bb/blob/ccd6e1e60036051908def17232a8d3b71c777d8e/plugins/automations/src/run.ts"
+  },
+  {
+    "path": "README.md",
+    "sha": "299fd573b1d6520c323a87c78d30be74e87e53e1",
+    "url": "https://raw.githubusercontent.com/Emanuele-web04/synara/299fd573b1d6520c323a87c78d30be74e87e53e1/README.md",
+    "bytes": 8598,
+    "sha256": "0245539141abe5690d199930934e3585c4432fad9e279876f5758855c359c27b"
+  },
+  {
+    "path": "docs/hubs.md",
+    "sha": "299fd573b1d6520c323a87c78d30be74e87e53e1",
+    "url": "https://raw.githubusercontent.com/Emanuele-web04/synara/299fd573b1d6520c323a87c78d30be74e87e53e1/docs/hubs.md",
+    "bytes": 25711,
+    "sha256": "a486958000b29bb0c76eb4d316914edcd5f126ec45e9e98354b54305c33434aa"
+  },
+  {
+    "path": "docs/groups.md",
+    "sha": "299fd573b1d6520c323a87c78d30be74e87e53e1",
+    "url": "https://raw.githubusercontent.com/Emanuele-web04/synara/299fd573b1d6520c323a87c78d30be74e87e53e1/docs/groups.md",
+    "bytes": 132,
+    "sha256": "2df79eca6bf4a221296ec8cd8c1e8a45ef37412ca7a14fd52b78a1fb1a49ddd9"
+  },
+  {
+    "path": "apps/server/src/projectAgent/Layers/ProjectAgentService.ts",
+    "sha": "299fd573b1d6520c323a87c78d30be74e87e53e1",
+    "url": "https://raw.githubusercontent.com/Emanuele-web04/synara/299fd573b1d6520c323a87c78d30be74e87e53e1/apps/server/src/projectAgent/Layers/ProjectAgentService.ts",
+    "bytes": 308027,
+    "sha256": "596e69b1c534fa5715f87e98a4c124d64033b5f42c3d0ac2e6fb249278f87066"
+  },
+  {
+    "path": "apps/server/src/projectAgent/projectBotPlaybook.ts",
+    "sha": "299fd573b1d6520c323a87c78d30be74e87e53e1",
+    "url": "https://raw.githubusercontent.com/Emanuele-web04/synara/299fd573b1d6520c323a87c78d30be74e87e53e1/apps/server/src/projectAgent/projectBotPlaybook.ts",
+    "bytes": 8398,
+    "sha256": "b04e0111dd10e8a954cd0b28328c0d8624dc0ead617d26a4e5f11cb5194d8e20"
+  },
+  {
+    "path": "apps/server/src/projectAgent/hubWorkService.ts",
+    "sha": "299fd573b1d6520c323a87c78d30be74e87e53e1",
+    "url": "https://raw.githubusercontent.com/Emanuele-web04/synara/299fd573b1d6520c323a87c78d30be74e87e53e1/apps/server/src/projectAgent/hubWorkService.ts",
+    "bytes": 22742,
+    "sha256": "43096cdbc3f41af0a77af44850a54ec7d6ed3f7aecbecf0052edbfe2d4eb040f"
+  },
+  {
+    "path": "apps/server/src/projectAgent/hubWorkLifecycle.ts",
+    "sha": "299fd573b1d6520c323a87c78d30be74e87e53e1",
+    "url": "https://raw.githubusercontent.com/Emanuele-web04/synara/299fd573b1d6520c323a87c78d30be74e87e53e1/apps/server/src/projectAgent/hubWorkLifecycle.ts",
+    "bytes": 3463,
+    "sha256": "bd8d0eca4d8c8f520a939f3b8478b54e9249c72d62900fce75e6b0200374ad00"
+  },
+  {
+    "path": "apps/server/src/agentGateway/hubWorkGateway.ts",
+    "sha": "299fd573b1d6520c323a87c78d30be74e87e53e1",
+    "url": "https://raw.githubusercontent.com/Emanuele-web04/synara/299fd573b1d6520c323a87c78d30be74e87e53e1/apps/server/src/agentGateway/hubWorkGateway.ts",
+    "bytes": 16964,
+    "sha256": "b8d8e6f784f46ca5908ce1bae577082bb26e3b97a40b285673f47f2c3caec8be"
+  },
+  {
+    "path": "apps/server/src/agentGateway/projectAgentTools.ts",
+    "sha": "299fd573b1d6520c323a87c78d30be74e87e53e1",
+    "url": "https://raw.githubusercontent.com/Emanuele-web04/synara/299fd573b1d6520c323a87c78d30be74e87e53e1/apps/server/src/agentGateway/projectAgentTools.ts",
+    "bytes": 16768,
+    "sha256": "7e2701b2037db678f27653e13f2a5561b2f888811c4dfa3784fefee948465547"
+  },
+  {
+    "path": "apps/server/src/orchestration/Layers/HubOutputReactor.ts",
+    "sha": "299fd573b1d6520c323a87c78d30be74e87e53e1",
+    "url": "https://raw.githubusercontent.com/Emanuele-web04/synara/299fd573b1d6520c323a87c78d30be74e87e53e1/apps/server/src/orchestration/Layers/HubOutputReactor.ts",
+    "bytes": 15495,
+    "sha256": "7707f2961c2364062560d1402ffff72849c013b4d287ed9591c14b5cc108c3b6"
+  },
+  {
+    "path": "apps/server/src/projectAgent/Layers/ProjectAgentReactor.ts",
+    "sha": "299fd573b1d6520c323a87c78d30be74e87e53e1",
+    "url": "https://raw.githubusercontent.com/Emanuele-web04/synara/299fd573b1d6520c323a87c78d30be74e87e53e1/apps/server/src/projectAgent/Layers/ProjectAgentReactor.ts",
+    "bytes": 6127,
+    "sha256": "904068309f55bedb0b183d56679c3e81aaab3f21459128ce78e44d1b0b364909"
+  },
+  {
+    "path": "apps/server/src/githubInbox/Layers/GitHubInboxService.ts",
+    "sha": "299fd573b1d6520c323a87c78d30be74e87e53e1",
+    "url": "https://raw.githubusercontent.com/Emanuele-web04/synara/299fd573b1d6520c323a87c78d30be74e87e53e1/apps/server/src/githubInbox/Layers/GitHubInboxService.ts",
+    "bytes": 19012,
+    "sha256": "9d3a5f8113a6972eebd0418f0bf45271fbd2114e4d0d0937687e3ffa4c5a6fe3"
+  },
+  {
+    "path": "apps/web/src/components/chat/group/HubPendingApprovals.tsx",
+    "sha": "299fd573b1d6520c323a87c78d30be74e87e53e1",
+    "url": "https://raw.githubusercontent.com/Emanuele-web04/synara/299fd573b1d6520c323a87c78d30be74e87e53e1/apps/web/src/components/chat/group/HubPendingApprovals.tsx",
+    "bytes": 4938,
+    "sha256": "a327decdccdf9992aa266fb4cb8a64a9d04a1a3444d3ad0a88d7cf44d8374030"
+  },
+  {
+    "path": "apps/web/src/components/chat/group/HubWorkItemCard.tsx",
+    "sha": "299fd573b1d6520c323a87c78d30be74e87e53e1",
+    "url": "https://raw.githubusercontent.com/Emanuele-web04/synara/299fd573b1d6520c323a87c78d30be74e87e53e1/apps/web/src/components/chat/group/HubWorkItemCard.tsx",
+    "bytes": 3279,
+    "sha256": "2c35c308a046d6891e248170222c9ed1cfe48e2a6857645a254774ecc68d0829"
+  },
+  {
+    "path": "apps/web/src/components/githubInbox/GitHubInboxAgentActions.browser.tsx",
+    "sha": "299fd573b1d6520c323a87c78d30be74e87e53e1",
+    "url": "https://raw.githubusercontent.com/Emanuele-web04/synara/299fd573b1d6520c323a87c78d30be74e87e53e1/apps/web/src/components/githubInbox/GitHubInboxAgentActions.browser.tsx",
+    "bytes": 32111,
+    "sha256": "6728de81ac1a01d8c21ee0c5cd9bd82ebfde3c70588877dde5853644cdce310f"
+  },
+  {
+    "path": "apps/web/src/components/pullRequest/GitHubItemAgentActions.tsx",
+    "sha": "299fd573b1d6520c323a87c78d30be74e87e53e1",
+    "url": "https://raw.githubusercontent.com/Emanuele-web04/synara/299fd573b1d6520c323a87c78d30be74e87e53e1/apps/web/src/components/pullRequest/GitHubItemAgentActions.tsx",
+    "bytes": 3832,
+    "sha256": "b4dc63ecbf5f9978f1fc2489dbd5d47f2bddcb66e643f28ec5a215880549adb2"
+  },
+  {
+    "path": "apps/web/src/hooks/useStartGitHubItemThread.ts",
+    "sha": "299fd573b1d6520c323a87c78d30be74e87e53e1",
+    "url": "https://raw.githubusercontent.com/Emanuele-web04/synara/299fd573b1d6520c323a87c78d30be74e87e53e1/apps/web/src/hooks/useStartGitHubItemThread.ts",
+    "bytes": 5221,
+    "sha256": "6c8a35fd9ad35b03eee9d847de0f869c73bdb4ba593aa021b71f57f70d264d70"
+  },
+  {
+    "path": "apps/web/src/components/chat/project/GroupOverview.tsx",
+    "sha": "299fd573b1d6520c323a87c78d30be74e87e53e1",
+    "url": "https://raw.githubusercontent.com/Emanuele-web04/synara/299fd573b1d6520c323a87c78d30be74e87e53e1/apps/web/src/components/chat/project/GroupOverview.tsx",
+    "bytes": 14272,
+    "sha256": "b1d6f32611383fa762190c4c69352c2c54dc2b11fdab68b140bdc3006f779851"
+  },
+  {
+    "path": "apps/web/src/lib/groupWorkerRouting.ts",
+    "sha": "299fd573b1d6520c323a87c78d30be74e87e53e1",
+    "url": "https://raw.githubusercontent.com/Emanuele-web04/synara/299fd573b1d6520c323a87c78d30be74e87e53e1/apps/web/src/lib/groupWorkerRouting.ts",
+    "bytes": 4665,
+    "sha256": "03e1be2fcaf31376ebfa21a4b92a1b3c1626b8fedd9d083672bdeeb12e3b5fc0"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerSubagentStrip.logic.ts",
+    "sha": "299fd573b1d6520c323a87c78d30be74e87e53e1",
+    "url": "https://raw.githubusercontent.com/Emanuele-web04/synara/299fd573b1d6520c323a87c78d30be74e87e53e1/apps/web/src/components/chat/ComposerSubagentStrip.logic.ts",
+    "bytes": 9625,
+    "sha256": "3128c0aea5f45b6b41a6f217e38be0d8169a10f5ea9f149fa2b87dd455e56bec"
+  },
+  {
+    "path": "packages/contracts/src/hubWork.ts",
+    "sha": "299fd573b1d6520c323a87c78d30be74e87e53e1",
+    "url": "https://raw.githubusercontent.com/Emanuele-web04/synara/299fd573b1d6520c323a87c78d30be74e87e53e1/packages/contracts/src/hubWork.ts",
+    "bytes": 3628,
+    "sha256": "54df0ff906eab8d09a8ed2e88f3c8bbd20670047bca798286d66c5691a7ef1d3"
+  },
+  {
+    "path": "packages/contracts/src/projectAgent.ts",
+    "sha": "299fd573b1d6520c323a87c78d30be74e87e53e1",
+    "url": "https://raw.githubusercontent.com/Emanuele-web04/synara/299fd573b1d6520c323a87c78d30be74e87e53e1/packages/contracts/src/projectAgent.ts",
+    "bytes": 40601,
+    "sha256": "df1ff30d7da2e83aa0dec90c724839224f3159572d48cad44f5e0315d6f8aa1f"
+  },
+  {
+    "path": "apps/web/src/components/chat/respondToThreadApproval.ts",
+    "sha": "299fd573b1d6520c323a87c78d30be74e87e53e1",
+    "url": "https://raw.githubusercontent.com/Emanuele-web04/synara/299fd573b1d6520c323a87c78d30be74e87e53e1/apps/web/src/components/chat/respondToThreadApproval.ts",
+    "bytes": 3378,
+    "sha256": "422343d1608b0486201d1a193108336ad28ec345e54e4056aa039325efc8d7ff"
+  },
+  {
+    "path": ".github/workflows/ci-nightly.yml",
+    "sha": "299fd573b1d6520c323a87c78d30be74e87e53e1",
+    "url": "https://raw.githubusercontent.com/Emanuele-web04/synara/299fd573b1d6520c323a87c78d30be74e87e53e1/.github/workflows/ci-nightly.yml",
+    "bytes": 1936,
+    "sha256": "7255d7af072d4ba1c4bb9d52bc3b3066cea3c3823fbdfffab318741512151613"
+  },
+  {
+    "path": ".github/workflows/release.yml",
+    "sha": "299fd573b1d6520c323a87c78d30be74e87e53e1",
+    "url": "https://raw.githubusercontent.com/Emanuele-web04/synara/299fd573b1d6520c323a87c78d30be74e87e53e1/.github/workflows/release.yml",
+    "bytes": 33544,
+    "sha256": "047c59f3fb49a3f5a349fbcbd3f3ba02088bad37a04a95f6afd4d4a8ed7b0206"
+  },
+  {
+    "path": "apps/server/src/provider/Layers/OpenCodeAdapter.ts",
+    "sha": "299fd573b1d6520c323a87c78d30be74e87e53e1",
+    "url": "https://raw.githubusercontent.com/Emanuele-web04/synara/299fd573b1d6520c323a87c78d30be74e87e53e1/apps/server/src/provider/Layers/OpenCodeAdapter.ts",
+    "bytes": 201324,
+    "sha256": "e3f91f20740566ae751e33be1d74442008b145e376b338833dba07512fe538b1"
+  },
+  {
+    "path": "apps/server/src/orchestration/Layers/ProviderRuntimeIngestion.ts",
+    "sha": "299fd573b1d6520c323a87c78d30be74e87e53e1",
+    "url": "https://raw.githubusercontent.com/Emanuele-web04/synara/299fd573b1d6520c323a87c78d30be74e87e53e1/apps/server/src/orchestration/Layers/ProviderRuntimeIngestion.ts",
+    "bytes": 185096,
+    "sha256": "34432e40af6ff5d689af2721cba9279867252e0ce3ff2a997af1d7394dd86b66"
+  },
+  {
+    "path": "docs/remote-connections-v2.md",
+    "sha": "39a745feaccf942f43aae154373fe375a20a0e4d",
+    "url": "https://raw.githubusercontent.com/Emanuele-web04/synara/39a745feaccf942f43aae154373fe375a20a0e4d/docs/remote-connections-v2.md",
+    "bytes": 25057,
+    "sha256": "cde4285c8f00dfa055b94940282bd3c5899e065f6456c6edf89ef72d4aa414e6"
+  },
+  {
+    "path": "docs/adr/0014-remote-clients-are-native-shells.md",
+    "sha": "39a745feaccf942f43aae154373fe375a20a0e4d",
+    "url": "https://raw.githubusercontent.com/Emanuele-web04/synara/39a745feaccf942f43aae154373fe375a20a0e4d/docs/adr/0014-remote-clients-are-native-shells.md",
+    "bytes": 650,
+    "sha256": "abd17a2b5dce5e2ec5707e4c6a0d87149969adeecc6c350478758e209bcddbf8"
+  },
+  {
+    "path": "docs/adr/0016-managed-cloudflare-remote.md",
+    "sha": "39a745feaccf942f43aae154373fe375a20a0e4d",
+    "url": "https://raw.githubusercontent.com/Emanuele-web04/synara/39a745feaccf942f43aae154373fe375a20a0e4d/docs/adr/0016-managed-cloudflare-remote.md",
+    "bytes": 3476,
+    "sha256": "f0847f41c4f8fc780a32a6e9f90247ca3d631ffb0e64d7f6264f4fee9630b446"
+  },
+  {
+    "path": "packages/contracts/src/remoteAgentGateway.ts",
+    "sha": "39a745feaccf942f43aae154373fe375a20a0e4d",
+    "url": "https://raw.githubusercontent.com/Emanuele-web04/synara/39a745feaccf942f43aae154373fe375a20a0e4d/packages/contracts/src/remoteAgentGateway.ts",
+    "bytes": 1659,
+    "sha256": "4d425323c5aa3fe0566ea7df0163760170033d0e33ad5cf0be6c8f603df83d97"
+  },
+  {
+    "path": "docs/cloudflare-remote.md",
+    "sha": "39a745feaccf942f43aae154373fe375a20a0e4d",
+    "url": "https://raw.githubusercontent.com/Emanuele-web04/synara/39a745feaccf942f43aae154373fe375a20a0e4d/docs/cloudflare-remote.md",
+    "bytes": 25296,
+    "sha256": "864f0eecefe3d6613354e75ff8484bf43b2cd3a85f0522e1fe3e092db1ce0d79"
+  },
+  {
+    "path": "apps/server/src/agentGateway/remoteTools.ts",
+    "sha": "39a745feaccf942f43aae154373fe375a20a0e4d",
+    "url": "https://raw.githubusercontent.com/Emanuele-web04/synara/39a745feaccf942f43aae154373fe375a20a0e4d/apps/server/src/agentGateway/remoteTools.ts",
+    "bytes": 17087,
+    "sha256": "8d730c786d5269165517b0733106077cc61c4bd13ae4b97ce815410da0efa870"
+  },
+  {
+    "path": "apps/server/src/agentGateway/creationCoordinator.ts",
+    "sha": "39a745feaccf942f43aae154373fe375a20a0e4d",
+    "url": "https://raw.githubusercontent.com/Emanuele-web04/synara/39a745feaccf942f43aae154373fe375a20a0e4d/apps/server/src/agentGateway/creationCoordinator.ts",
+    "bytes": 58559,
+    "sha256": "e983e69d46d55f4d70bbced917c5e9308750623ec6472a6ceeaca205e69b0813"
+  },
+  {
+    "path": "packages/contracts/src/agentSurface/registry.ts",
+    "sha": "4bfd5b3ca0d77a56dc2b868cfbb1bd3f7ea9fd66",
+    "sha256": "0b4491ee059a2c0bd2925ca0dbb7141c9d9148305bf9787f6b9ee0e5912ed893",
+    "url": "https://github.com/goat-si/goat/blob/4bfd5b3ca0d77a56dc2b868cfbb1bd3f7ea9fd66/packages/contracts/src/agentSurface/registry.ts"
+  },
+  {
+    "path": "packages/contracts/src/handoff.ts",
+    "sha": "4bfd5b3ca0d77a56dc2b868cfbb1bd3f7ea9fd66",
+    "sha256": "7e5e24a37f76104a7ce00ce88b50ca6550e891ecd77ed9d69cf2b6445e0e629e",
+    "url": "https://github.com/goat-si/goat/blob/4bfd5b3ca0d77a56dc2b868cfbb1bd3f7ea9fd66/packages/contracts/src/handoff.ts"
+  },
+  {
+    "path": "apps/server/src/mcp/agentSurface.test.ts",
+    "sha": "4bfd5b3ca0d77a56dc2b868cfbb1bd3f7ea9fd66",
+    "sha256": "dcd9cfbf07b7176549b2797f20ad701defc1c71e2a00344a9243347a7de07ec6",
+    "url": "https://github.com/goat-si/goat/blob/4bfd5b3ca0d77a56dc2b868cfbb1bd3f7ea9fd66/apps/server/src/mcp/agentSurface.test.ts"
+  },
+  {
+    "path": "README.md",
+    "sha": "be10a1b79df723d6d7612b5651c8522704dafb2e",
+    "sha256": "b47702596a9f5d69878d6541d444358a7576ae9a462993f941056d0ca80e79dd",
+    "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/README.md"
+  },
+  {
+    "path": "SPEC.md",
+    "sha": "be10a1b79df723d6d7612b5651c8522704dafb2e",
+    "sha256": "c6638056502ecd2e60eb04e1f1a627a4964506fcdf4d39873e78aa5834de85d5",
+    "url": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md"
+  }
+]

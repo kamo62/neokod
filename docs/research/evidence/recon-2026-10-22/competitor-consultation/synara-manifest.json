@@ -1,0 +1,47 @@
+{
+  "captured_utc": "2026-10-22T19:59:50.409708+00:00",
+  "repo": "Emanuele-web04/synara",
+  "default_branch": "main",
+  "head_sha": "299fd573b1d6520c323a87c78d30be74e87e53e1",
+  "head_committed_at": "2026-10-18T12:28:42Z",
+  "previous_2026_10_21_head_sha": "299fd573b1d6520c323a87c78d30be74e87e53e1",
+  "new_merges_since_prior_capture": 0,
+  "merged_census": {
+    "window_inclusive_utc": "2026-10-04..2026-10-22",
+    "query": "repo:Emanuele-web04/synara is:pr is:merged merged:2026-10-04..2026-10-22",
+    "count": 276,
+    "unique": 276,
+    "pages": 3,
+    "incomplete_results": false,
+    "newest_merge": [
+      "2026-10-18T12:28:43Z",
+      1975,
+      "fix(hubs): settle completed workers outside Git workspaces"
+    ]
+  },
+  "release_scan": {
+    "records": 100,
+    "latest_stable": {
+      "tag": "v1.0.7",
+      "published_at": "2026-10-17T19:33:32Z",
+      "resolved_sha": "b8cf9382d36ac1120b3fe16241cfd96189a9a71e"
+    },
+    "latest_prerelease": {
+      "tag": "v1.0.6-remote.26",
+      "published_at": "2026-10-18T13:09:25Z",
+      "resolved_sha": "39a745feaccf942f43aae154373fe375a20a0e4d"
+    }
+  },
+  "selected_prs": [
+    1975, 1971, 1861, 1704, 1741, 1926, 1929, 1833, 1797, 1934, 1866, 1945, 1946, 1947
+  ],
+  "source_records": 34,
+  "limitations": [
+    "Source inspection only; no competitor runtime/builds/provider calls.",
+    "276 is metadata census, not semantic audit of every PR.",
+    "14 selected PR metadata/file lists; relevant production patches traced, not complete correctness audit of all files.",
+    "Latest published prerelease is remote.26, not a nightly label; CI Nightly is quarantine test workflow.",
+    "GitHub metadata/pages are mutable and not atomic; source pins immutable.",
+    "Channel ancestry checks establish merge inclusion, not packaged binary/runtime qualification."
+  ]
+}

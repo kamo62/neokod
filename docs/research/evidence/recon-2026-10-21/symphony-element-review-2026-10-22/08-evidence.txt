@@ -1,0 +1,115 @@
+Browser tab: 326104976, Title: "Symphony plan and decisions · Concept C · Neokod design prototype", URL: "http://127.0.0.1:63035/planning.html".
+The following is a diff from the previous accessibility tree with ~ and + representing changed and added elements, respectively. Removed elements are summarized by ID range.
+Removed element IDs: 133-143, 145-147, 154, 156-161, 163-166, 168-186, 188-197, 199-228, 231, 233-238
+~			18 tab (selectable, settable, boolean) Decisions 1 open, Description: 1 open, ID: tab-decisions, Value: 0
+Decisions
+1
+~			19 tab (selected, settable, boolean) Evidence, Value: 1, ID: tab-evidence
++			133 container Sample Mac (mac), Connected. Sample machine.
++				134 text Sample Mac mac
++			135 text NEO-4821, attempt 3
++		136 container Selected item detail
++			137 link Description: Summary, Value: 127.0.0.1:63035/runs.html?item=NEO-4821&attempt=3#NEO-4821
++			138 link Description: Execution, Value: 127.0.0.1:63035/workflow.html?item=NEO-4821&attempt=3#NEO-4821
++			139 link Description: Plan and decisions, Value: 127.0.0.1:63035/planning.html?item=NEO-4821&attempt=3&tab=decisions#NEO-4821
++			140 link Description: Evidence, Value: 127.0.0.1:63035/planning.html?item=NEO-4821&attempt=3&tab=evidence#NEO-4821
++			141 text Plan r5, saved 13:42
++			142 container Sample Mac (mac), Connected. Sample machine.
++				143 text Sample Mac mac
+~			144 text NEO-4821 attempt 3 Execution approved: r5, attempt 3
++			145 text Plan
++			146 button Goal
++			147 button Current behaviour
+~			148 button Send lifecycle
+~			149 button Work packages
+~			150 button Validation
+~			151 button Out of scope
+~			152 text Decisions
+~			153 button D-3 How should a send with an unknown acknowledgement be handled?
++				154 text D-3 How should a send with an unknown acknowledgement be handled?
+~			155 button D-2 How long does the server keep send receipts?
++				156 text D-2 How long does the server keep send receipts?
++			157 button D-1 Where do queued sends persist?
++				158 text D-1 Where do queued sends persist?
++			159 button D-0 Show a queued-send count in the composer? Unresolved
++				160 text D-0 Show a queued-send count in the composer?
++				161 text Unresolved
+~			162 text Revisions
++			163 text r5 You Current
++			164 button r4 You 13:31
++				165 text r4 You
++				166 text 13:31
+~			167 text r3 You Not in sample r2 R, root run Not in sample r1 R, root run Not in sample
+~		58 container Description: Evidence, ID: workspace
++			168 text Results and checks linked from the plan and decisions, for NEO-4821 attempt 3 on Sample Mac (mac). Only host checks at the current head can pass. Agent reports stay unverified, and cancelled or earlier-head results are never shown as current.
++			169 container ev-E-0
++				170 text E-0
++				171 text Research: server-side outbox
++				172 text R, root run, Attempt 2 · on Sample Mac (mac)
++				173 text Stopped when D-1 was saved. A cancelled result is never shown as current.
++				174 text Cancelled, not current
++				175 text Used by
++				176 button D-1 saved
++				177 button R
++			178 container ev-E-1
++				179 text E-1
++				180 text Research: reconnect gaps after laptop sleep
++				181 text R, root run, Attempt 2 · on Sample Mac (mac)
++				182 text Sample finding: reconnects after sleep can exceed 10 minutes.
++				183 text Pinned result
++				184 text Used by
++				185 button D-2 saved
++				186 button R
+~			187 container ev-E-2
++				188 text E-2
++				189 text Package A result: client outbox
++				190 text C1, managed child, 
++				191 text 3b18e40
++				192 text  · on Sample Mac (mac)
++				193 text Outbox in IndexedDB keyed by message ID. Accepted by the critic.
++				194 text Pinned result
++				195 text Used by
++				196 button Work packages
++				197 button C1
+~			198 container ev-E-3
++				199 text E-3
++				200 text Package B result: server receipts
++				201 text C2, managed child, 
++				202 text 7f3a9c2
++				203 text  · on Sample Mac (mac)
++				204 text C2 is waiting on D-3. Nothing is pinned.
++				205 text No result yet
++				206 text Used by
++				207 button Work packages
++				208 button C2
++			209 container ev-E-4
++				210 text E-4
++				211 text Integration validation
++				212 text Host, 
++				213 text 7f3a9c2
++				214 text  · on Sample Mac (mac)
++				215 text vp test apps/server/src/reconnect: 1 of 12 failed, duplicate after ack loss. Clean tree.
++				216 text Failed
++				217 text Used by
++				218 button D-3 open
++				219 button Validation
++			220 container ev-E-5
++				221 text E-5
++				222 text Tester report: duplicate reproduced
++				223 text N1, observed native subagent of C2, Not reported · on Sample Mac (mac)
++				224 text Tracking lost after 14:21:07. Not a host check.
++				225 text Agent report, unverified
++				226 text Used by
++				227 button D-3 open
++				228 button N1
+~			229 container ev-E-6
+~				230 text E-6
++				231 text Review round 1
+~				232 text C3, managed child, 
++				233 text 3b18e40
++				234 text  · on Sample Mac (mac)
++				235 text At 3b18e40, an earlier head. One blocking finding still open.
++				236 text Changes requested
++				237 text Not referenced by the current plan
++				238 button C3
+The focused UI element is 19 tab (selected, settable, boolean) Evidence, Value: 1, ID: tab-evidence

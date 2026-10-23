@@ -485,30 +485,36 @@ function parseUserInputQuestions(
       if (
         typeof question.id !== "string" ||
         typeof question.header !== "string" ||
-        typeof question.question !== "string" ||
-        !Array.isArray(question.options)
+        typeof question.question !== "string"
       ) {
         return null;
       }
-      const options = question.options
+      // Codex may omit or null `options` for a free-text question. Preserve
+      // those questions with an empty options list; the composer's custom
+      // answer is the supported path. Any other non-array shape is treated as
+      // unsupported rather than letting a malformed prompt through.
+      const rawOptions = question.options;
+      if (rawOptions !== undefined && rawOptions !== null && !Array.isArray(rawOptions)) {
+        return null;
+      }
+      const options = (rawOptions ?? [])
         .map<UserInputQuestion["options"][number] | null>((option) => {
           if (!option || typeof option !== "object") return null;
           const optionRecord = option as Record<string, unknown>;
-          if (
-            typeof optionRecord.label !== "string" ||
-            typeof optionRecord.description !== "string"
-          ) {
+          if (typeof optionRecord.label !== "string" || optionRecord.label.trim().length === 0) {
             return null;
           }
+          const description =
+            typeof optionRecord.description === "string" &&
+            optionRecord.description.trim().length > 0
+              ? optionRecord.description
+              : optionRecord.label;
           return {
             label: optionRecord.label,
-            description: optionRecord.description,
+            description,
           };
         })
         .filter((option): option is UserInputQuestion["options"][number] => option !== null);
-      if (options.length === 0) {
-        return null;
-      }
       return {
         id: question.id,
         header: question.header,

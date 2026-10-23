@@ -1,0 +1,42 @@
+{
+  "result": {
+    "stopReason": "end_turn",
+    "usage": {
+      "inputTokens": 1750,
+      "outputTokens": 1306,
+      "totalTokens": 591475,
+      "thoughtTokens": 993,
+      "cachedReadTokens": 436258,
+      "cachedWriteTokens": 151168
+    },
+    "_meta": {}
+  },
+  "selection": {
+    "agentInfo": {
+      "name": "OpenCode",
+      "version": "2.0.32"
+    },
+    "sessionId": "ses_e981c49edffeVO1mfK1ie4uouw",
+    "requestedModel": "github-copilot/claude-opus-5.5",
+    "effectiveConfig": [
+      {
+        "id": "model",
+        "currentValue": "github-copilot/claude-opus-5.5"
+      },
+      {
+        "id": "effort",
+        "currentValue": "high"
+      },
+      {
+        "id": "mode",
+        "currentValue": "plan"
+      }
+    ]
+  },
+  "source": {
+    "head": "f7cd0b12ef8b60f930f8c8d3bf5ba24be5f3b934",
+    "clean": true,
+    "scope": "source correction review only; no live acceptance",
+    "integrationCommits": ["8ff995c1e", "d107ac92b", "44f5bf4ad", "0da324122"]
+  }
+}

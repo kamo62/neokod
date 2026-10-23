@@ -1,0 +1,205 @@
+Browser tab: 326104976, Title: "Symphony workflow map · Concept B · Neokod design prototype", URL: "http://127.0.0.1:63035/workflow.html".
+1 AXWebArea Symphony workflow map · Concept B · Neokod design prototype, URL: 127.0.0.1:63035/workflow.html
+	2 container
+		3 link Description: Skip to workflow map, Value: 127.0.0.1:63035/workflow.html#map-scroll
+		4 link Description: N Neokod, Value: 127.0.0.1:63035/index.html
+		5 container Location
+			6 text Symphony
+			7 text Workflow map
+		8 container Symphony prototype
+			9 link Description: Work, Value: 127.0.0.1:63035/work.html
+			10 link Description: Runs, Value: 127.0.0.1:63035/runs.html
+			11 link Description: Workflow map, Value: 127.0.0.1:63035/workflow.html
+			12 link Description: Plan and decisions, Value: 127.0.0.1:63035/planning.html
+		13 text Design prototype · Sample data
+		14 button Reset demo, ID: reset-demo
+		15 checkbox Description: Switch to light theme, Value: 1
+		16 pop up button (collapsed) NEO-4821Preserve queued sends across reconnects, ID: run-switch, Secondary Actions: Expand
+			17 container run-switch-label
+				18 text NEO-4821 Preserve queued sends across reconnects
+		19 container run-facts
+			20 text Attempt
+			21 text 3
+			22 text of 4 Machine
+			23 text Sample Mac (mac)
+			24 text Head
+			25 text 7f3a9c2
+			26 text Waiting for your decision
+			27 text 6 stages, 5 agents
+		28 container run-machine
+			29 container Sample Mac (mac), Connected. Sample machine.
+				30 text Sample Mac mac
+			31 text attempt 3
+		32 container Selected item detail
+			33 link Description: Summary, Value: 127.0.0.1:63035/runs.html?item=NEO-4821&attempt=3#NEO-4821
+			34 link Description: Execution, Value: 127.0.0.1:63035/workflow.html?item=NEO-4821&attempt=3#NEO-4821
+			35 link Description: Plan and decisions, Value: 127.0.0.1:63035/planning.html?item=NEO-4821&attempt=3&tab=decisions#NEO-4821
+			36 link Description: Evidence, Value: 127.0.0.1:63035/planning.html?item=NEO-4821&attempt=3&tab=evidence#NEO-4821
+		37 pop up button (collapsed) Needs you 4, ID: attn-btn, Secondary Actions: Expand
+		38 container Map view
+			39 checkbox Fold packages, Value: 0, ID: fold-btn
+			40 button Description: Zoom out, Help: Zoom out (−), ID: zoom-out
+			41 text 80%
+			42 button Description: Zoom in, Help: Zoom in (+), ID: zoom-in
+			43 button Fit, Help: Fit map (F), ID: zoom-fit
+			44 button 100%, Help: Actual size (0), ID: zoom-reset
+		45 container Description: Workflow map, ID: map
+			46 text 1 Intake
+			47 text Done
+			48 text 2 Design
+			49 text Done, 2 rounds
+			50 text 3 Build
+			51 text 2 packages, B waiting
+			52 text 4 Integrate
+			53 text Failed at 7f3a9c2
+			54 text 5 Review
+			55 text Round 1 of 2 sent back
+			56 text 6 PR
+			57 text Merge locked
+			58 text Package A: client outbox
+			59 text Package B: server receipts
+			60 text Sent back in round 1
+			61 text Asked 14:26
+			62 text Repair round 1 of 2
+			63 text After repair
+			64 checkbox Description: Issue imported. GitHub #4821. Done. Intake stage., Value: 0, ID: n-intake
+				65 text Issue imported
+				66 text GitHub #4821
+			67 checkbox Description: Architect. Design v2. Done. Agent R. Design stage., Value: 0, ID: n-arch
+				68 text Architect
+				69 text Design v2
+				70 text R
+			71 checkbox Description: Design critic. Approved, round 2. Done. Agent C3. Design stage., Value: 0, ID: n-critic
+				72 text Design critic
+				73 text Approved, round 2
+				74 text C3
+			75 checkbox Description: Integrate. At 7f3a9c2. Failed. Integrate stage., Value: 0, ID: n-integrate
+				76 text Integrate
+				77 text At 7f3a9c2
+				78 container
+					79 text Unit  passed
+				80 container
+					81 text Integration  failed
+				82 container
+					83 text End to end  not run
+			84 checkbox Description: Review round 1. Sent back. Sent back. Agent C3. Review stage., Value: 0, ID: n-review1
+				85 text Round 1
+				86 text Sent back
+				87 text C3
+			88 checkbox Description: Review round 2. Not started. Not run. Review stage., Value: 0, ID: n-review2
+				89 text Round 2
+				90 text Not started
+			91 checkbox Description: Escalate to you. If round 2 fails. Not run. Review stage., Value: 0, ID: n-escalate
+				92 text Escalate to you
+				93 text If round 2 fails
+			94 checkbox Description: Open PR. Not opened. Not run. PR stage., Value: 0, ID: n-pr
+				95 text Open PR
+				96 text Not opened
+			97 checkbox Description: Human merge. Locked. Locked. PR stage., Value: 0, ID: n-merge
+				98 text Human merge
+				99 text Locked
+			100 checkbox Description: Implementer, package A. Completed 14:07. Done. Agent C1. Build stage., Value: 0, ID: n-implA
+				101 text Implementer
+				102 text Completed 14:07
+				103 text C1
+			104 checkbox Description: Unit tests, package A. At an earlier head. Superseded. Build stage., Value: 0, ID: n-testA
+				105 text Unit tests
+				106 text At an earlier head
+			107 checkbox Description: Critic, package A. Accepted. Done. Agent C3. Build stage., Value: 0, ID: n-criticA
+				108 text Critic
+				109 text Accepted
+				110 text C3
+			111 checkbox Description: Implementer, package B. Waiting for you. Needs you. Agent C2. Build stage., Value: 0, ID: n-implB
+				112 text Implementer
+				113 text Waiting for you
+				114 text C2
+			115 checkbox Description: Tester subagent. Last seen 14:21. Tracking lost. Agent N1, observed native. Build stage., Value: 0, ID: n-testB
+				116 text Tester
+				117 text Last seen 14:21
+				118 text N1
+			119 checkbox Description: Critic, package B. Not run. Not run. Build stage., Value: 0, ID: n-criticB
+				120 text Critic
+				121 text Not run
+			122 checkbox Description: Decision D-3. Unknown ack. Needs you. Build stage., Value: 1, ID: n-decision
+				123 text Decision D-3
+				124 text Unknown ack
+		125 container Description: Step inspector, ID: inspector
+			126 text Decision
+			127 text Build stage · Sample Mac (mac)
+			128 heading Decision D-3, Value: 2, ID: i-title
+				129 text Decision D-3
+			130 text Needs you
+			131 container
+				132 text How should a send with an unknown acknowledgement be handled?
+				133 text The socket dropped after the client sent message m-81f2 and before the server's acknowledgement arrived. On reconnect the client cannot tell whether the server stored it. The server keeps send receipts for 24 hours (D-2). Applies to NEO-4821 attempt 3 on Sample Mac (mac), head 7f3a9c2. The same saved answer appears in Runs and Plan and decisions.
+				134 How should a send with an unknown acknowledgement be handled?
+					135 container
+						136 radio button (settable, integer) Value: 0, Description: Resend automatically with the same message ID Relies on server receipts to drop the duplicate. Silent if the receipt has expired.
+						137 text Resend automatically with the same message ID Relies on server receipts to drop the duplicate. Silent if the receipt has expired.
+					138 container
+						139 radio button (settable, integer) Value: 0, Description: Keep the message identity and ask for an explicit retry Suggested by C2 Mark delivery as unknown, keep m-81f2 in the outbox and show Retry. No send happens until someone retries.
+						140 text Keep the message identity and ask for an explicit retry  Suggested by C2 Mark delivery as unknown, keep m-81f2 in the outbox and show Retry. No send happens until someone retries.
+					141 container
+						142 radio button (settable, integer) Value: 0, Description: Mark the send as failed and drop it from the outbox Simplest. The user retypes the message and loses the original identity.
+						143 text Mark the send as failed and drop it from the outbox Simplest. The user retypes the message and loses the original identity.
+				144 text Note for the record (optional)
+				145 text entry area (settable) Note for the record (optional), ID: wd3-note
+				146 button (disabled) Save decision
+				147 text Choose an option first.
+				148 text Saving records your answer for this attempt on this machine. Package B stays paused, the map will not move, and no execution is approved.
+			149 container
+				150 heading Linked steps, Value: 3
+					151 text Linked steps
+				152 button Asked by Implementer, package B
+					153 text Asked by
+					154 text Implementer, package B
+			155 container
+				156 heading Agents in this run, Value: 3
+					157 text Agents in this run
+				158 content list
+					159 button R Root run Waiting for input
+						160 text R Root run
+						161 text Waiting for input
+					162 button C1 Implementer, package A Completed
+						163 text C1 Implementer, package A
+						164 text Completed
+					165 button C2 Implementer, package B Asked a question
+						166 text C2 Implementer, package B
+						167 text Asked a question
+					168 button N1 Tester subagent Observed Tracking lost
+						169 text N1 Tester subagent 
+						170 text Observed
+						171 text Tracking lost
+					172 button C3 Critic and reviewer Round 1 complete
+						173 text C3 Critic and reviewer
+						174 text Round 1 complete
+				175 text 6 stages and 16 steps, run by 5 agents. A stage or step is not an agent: C3 appears on 3 steps.
+		176 container Description: Stages, ID: stepper
+			177 button 1 Intake , Done
+				178 text 1
+				179 text Intake
+				180 text , Done
+			181 button 2 Design , Done
+				182 text 2
+				183 text Design
+				184 text , Done
+			185 button 3 Build , Needs you
+				186 text 3
+				187 text Build
+				188 text , Needs you
+			189 button 4 Integrate , Failed
+				190 text 4
+				191 text Integrate
+				192 text , Failed
+			193 button 5 Review , Sent back
+				194 text 5
+				195 text Review
+				196 text , Sent back
+			197 button 6 PR , Not run
+				198 text 6
+				199 text PR
+				200 text , Not run
+		201 container Legend
+			202 text Done Not yet Sent back Blocked on you Agent step Host check Human gate
+
+The focused UI element is 1 AXWebArea Symphony workflow map · Concept B · Neokod design prototype, URL: 127.0.0.1:63035/workflow.html
