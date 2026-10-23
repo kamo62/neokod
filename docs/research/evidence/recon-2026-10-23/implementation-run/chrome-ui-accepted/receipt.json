@@ -1,0 +1,22 @@
+{
+  "sourceHead": "daf6cfb55748f9d4f006a38421b258ed80054e86",
+  "sourceClean": true,
+  "backendPid": 76762,
+  "vitePid": 76836,
+  "sourceWorktree": "/Users/kamogelo/.codex/worktrees/neokod-work-ui/t3code",
+  "method": "native Google Chrome Computer Use; no Playwright/DOM execution",
+  "observed": [
+    "390x844 Work list",
+    "attention filter changes URL and shows only attention row",
+    "390x844 attention detail; unknown request has no answer control and incomplete coverage refuses Run now",
+    "1137x786 detail and all-current list",
+    "narrow header and actions fit without title truncation"
+  ],
+  "fixture": "synthetic paused observe-only; no real tracker/provider/Stop",
+  "limits": [
+    "source runtime is UI branch, final composition not yet integrated",
+    "no live feedback/provider/Stop interaction",
+    "empty/error/scroll variants not comprehensively exercised"
+  ],
+  "initialSplash": "cleared after native Chrome reload; no source fix"
+}
