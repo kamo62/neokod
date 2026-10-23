@@ -332,7 +332,7 @@ describe("buildRunPrompt", () => {
     });
 
     expect(prompt).toContain("Execution is blocked");
-    expect(prompt).toContain("forbids approval escalation");
+    expect(prompt).toContain("cannot be combined without changing approval requirements");
     expect(prompt).toContain("Do not modify any files");
     expect(prompt).not.toContain("Work in execution mode");
     expect(prompt).not.toContain("Stage and commit");
