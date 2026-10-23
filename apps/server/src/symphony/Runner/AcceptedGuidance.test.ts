@@ -215,13 +215,13 @@ describe("freezeAcceptedGuidance", () => {
     expect(JSON.stringify(snapshot.guidance)).not.toContain("Fix the login bug");
   });
 
-  it("uses the workflow tracker kind for a manual source without inventing identity", () => {
+  it("preserves the actual manual source kind without inventing tracker identity", () => {
     const snapshot = freeze({
       workItem: { source: { kind: "manual" } },
       config: makeConfig({ trackerKind: "linear" }),
     });
 
-    expect(snapshot.source.kind).toBe("linear");
+    expect(snapshot.source.kind).toBe("manual");
     expect(snapshot.source.externalId).toBeUndefined();
     expect(snapshot.source.externalUrl).toBeUndefined();
     expect(snapshot.source.trackerId).toBe("tracker-1");

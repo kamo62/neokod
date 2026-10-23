@@ -8,7 +8,6 @@ import type {
   EffectiveWorkflowConfig,
   IsoDateTime,
   NormalizedIssue,
-  TrackerKind,
   WorkflowId,
   WorkSource,
 } from "@neokod/contracts";
@@ -164,14 +163,6 @@ const sourceIdentity = (
   "externalId" in source ? { externalId: source.externalId, externalUrl: source.externalUrl } : {};
 
 /**
- * The canonical snapshot records a `TrackerKind`. A manual work item has no
- * tracker-native kind; the workflow's configured tracker is the only kind in
- * scope, and its external identity remains absent rather than invented.
- */
-const sourceKindFor = (source: WorkSource, config: EffectiveWorkflowConfig): TrackerKind =>
-  source.kind === "manual" ? config.trackerKind : source.kind;
-
-/**
  * Freeze the effective brief for an accepted attempt. Callers pass only
  * already-parsed workflow text and configured target/authority; this function
  * neither reads the environment nor invents a machine identity.
@@ -195,7 +186,7 @@ export const freezeAcceptedGuidance = (
 
   const sourceBase = {
     trackerId: issue.id,
-    kind: sourceKindFor(input.workItem.source, config),
+    kind: input.workItem.source.kind,
     ...sourceIdentity(input.workItem.source),
     identifier: issue.identifier,
     title: issue.title,
