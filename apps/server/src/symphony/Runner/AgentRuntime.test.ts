@@ -2,10 +2,12 @@ import { assert, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as TestClock from "effect/testing/TestClock";
+import type { AcceptedGuidanceSnapshot } from "@neokod/contracts";
 import { RunAttemptId, WorkItemId } from "@neokod/contracts";
 
 import { makeLiveRequests } from "./LiveRequests.ts";
 import {
+  AgentRuntimeChildOwnershipError,
   classifyTurnNotification,
   toCodexApprovalDecision,
   toCodexUserInputResponse,
@@ -14,6 +16,61 @@ import { makeFakeCodexPeer, makeFakeCodexRuntime } from "./testkit/FakeCodexPeer
 import { makeRunnerTestConfig, makeRunnerTestIssue } from "./testkit/RunnerFixtures.ts";
 
 const settle = Effect.repeat(Effect.yieldNow, { times: 50 });
+
+const acceptedSnapshot = (overrides?: {
+  readonly repositoryPath?: string;
+  readonly model?: string;
+  readonly workflowPath?: string;
+}): AcceptedGuidanceSnapshot =>
+  ({
+    schemaVersion: 1,
+    acceptedAt: "2026-10-23T00:00:00.000Z",
+    digest: "sha256:accepted",
+    workflow: {
+      id: "workflow-1",
+      path: "/repo/WORKFLOW.md",
+      revision: "2026-10-22T00:00:00.000Z",
+      digest: "sha256:workflow",
+      instructions: "Implement the accepted issue.",
+      validationRequired: [],
+    },
+    source: {
+      trackerId: "github:owner/repo",
+      kind: "github",
+      identifier: "#1",
+      title: "Issue 1",
+      description: null,
+      acceptanceCriteria: [],
+      labels: ["agent-ready"],
+      revision: null,
+      digest: "sha256:source",
+    },
+    guidance: {
+      batch: { state: "absent" },
+      story: { state: "absent" },
+      digest: "sha256:guidance",
+    },
+    target: {
+      repositoryPath: overrides?.repositoryPath ?? "/repo",
+      workflowPath: overrides?.workflowPath ?? "/repo/WORKFLOW.md",
+      provider: { instanceId: "codex_default", driver: "codex" },
+      ...(overrides?.model !== undefined ? { model: overrides.model } : {}),
+    },
+    permission: {
+      autonomy: "prepare",
+      approvalPolicy: "untrusted",
+      threadSandbox: "read-only",
+      turnSandboxPolicy: { type: "readOnly" },
+      editsAllowed: false,
+      approvalsEnabled: true,
+      protectedPaths: [],
+      delivery: {
+        approvalBeforePush: null,
+        approvalBeforePullRequest: null,
+        approvalBeforeMerge: null,
+      },
+    },
+  }) as unknown as AcceptedGuidanceSnapshot;
 
 it("maps Symphony approval decisions to Codex wire values", () => {
   assert.strictEqual(toCodexApprovalDecision("approved"), "accept");
@@ -828,6 +885,149 @@ it.effect("interrupt does not block on an unanswered turn/interrupt", () =>
       yield* settle;
       assert.notStrictEqual(interruptFiber.pollUnsafe(), undefined);
       yield* Fiber.interrupt(fiber).pipe(Effect.catch(() => Effect.void));
+    }),
+  ),
+);
+
+it.effect("reports the spawned pid without inventing a group identity", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const peer = yield* makeFakeCodexPeer({ pid: 999_999 });
+      const liveRequests = yield* makeLiveRequests;
+      const calls: Array<{ readonly pid: number; readonly identity: unknown }> = [];
+      const runtime = yield* makeFakeCodexRuntime({
+        peer,
+        liveRequests,
+        onChildSpawned: (pid, identity) =>
+          Effect.sync(() => {
+            calls.push({ pid, identity });
+          }),
+      });
+      const fiber = yield* runtime
+        .runTurn({
+          issue: makeRunnerTestIssue("1"),
+          config: makeRunnerTestConfig(),
+          workspacePath: "/tmp/fake-ws",
+          branch: "b",
+          runAttemptId: RunAttemptId.make("run-ownership"),
+          workItemId: WorkItemId.make("wi-ownership"),
+        })
+        .pipe(Effect.forkScoped);
+      yield* peer.awaitClientRequest("turn/start");
+      // The fake pid has no real OS process, so no birth token can be proven:
+      // the callback gets the pid but no pgid identity.
+      expect(calls).toEqual([{ pid: 999_999, identity: undefined }]);
+      yield* peer.completeTurn("completed");
+      yield* Fiber.join(fiber);
+    }),
+  ),
+);
+
+it.effect("fails closed before provider use when child ownership cannot be recorded", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const peer = yield* makeFakeCodexPeer();
+      const liveRequests = yield* makeLiveRequests;
+      const runtime = yield* makeFakeCodexRuntime({
+        peer,
+        liveRequests,
+        onChildSpawned: () =>
+          Effect.fail(new AgentRuntimeChildOwnershipError("ownership store unavailable")),
+      });
+      const result = yield* Effect.result(
+        runtime.runTurn({
+          issue: makeRunnerTestIssue("1"),
+          config: makeRunnerTestConfig(),
+          workspacePath: "/tmp/fake-ws",
+          branch: "b",
+          runAttemptId: RunAttemptId.make("run-ownership-failure"),
+          workItemId: WorkItemId.make("wi-ownership-failure"),
+        }),
+      );
+      expect(result._tag).toBe("Failure");
+      if (result._tag === "Failure") {
+        expect(String(result.failure)).toContain("recording its ownership failed");
+      }
+      const requests = yield* peer.received;
+      // The child is preserved as known evidence, but no initialize/turn is
+      // sent after the callback failed.
+      expect(requests.map((request) => request.method)).not.toContain("initialize");
+      expect(requests.map((request) => request.method)).not.toContain("turn/start");
+      expect(yield* runtime.pid()).toBe(4242);
+      expect(yield* peer.spawnCount).toBe(1);
+    }),
+  ),
+);
+
+it.effect("refuses an accepted target whose repository or model changed", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const peer = yield* makeFakeCodexPeer();
+      const liveRequests = yield* makeLiveRequests;
+      const runtime = yield* makeFakeCodexRuntime({ peer, liveRequests });
+      const repositoryResult = yield* Effect.result(
+        runtime.runTurn({
+          issue: makeRunnerTestIssue("1"),
+          config: makeRunnerTestConfig(),
+          workspacePath: "/tmp/fake-ws",
+          branch: "b",
+          runAttemptId: RunAttemptId.make("run-target-1"),
+          workItemId: WorkItemId.make("wi-target-1"),
+          acceptedGuidance: acceptedSnapshot({ repositoryPath: "/other/repo" }),
+        }),
+      );
+      expect(repositoryResult._tag).toBe("Failure");
+      const modelResult = yield* Effect.result(
+        runtime.runTurn({
+          issue: makeRunnerTestIssue("1"),
+          config: makeRunnerTestConfig(),
+          workspacePath: "/tmp/fake-ws",
+          branch: "b",
+          runAttemptId: RunAttemptId.make("run-target-2"),
+          workItemId: WorkItemId.make("wi-target-2"),
+          acceptedGuidance: acceptedSnapshot({ model: "other-model" }),
+        }),
+      );
+      expect(modelResult._tag).toBe("Failure");
+      // Refused before the app-server was spawned.
+      expect(yield* peer.spawnCount).toBe(0);
+    }),
+  ),
+);
+
+it.effect("enforces the accepted permissions narrowed against live config", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const peer = yield* makeFakeCodexPeer();
+      const liveRequests = yield* makeLiveRequests;
+      const runtime = yield* makeFakeCodexRuntime({ peer, liveRequests });
+      const fiber = yield* runtime
+        .runTurn({
+          issue: makeRunnerTestIssue("1"),
+          config: makeRunnerTestConfig(),
+          workspacePath: "/tmp/fake-ws",
+          branch: "b",
+          runAttemptId: RunAttemptId.make("run-accepted-policy"),
+          workItemId: WorkItemId.make("wi-accepted-policy"),
+          acceptedGuidance: acceptedSnapshot(),
+        })
+        .pipe(Effect.forkScoped);
+      yield* peer.awaitClientRequest("turn/start");
+      const requests = yield* peer.received;
+      const threadStart = requests.find((request) => request.method === "thread/start");
+      expect(threadStart?.params).toMatchObject({
+        approvalPolicy: "untrusted",
+        sandbox: "read-only",
+        approvalsReviewer: "user",
+      });
+      const turnStart = requests.find((request) => request.method === "turn/start");
+      expect(turnStart?.params).toMatchObject({
+        approvalPolicy: "untrusted",
+        approvalsReviewer: "user",
+        sandboxPolicy: { type: "readOnly" },
+      });
+      yield* peer.completeTurn("completed");
+      yield* Fiber.join(fiber);
     }),
   ),
 );
