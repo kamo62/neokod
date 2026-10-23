@@ -27,6 +27,7 @@ import * as Scope from "effect/Scope";
 
 import { ServerConfig } from "../../config.ts";
 import { nowIso } from "../Domain/Time.ts";
+import { HostProcessPlatform } from "@neokod/shared/hostProcess";
 import { WORKFLOW_DEFAULTS } from "../Workflow/Config.ts";
 import { RunEventRepository } from "../Persistence/Services/RunEventRepository.ts";
 import { RunAttemptRepository } from "../Persistence/Services/RunAttemptRepository.ts";
@@ -311,9 +312,7 @@ export const hasOwnershipFailureEvent = (
   );
 
 /** Shared platform capability gate; used by admission and startup/dispatch. */
-export const symphonyAdmissionPlatformRefusal = (
-  platform: NodeJS.Platform = process.platform,
-): string | null =>
+export const symphonyAdmissionPlatformRefusal = (platform: NodeJS.Platform): string | null =>
   isGroupSignalingSupported(platform)
     ? null
     : `Symphony execution is unavailable on ${platform}: process-group closure cannot be proven, so work is not admitted. Normal Code threads are unaffected.`;
@@ -721,7 +720,7 @@ export const makeRunDispatcher = Effect.gen(function* () {
       // so old unknown ownership is never cleared and new work is not admitted
       // into a guaranteed-unconfirmable state.
       const platformRefusal = symphonyAdmissionPlatformRefusal(
-        processClosure.platform ?? process.platform,
+        processClosure.platform ?? (yield* HostProcessPlatform),
       );
       if (platformRefusal !== null) {
         return yield* Effect.fail(new RunDispatchError(platformRefusal));
