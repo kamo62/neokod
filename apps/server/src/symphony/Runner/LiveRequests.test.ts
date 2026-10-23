@@ -355,6 +355,36 @@ describe("LiveRequests", () => {
     }),
   );
 
+  it.effect("withdraws only the exact registration identity, never a replacement", () =>
+    Effect.gen(function* () {
+      const service = yield* makeLiveRequests;
+      const first = yield* service.registerUserInput({
+        requestId: "req-identity",
+        workItemId,
+        runAttemptId,
+        prompt: "Which branch?",
+        questionIds: ["q1"],
+      });
+      const other = yield* Deferred.make<{ readonly q1: string }>();
+      expect(
+        yield* service.withdrawPending(
+          runAttemptId,
+          "req-identity",
+          other as Deferred.Deferred<unknown>,
+        ),
+      ).toBe(false);
+      expect(yield* service.listPending(runAttemptId)).toHaveLength(1);
+      expect(
+        yield* service.withdrawPending(
+          runAttemptId,
+          "req-identity",
+          first as Deferred.Deferred<unknown>,
+        ),
+      ).toBe(true);
+      expect(yield* service.listPending(runAttemptId)).toHaveLength(0);
+    }),
+  );
+
   it.effect("keeps the same request id in two runs apart", () =>
     Effect.gen(function* () {
       const service = yield* makeLiveRequests;

@@ -83,6 +83,8 @@ export interface ApprovalRequestHistory {
   /** History-only approval/rejection note; null when the operator wrote none. */
   readonly noteText: string | null;
   readonly noteDeliveryLabel: string | null;
+  /** Explicit reason when stored payload/answer/note content was undecodable. */
+  readonly historyUnavailable: string | null;
 }
 
 const answerText = (value: string | ReadonlyArray<string>): string =>
@@ -128,5 +130,6 @@ export function approvalRequestHistory(request: ApprovalRequest): ApprovalReques
           : "Provider receipt not confirmed",
     noteText: note?.text ?? null,
     noteDeliveryLabel: note === undefined ? null : "History only; not sent to the agent",
+    historyUnavailable: request.historyUnavailable ?? null,
   };
 }

@@ -71,7 +71,9 @@ export const approvalServiceRequestCallbacks = (
     approvals.listForRun(input.runAttemptId).pipe(
       Effect.flatMap((rows) => {
         const row = rows.find(
-          (candidate) => candidate.requestId === input.requestId && candidate.state === "pending",
+          (candidate) =>
+            candidate.requestId === input.requestId &&
+            (candidate.state === "pending" || candidate.state === "delivering"),
         );
         return row === undefined ? Effect.void : approvals.interrupt(row.id);
       }),

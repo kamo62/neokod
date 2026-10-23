@@ -406,8 +406,22 @@ layer("ApprovalRepository request vocabulary", (it) => {
           'not-json', '{bad}', '2026-08-05T00:00:00.000Z'
         )
       `;
+      yield* sql`
+        INSERT INTO symphony_approvals (
+          id, request_id, work_item_id, run_attempt_id, action, scope,
+          state, policy_source, payload_json, created_at
+        )
+        VALUES (
+          'sym-history-bad-payload', '42', 'wi-history-robust', ${runAttemptId},
+          'user_input', 'once', 'pending', 'once', 'not-json',
+          '2026-08-05T00:00:00.000Z'
+        )
+      `;
       const rows = yield* repository.listForRun(runAttemptId);
       expect(rows.map((row) => String(row.id))).toContain(String(valid.id));
+      const badPayload = rows.find((row) => String(row.id) === "sym-history-bad-payload");
+      expect(badPayload?.historyUnavailable).toContain("request payload");
+      expect(badPayload?.questionPayload).toMatchObject({ kind: "unsupported" });
       const bad = rows.find((row) => String(row.id) === "sym-history-bad-answer");
       expect(bad?.historyUnavailable).toContain("answer");
       expect(bad?.historyUnavailable).toContain("decision note");

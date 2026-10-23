@@ -154,11 +154,13 @@ describe("approvalRequestHistory", () => {
           actor: "local_operator",
           recordedAt: "2026-08-08T10:00:06.000Z",
         },
+        historyUnavailable: "the stored answer history could not be decoded",
       }),
     );
     expect(history.answerRedacted).toBe(true);
     expect(history.answerText).toBe("token: [redacted]");
     expect(history.noteText).toBe("local only");
     expect(history.noteDeliveryLabel).toBe("History only; not sent to the agent");
+    expect(history.historyUnavailable).toContain("answer history");
   });
 });
