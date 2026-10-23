@@ -14,9 +14,11 @@ import { WorkItemRepository } from "../Persistence/Services/WorkItemRepository.t
 import { WorkItemRepositoryLive } from "../Persistence/Layers/WorkItemRepository.ts";
 import { ApprovalRepository } from "../Persistence/Services/ApprovalRepository.ts";
 import { ApprovalRepositoryLive } from "../Persistence/Layers/ApprovalRepository.ts";
+import { SymphonyPersistenceSqlError } from "../Persistence/Errors.ts";
 import { approvalServiceRequestCallbacks } from "./AgentRequestCallbacks.ts";
 import { LiveRequests, LiveRequestsLive } from "./LiveRequests.ts";
 import {
+  ApprovalHistoryPendingError,
   ApprovalRequestNotFoundError,
   ApprovalService,
   ApprovalServiceLive,
@@ -82,6 +84,53 @@ const slowLookupStack = ApprovalServiceLive.pipe(
   Layer.provideMerge(SqlitePersistenceMemory),
   Layer.provideMerge(NodeServices.layer),
 );
+
+/** A repository whose first N stage/complete writes fail with a SQL error. */
+const failingDeliveryRepositoryLayer = (input: {
+  readonly stageFailures?: number;
+  readonly completeFailures?: number;
+}) =>
+  Layer.effect(
+    ApprovalRepository,
+    Effect.gen(function* () {
+      const repository = yield* ApprovalRepository;
+      let stageFailures = input.stageFailures ?? 0;
+      let completeFailures = input.completeFailures ?? 0;
+      const sqlError = (operation: string) =>
+        new SymphonyPersistenceSqlError({ operation, detail: "disk I/O error" });
+      return ApprovalRepository.of({
+        ...repository,
+        stageDelivery: (id, decision, details) =>
+          Effect.suspend(() => {
+            if (stageFailures > 0) {
+              stageFailures -= 1;
+              return Effect.fail(sqlError("test.stageDelivery"));
+            }
+            return repository.stageDelivery(id, decision, details);
+          }),
+        completeDelivery: (id, decision) =>
+          Effect.suspend(() => {
+            if (completeFailures > 0) {
+              completeFailures -= 1;
+              return Effect.fail(sqlError("test.completeDelivery"));
+            }
+            return repository.completeDelivery(id, decision);
+          }),
+      });
+    }),
+  ).pipe(Layer.provide(ApprovalRepositoryLive));
+
+const failingDeliveryStack = (input: {
+  readonly stageFailures?: number;
+  readonly completeFailures?: number;
+}) =>
+  ApprovalServiceLive.pipe(
+    Layer.provideMerge(failingDeliveryRepositoryLayer(input)),
+    Layer.provideMerge(LiveRequestsLive),
+    Layer.provideMerge(WorkItemRepositoryLive),
+    Layer.provideMerge(SqlitePersistenceMemory),
+    Layer.provideMerge(NodeServices.layer),
+  );
 
 const makeRequest = (
   runAttemptId: RunAttemptId,
@@ -176,8 +225,8 @@ layer("ApprovalService durable ids", (it) => {
       yield* seedWorkItem("wi-b1");
       yield* seedWorkItem("wi-b2");
       const service = yield* ApprovalService;
-      const runA = RunAttemptId.make("run-a");
-      const runB = RunAttemptId.make("run-b");
+      const runA = RunAttemptId.make("run-b-a");
+      const runB = RunAttemptId.make("run-b-b");
       const a = yield* makeRequest(runA, WorkItemId.make("wi-b1"), "0");
       const b = yield* makeRequest(runB, WorkItemId.make("wi-b2"), "0");
       yield* service.approve(b.record.id);
@@ -680,6 +729,200 @@ layer("ApprovalService durable ids", (it) => {
         text: "touches a protected path",
         delivery: "history_only",
       });
+    }),
+  );
+
+  it.effect(
+    "a completed answer write failure is surfaced and a retry finalises history without redelivering",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const context = yield* Layer.build(
+            Layer.fresh(failingDeliveryStack({ completeFailures: 1 })),
+          );
+          const service = Context.get(context, ApprovalService);
+          const live = Context.get(context, LiveRequests);
+          const workItems = Context.get(context, WorkItemRepository);
+          const repository = Context.get(context, ApprovalRepository);
+          const seededAt = yield* nowIso;
+          const workItemId = WorkItemId.make("wi-history-failure");
+          yield* workItems.upsert({
+            id: workItemId,
+            mode: "symphony",
+            projectId: SymphonyProjectId.make("approvals-history-failure"),
+            objective: "History failure target",
+            acceptanceCriteria: [],
+            source: { kind: "manual" },
+            trackerIssueId: "wi-history-failure",
+            lifecycle: "queued",
+            priority: 1,
+            eligibilityReasons: [],
+            evidence: null,
+            createdAt: seededAt,
+            updatedAt: seededAt,
+          });
+          const runAttemptId = RunAttemptId.make("run-history-failure");
+          const deferred = yield* live.registerUserInput({
+            requestId: "0",
+            workItemId,
+            runAttemptId,
+            prompt: "Which branch?",
+            questionIds: ["q1"],
+          });
+          const record = yield* service.recordPending({
+            id: "ignored",
+            requestId: "0",
+            workItemId,
+            runAttemptId,
+            action: "user_input",
+            scope: "once",
+            reason: "Which branch?",
+            questionPayload: userInputPayload,
+          });
+          const submission = { answers: [{ questionId: "q1", answer: "main" }] } as const;
+
+          const first = yield* Effect.result(service.respondToUserInput(record.id, submission));
+          expect(first._tag).toBe("Failure");
+          if (first._tag === "Failure") {
+            expect(first.failure).toBeInstanceOf(ApprovalHistoryPendingError);
+            if (first.failure instanceof ApprovalHistoryPendingError) {
+              expect(first.failure.delivered).toBe(true);
+            }
+          }
+          // The live Deferred was consumed exactly once.
+          expect(yield* Deferred.await(deferred)).toEqual({ q1: "main" });
+          expect((yield* repository.getById(record.id))?.state).toBe("delivering");
+          expect((yield* repository.getById(record.id))?.decision).toBe("answered");
+
+          // Retry with the same accepted content finishes history and does not
+          // resolve the provider a second time.
+          yield* service.respondToUserInput(record.id, submission);
+          expect((yield* repository.getById(record.id))?.state).toBe("answered");
+          expect(yield* live.listPending(runAttemptId)).toHaveLength(0);
+        }),
+      ),
+  );
+
+  it.effect("a stage write failure delivers nothing and can be retried", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const context = yield* Layer.build(Layer.fresh(failingDeliveryStack({ stageFailures: 1 })));
+        const service = Context.get(context, ApprovalService);
+        const live = Context.get(context, LiveRequests);
+        const workItems = Context.get(context, WorkItemRepository);
+        const repository = Context.get(context, ApprovalRepository);
+        const seededAt = yield* nowIso;
+        const workItemId = WorkItemId.make("wi-stage-failure");
+        yield* workItems.upsert({
+          id: workItemId,
+          mode: "symphony",
+          projectId: SymphonyProjectId.make("approvals-stage-failure"),
+          objective: "Stage failure target",
+          acceptanceCriteria: [],
+          source: { kind: "manual" },
+          trackerIssueId: "wi-stage-failure",
+          lifecycle: "queued",
+          priority: 1,
+          eligibilityReasons: [],
+          evidence: null,
+          createdAt: seededAt,
+          updatedAt: seededAt,
+        });
+        const runAttemptId = RunAttemptId.make("run-stage-failure");
+        const deferred = yield* live.registerUserInput({
+          requestId: "0",
+          workItemId,
+          runAttemptId,
+          prompt: "Which branch?",
+          questionIds: ["q1"],
+        });
+        const record = yield* service.recordPending({
+          id: "ignored",
+          requestId: "0",
+          workItemId,
+          runAttemptId,
+          action: "user_input",
+          scope: "once",
+          reason: "Which branch?",
+          questionPayload: userInputPayload,
+        });
+        const submission = { answers: [{ questionId: "q1", answer: "main" }] } as const;
+
+        const first = yield* Effect.result(service.respondToUserInput(record.id, submission));
+        expect(first._tag).toBe("Failure");
+        if (first._tag === "Failure" && first.failure instanceof ApprovalHistoryPendingError) {
+          expect(first.failure.delivered).toBe(false);
+        }
+        expect(yield* Deferred.isDone(deferred)).toBe(false);
+        expect((yield* repository.getById(record.id))?.state).toBe("pending");
+
+        yield* service.respondToUserInput(record.id, submission);
+        expect(yield* Deferred.await(deferred)).toEqual({ q1: "main" });
+        expect((yield* repository.getById(record.id))?.state).toBe("answered");
+      }),
+    ),
+  );
+
+  it.effect("a different secret submission cannot claim the redacted retry succeeded", () =>
+    Effect.gen(function* () {
+      yield* seedWorkItem("wi-secret-retry");
+      const service = yield* ApprovalService;
+      const repo = yield* ApprovalRepository;
+      const payload: ApprovalQuestionPayload = {
+        kind: "structured",
+        version: 1,
+        questions: [
+          {
+            id: "token",
+            header: "Token",
+            question: "Paste the token",
+            options: [],
+            sensitive: true,
+          },
+        ],
+      };
+      const { record } = yield* makeUserInputRequest(
+        RunAttemptId.make("run-secret-retry"),
+        WorkItemId.make("wi-secret-retry"),
+        "0",
+        payload,
+      );
+      yield* service.respondToUserInput(record.id, {
+        answers: [{ questionId: "token", answer: "first-secret" }],
+      });
+      const second = yield* Effect.result(
+        service.respondToUserInput(record.id, {
+          answers: [{ questionId: "token", answer: "second-secret" }],
+        }),
+      );
+      expect(second._tag).toBe("Failure");
+      expect((yield* repo.getById(record.id))?.answer?.answers).toEqual([
+        { questionId: "token", answer: "[redacted]", redacted: true },
+      ]);
+    }),
+  );
+
+  it.effect("recordPending returns one logical row for a redelivered provider request", () =>
+    Effect.gen(function* () {
+      yield* seedWorkItem("wi-record-dedup");
+      const service = yield* ApprovalService;
+      const repo = yield* ApprovalRepository;
+      const runAttemptId = RunAttemptId.make("run-record-dedup");
+      const input = {
+        id: "ignored",
+        requestId: "0",
+        workItemId: WorkItemId.make("wi-record-dedup"),
+        runAttemptId,
+        action: "user_input",
+        scope: "once" as const,
+        reason: "Which branch?",
+        questionPayload: userInputPayload,
+      };
+      const first = yield* service.recordPending(input);
+      const second = yield* service.recordPending(input);
+      expect(second.id).toBe(first.id);
+      const rows = yield* repo.listForRun(runAttemptId);
+      expect(rows.filter((row) => row.requestId === "0")).toHaveLength(1);
     }),
   );
 

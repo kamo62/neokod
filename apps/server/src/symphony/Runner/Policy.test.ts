@@ -2,7 +2,7 @@ import { describe, expect, it } from "@effect/vitest";
 import { ProviderDriverKind, ProviderInstanceId } from "@neokod/contracts";
 import type { EffectiveWorkflowConfig } from "@neokod/contracts";
 
-import { requiresApprovalBeforeEdit, resolveRunnerPolicy } from "./Policy.ts";
+import { requiresApprovalBeforeEdit, resolveRunnerPolicy, reviewerForPolicy } from "./Policy.ts";
 
 const makeConfig = (overrides: Partial<EffectiveWorkflowConfig> = {}): EffectiveWorkflowConfig =>
   ({
@@ -72,6 +72,26 @@ describe("resolveRunnerPolicy", () => {
       makeConfig({ autonomy: "execute", codexTurnSandboxPolicy: "readOnly" }),
     );
     expect(policy.turnSandboxPolicy).toEqual({ type: "readOnly" });
+  });
+});
+
+describe("reviewerForPolicy", () => {
+  it("always asks the user for a read-only turn sandbox", () => {
+    expect(reviewerForPolicy("never", { type: "readOnly" })).toBe("user");
+    expect(reviewerForPolicy("on-request", { type: "readOnly" })).toBe("user");
+  });
+
+  it("uses auto review only for a non-read-only never policy", () => {
+    expect(reviewerForPolicy("never", { type: "workspaceWrite" })).toBe("auto_review");
+    expect(reviewerForPolicy("never", { type: "dangerFullAccess" })).toBe("auto_review");
+    expect(reviewerForPolicy("on-request", { type: "workspaceWrite" })).toBe("user");
+  });
+
+  it("keeps the runner policy aligned with the canonical rule", () => {
+    expect(
+      resolveRunnerPolicy(makeConfig({ autonomy: "execute", codexTurnSandboxPolicy: "readOnly" }))
+        .reviewer,
+    ).toBe("user");
   });
 });
 

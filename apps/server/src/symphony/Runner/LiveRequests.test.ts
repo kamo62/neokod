@@ -329,6 +329,32 @@ describe("LiveRequests", () => {
     }),
   );
 
+  it.effect("refuses a duplicate registration without replacing the live Deferred", () =>
+    Effect.gen(function* () {
+      const service = yield* makeLiveRequests;
+      const first = yield* service.registerUserInput({
+        requestId: "req-duplicate",
+        workItemId,
+        runAttemptId,
+        prompt: "Which branch?",
+        questionIds: ["q1"],
+      });
+      const duplicate = yield* Effect.result(
+        service.registerUserInput({
+          requestId: "req-duplicate",
+          workItemId,
+          runAttemptId,
+          prompt: "Which branch?",
+          questionIds: ["q1"],
+        }),
+      );
+      expect(duplicate._tag).toBe("Failure");
+      // The original Deferred is still the one the answer resolves.
+      yield* service.respondToUserInput(runAttemptId, "req-duplicate", { q1: "main" });
+      expect(yield* Deferred.await(first)).toEqual({ q1: "main" });
+    }),
+  );
+
   it.effect("keeps the same request id in two runs apart", () =>
     Effect.gen(function* () {
       const service = yield* makeLiveRequests;

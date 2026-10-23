@@ -7,8 +7,10 @@ import type {
   RunAttemptId,
   WorkItemId,
 } from "@neokod/contracts";
+import { ApprovalQuestionPayloadSchema } from "@neokod/contracts";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
+import * as Schema from "effect/Schema";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -36,12 +38,13 @@ import { WORKFLOW_DEFAULTS } from "../Workflow/Config.ts";
 import { buildCodexInitializeParams } from "../../provider/Layers/CodexProvider.ts";
 import { narrowAcceptedPermissions, resolveAcceptedPermissions } from "./AcceptedGuidance.ts";
 import { buildRunPrompt, type ReviewFeedbackContext } from "./Prompt.ts";
-import { resolveRunnerPolicy } from "./Policy.ts";
+import { resolveRunnerPolicy, reviewerForPolicy } from "./Policy.ts";
 import {
   type ApprovalDecision,
   type LiveRequestsService,
   answerMapProblems,
   type UserInputAnswers,
+  LiveRequestAlreadyPendingError,
 } from "./LiveRequests.ts";
 
 /**
@@ -113,6 +116,8 @@ export interface AgentRuntimeService {
     readonly config: EffectiveWorkflowConfig;
     readonly workspacePath: string;
     readonly branch: string;
+    /** Actual base branch of the workspace, distinct from the working branch. */
+    readonly baseBranch?: string;
     readonly runAttemptId: RunAttemptId;
     readonly workItemId: WorkItemId;
     readonly prompt?: string;
@@ -188,6 +193,15 @@ export const toCodexUserInputResponse = (
   ),
 });
 
+export interface AgentRequestRecordResult {
+  readonly status:
+    | "recorded"
+    | "duplicate_pending"
+    | "duplicate_decided"
+    | "duplicate_mismatched"
+    | "record_failed";
+}
+
 export interface AgentRuntimeDeps {
   readonly codexCommand: string;
   readonly codexHomePath: string | undefined;
@@ -223,7 +237,7 @@ export interface AgentRuntimeDeps {
     readonly reason?: string;
     /** Preserved structured question shape for a user-input request. */
     readonly questionPayload?: ApprovalQuestionPayload;
-  }) => Effect.Effect<void>;
+  }) => Effect.Effect<AgentRequestRecordResult | void>;
   /**
    * The runtime's own wait elapsed. Competes for the request through the live
    * registry: returns `true` when this runtime won (the request is settled and
@@ -238,22 +252,13 @@ export interface AgentRuntimeDeps {
   }) => Effect.Effect<boolean>;
 }
 
-type PromptAcceptedGuidance = NonNullable<Parameters<typeof buildRunPrompt>[0]["acceptedGuidance"]>;
-
-/**
- * The prompt module still carries provisional snapshot types; the guidance
- * owner replaces those with the canonical contract. Until then this narrow
- * boundary converts the structurally identical canonical snapshot.
- */
-const asPromptAcceptedGuidance = (accepted: AcceptedGuidanceSnapshot): PromptAcceptedGuidance =>
-  accepted as unknown as PromptAcceptedGuidance;
-
 const assertAcceptedTarget = (
   accepted: AcceptedGuidanceSnapshot,
   input: {
     readonly config: EffectiveWorkflowConfig;
     readonly workspacePath: string;
     readonly branch: string;
+    readonly baseBranch?: string;
   },
 ): Effect.Effect<void, AgentRuntimeTargetMismatchError> => {
   const mismatches: string[] = [];
@@ -268,8 +273,12 @@ const assertAcceptedTarget = (
   if (target.workspacePath !== undefined && target.workspacePath !== input.workspacePath) {
     mismatches.push(`workspace ${target.workspacePath} != live ${input.workspacePath}`);
   }
-  if (target.baseBranch !== undefined && target.baseBranch !== input.branch) {
-    mismatches.push(`base branch ${target.baseBranch} != live ${input.branch}`);
+  if (target.baseBranch !== undefined) {
+    if (input.baseBranch === undefined) {
+      mismatches.push(`base branch ${target.baseBranch} != live (not supplied)`);
+    } else if (target.baseBranch !== input.baseBranch) {
+      mismatches.push(`base branch ${target.baseBranch} != live ${input.baseBranch}`);
+    }
   }
   if (
     target.provider.instanceId !== config.agentProvider.instanceId ||
@@ -426,10 +435,7 @@ export const makeCodexAgentRuntime = (
                   approvalPolicy: narrowed.approvalPolicy,
                   threadSandbox: narrowed.threadSandbox,
                   turnSandboxPolicy: narrowed.turnSandboxPolicy,
-                  reviewer:
-                    narrowed.approvalPolicy === "never"
-                      ? ("auto_review" as const)
-                      : ("user" as const),
+                  reviewer: reviewerForPolicy(narrowed.approvalPolicy, narrowed.turnSandboxPolicy),
                   editsAllowed: narrowed.editsAllowed,
                   approvalsEnabled: narrowed.approvalsEnabled,
                 };
@@ -475,9 +481,7 @@ export const makeCodexAgentRuntime = (
               ? { workflowInstructions: input.workflowInstructions }
               : {}),
             ...(input.reviewFeedback !== undefined ? { reviewFeedback: input.reviewFeedback } : {}),
-            ...(accepted !== undefined
-              ? { acceptedGuidance: asPromptAcceptedGuidance(accepted) }
-              : {}),
+            ...(accepted !== undefined ? { acceptedGuidance: accepted } : {}),
           });
         const turn = yield* client
           .request("turn/start", {
@@ -579,6 +583,8 @@ const unsupportedQuestionPayload = (detail: string): ApprovalQuestionPayload => 
   detail,
 });
 
+const decodeQuestionPayload = Schema.decodeUnknownOption(ApprovalQuestionPayloadSchema);
+
 /**
  * Preserve the provider's question structure for the durable record.
  *
@@ -623,12 +629,17 @@ export const parseQuestionPayload = (params: Record<string, unknown>): ApprovalQ
         return unsupportedQuestionPayload(`question ${id} had an unsupported option`);
       }
       const option = rawOption as Record<string, unknown>;
-      const label = typeof option.label === "string" ? option.label.trim() : "";
-      const description = typeof option.description === "string" ? option.description.trim() : "";
+      const rawLabel = typeof option.label === "string" ? option.label.trim() : "";
+      const rawDescription =
+        typeof option.description === "string" ? option.description.trim() : "";
+      // Codex descriptions are not guaranteed non-empty. If the label is
+      // missing but the description carries actual text, keep that text as the
+      // label rather than discarding a usable choice.
+      const label = rawLabel.length > 0 ? rawLabel : rawDescription;
       if (label.length === 0) {
         return unsupportedQuestionPayload(`question ${id} had an option without a label`);
       }
-      parsedOptions.push({ label, description });
+      parsedOptions.push({ label, description: rawDescription });
     }
     questions.push({
       id,
@@ -639,7 +650,14 @@ export const parseQuestionPayload = (params: Record<string, unknown>): ApprovalQ
       ...(question.isSecret === true ? { sensitive: true } : {}),
     });
   }
-  return { kind: "structured", version: 1, questions };
+  const candidate = { kind: "structured" as const, version: 1 as const, questions };
+  // Validate the whole payload before it can be persisted. A partially
+  // decodable question list becomes explicitly unsupported instead of a row
+  // that fails list decodes (and hides every other request).
+  const decoded = decodeQuestionPayload(candidate);
+  return Option.isSome(decoded)
+    ? decoded.value
+    : unsupportedQuestionPayload("the provider question payload could not be preserved");
 };
 
 const questionPayloadIds = (payload: ApprovalQuestionPayload): ReadonlyArray<string> =>
@@ -719,26 +737,53 @@ const handleRequest = (
       const requestId = String(params.requestId ?? params.approvalId ?? request.id);
       const action = String(params.kind ?? request.method.split("/").at(-2) ?? "action");
       const command = typeof params.command === "string" ? params.command : undefined;
-      const deferred = yield* liveRequests
-        .registerApproval({
-          requestId,
-          workItemId,
-          runAttemptId,
-          action,
-          prompt: command ?? `The agent requests approval for ${request.method}.`,
-        })
-        .pipe(
-          Effect.catch(() => Effect.never as Effect.Effect<Deferred.Deferred<ApprovalDecision>>),
-        );
-      yield* (
+      const record = yield* (
         recordRequest?.({
           requestId,
           workItemId,
           runAttemptId,
           action,
           ...(command !== undefined ? { command } : {}),
-        }).pipe(Effect.catch(() => Effect.void)) ?? Effect.void
+        }) ?? Effect.succeed({ status: "recorded" as const })
+      ).pipe(
+        Effect.map((result) => result ?? { status: "recorded" as const }),
+        Effect.catch(() => Effect.succeed({ status: "record_failed" as const })),
       );
+      if (record.status === "duplicate_decided" || record.status === "duplicate_mismatched") {
+        yield* client.raw
+          .respondError(
+            request.id,
+            CodexErrors.CodexAppServerRequestError.invalidParams(
+              `Request id ${requestId} was already used for a ${record.status === "duplicate_decided" ? "decided" : "different"} request`,
+            ),
+          )
+          .pipe(Effect.catch(() => Effect.void));
+        return;
+      }
+      const registration = yield* Effect.result(
+        liveRequests.registerApproval({
+          requestId,
+          workItemId,
+          runAttemptId,
+          action,
+          prompt: command ?? `The agent requests approval for ${request.method}.`,
+        }),
+      );
+      if (registration._tag === "Failure") {
+        if (registration.failure instanceof LiveRequestAlreadyPendingError) {
+          yield* client.raw
+            .respondError(
+              request.id,
+              CodexErrors.CodexAppServerRequestError.invalidParams(
+                `Request id ${requestId} is already pending; preserving the original request`,
+              ),
+            )
+            .pipe(Effect.catch(() => Effect.void));
+          return;
+        }
+        return yield* Effect.never;
+      }
+      const deferred = registration.success;
       const decision = yield* waitForAnswer<ApprovalDecision>(
         deferred,
         Duration.millis(waitTimeoutMs),
@@ -760,18 +805,7 @@ const handleRequest = (
       const promptText = userInputRequestText(params, request.method);
       const questionPayload = parseQuestionPayload(params);
       const questionIds = questionPayloadIds(questionPayload);
-      const deferred = yield* liveRequests
-        .registerUserInput({
-          requestId,
-          workItemId,
-          runAttemptId,
-          prompt: promptText,
-          questionIds,
-        })
-        .pipe(
-          Effect.catch(() => Effect.never as Effect.Effect<Deferred.Deferred<UserInputAnswers>>),
-        );
-      yield* (
+      const record = yield* (
         recordRequest?.({
           requestId,
           workItemId,
@@ -782,8 +816,46 @@ const handleRequest = (
           // can only say that something was asked.
           reason: promptText,
           questionPayload,
-        }).pipe(Effect.catch(() => Effect.void)) ?? Effect.void
+        }) ?? Effect.succeed({ status: "recorded" as const })
+      ).pipe(
+        Effect.map((result) => result ?? { status: "recorded" as const }),
+        Effect.catch(() => Effect.succeed({ status: "record_failed" as const })),
       );
+      if (record.status === "duplicate_decided" || record.status === "duplicate_mismatched") {
+        yield* client.raw
+          .respondError(
+            request.id,
+            CodexErrors.CodexAppServerRequestError.invalidParams(
+              `Request id ${requestId} was already used for a ${record.status === "duplicate_decided" ? "decided" : "different"} request`,
+            ),
+          )
+          .pipe(Effect.catch(() => Effect.void));
+        return;
+      }
+      const registration = yield* Effect.result(
+        liveRequests.registerUserInput({
+          requestId,
+          workItemId,
+          runAttemptId,
+          prompt: promptText,
+          questionIds,
+        }),
+      );
+      if (registration._tag === "Failure") {
+        if (registration.failure instanceof LiveRequestAlreadyPendingError) {
+          yield* client.raw
+            .respondError(
+              request.id,
+              CodexErrors.CodexAppServerRequestError.invalidParams(
+                `Request id ${requestId} is already pending; preserving the original request`,
+              ),
+            )
+            .pipe(Effect.catch(() => Effect.void));
+          return;
+        }
+        return yield* Effect.never;
+      }
+      const deferred = registration.success;
       const answer = yield* waitForAnswer<UserInputAnswers>(
         deferred,
         Duration.millis(waitTimeoutMs),

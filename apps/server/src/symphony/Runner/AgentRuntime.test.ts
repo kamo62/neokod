@@ -9,6 +9,7 @@ import { makeLiveRequests } from "./LiveRequests.ts";
 import {
   AgentRuntimeChildOwnershipError,
   classifyTurnNotification,
+  parseQuestionPayload,
   toCodexApprovalDecision,
   toCodexUserInputResponse,
 } from "./AgentRuntime.ts";
@@ -21,6 +22,7 @@ const acceptedSnapshot = (overrides?: {
   readonly repositoryPath?: string;
   readonly model?: string;
   readonly workflowPath?: string;
+  readonly baseBranch?: string;
 }): AcceptedGuidanceSnapshot =>
   ({
     schemaVersion: 1,
@@ -55,6 +57,7 @@ const acceptedSnapshot = (overrides?: {
       workflowPath: overrides?.workflowPath ?? "/repo/WORKFLOW.md",
       provider: { instanceId: "codex_default", driver: "codex" },
       ...(overrides?.model !== undefined ? { model: overrides.model } : {}),
+      ...(overrides?.baseBranch !== undefined ? { baseBranch: overrides.baseBranch } : {}),
     },
     permission: {
       autonomy: "prepare",
@@ -1026,6 +1029,121 @@ it.effect("enforces the accepted permissions narrowed against live config", () =
         approvalsReviewer: "user",
         sandboxPolicy: { type: "readOnly" },
       });
+      yield* peer.completeTurn("completed");
+      yield* Fiber.join(fiber);
+    }),
+  ),
+);
+
+it.effect(
+  "compares the accepted base branch with the actual base branch, not the work branch",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const peer = yield* makeFakeCodexPeer();
+        const liveRequests = yield* makeLiveRequests;
+        const runtime = yield* makeFakeCodexRuntime({ peer, liveRequests });
+        const fiber = yield* runtime
+          .runTurn({
+            issue: makeRunnerTestIssue("1"),
+            config: makeRunnerTestConfig(),
+            workspacePath: "/tmp/fake-ws",
+            branch: "symphony/1",
+            baseBranch: "main",
+            runAttemptId: RunAttemptId.make("run-base-branch"),
+            workItemId: WorkItemId.make("wi-base-branch"),
+            acceptedGuidance: acceptedSnapshot({ baseBranch: "main" }),
+          })
+          .pipe(Effect.forkScoped);
+        yield* peer.awaitClientRequest("turn/start");
+        yield* peer.completeTurn("completed");
+        yield* Fiber.join(fiber);
+
+        const otherPeer = yield* makeFakeCodexPeer();
+        const otherRuntime = yield* makeFakeCodexRuntime({
+          peer: otherPeer,
+          liveRequests,
+        });
+        const refused = yield* Effect.result(
+          otherRuntime.runTurn({
+            issue: makeRunnerTestIssue("1"),
+            config: makeRunnerTestConfig(),
+            workspacePath: "/tmp/fake-ws",
+            branch: "symphony/1",
+            runAttemptId: RunAttemptId.make("run-base-branch-missing"),
+            workItemId: WorkItemId.make("wi-base-branch-missing"),
+            acceptedGuidance: acceptedSnapshot({ baseBranch: "main" }),
+          }),
+        );
+        expect(refused._tag).toBe("Failure");
+        expect(yield* otherPeer.spawnCount).toBe(0);
+      }),
+    ),
+);
+
+it("preserves empty option descriptions and falls back to a valid description label", () => {
+  const preserved = parseQuestionPayload({
+    questions: [
+      {
+        id: "q1",
+        header: "Branch",
+        question: "Which branch?",
+        options: [
+          { label: "main", description: "" },
+          { label: "", description: "release" },
+        ],
+      },
+    ],
+  });
+  expect(preserved).toMatchObject({ kind: "structured" });
+  if (preserved.kind !== "structured") throw new Error("expected structured");
+  expect(preserved.questions[0]?.options).toEqual([
+    { label: "main", description: "" },
+    { label: "release", description: "release" },
+  ]);
+  expect(
+    parseQuestionPayload({
+      questions: [
+        {
+          id: "q1",
+          header: "Branch",
+          question: "Which branch?",
+          options: [{ label: "", description: "" }],
+        },
+      ],
+    }).kind,
+  ).toBe("unsupported");
+});
+
+it.effect("rejects a redelivered decided request without creating an invisible waiter", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const peer = yield* makeFakeCodexPeer();
+      const liveRequests = yield* makeLiveRequests;
+      const runtime = yield* makeFakeCodexRuntime({
+        peer,
+        liveRequests,
+        recordRequest: () => Effect.succeed({ status: "duplicate_decided" as const }),
+      });
+      const runAttemptId = RunAttemptId.make("run-duplicate-record");
+      const fiber = yield* runtime
+        .runTurn({
+          issue: makeRunnerTestIssue("1"),
+          config: makeRunnerTestConfig(),
+          workspacePath: "/tmp/fake-ws",
+          branch: "b",
+          runAttemptId,
+          workItemId: WorkItemId.make("wi-duplicate-record"),
+        })
+        .pipe(Effect.forkScoped);
+      yield* peer.awaitClientRequest("turn/start");
+      const id = yield* peer.sendUserInputRequest([{ id: "q1", question: "Which branch?" }]);
+      const reply = yield* peer.awaitClientResponse(id);
+      expect(reply.result).toBeUndefined();
+      expect(String((reply.error as { message?: unknown }).message)).toContain(
+        "was already used for a decided request",
+      );
+      expect(yield* liveRequests.listPending(runAttemptId)).toHaveLength(0);
       yield* peer.completeTurn("completed");
       yield* Fiber.join(fiber);
     }),
