@@ -34,6 +34,7 @@ import {
   makeProvenGroupIdentity,
 } from "@neokod/shared/processGroup";
 import { expandHomePath } from "../../pathExpansion.ts";
+import { questionIsSensitive } from "../Domain/Approvals.ts";
 import { WORKFLOW_DEFAULTS } from "../Workflow/Config.ts";
 import { buildCodexInitializeParams } from "../../provider/Layers/CodexProvider.ts";
 import { narrowAcceptedPermissions, resolveAcceptedPermissions } from "./AcceptedGuidance.ts";
@@ -690,7 +691,9 @@ export const parseQuestionPayload = (params: Record<string, unknown>): ApprovalQ
       question: text,
       options: parsedOptions,
       ...(question.multiSelect === true ? { multiSelect: true } : {}),
-      ...(question.isSecret === true ? { sensitive: true } : {}),
+      ...(questionIsSensitive({ header, question: text, sensitive: question.isSecret === true })
+        ? { sensitive: true }
+        : {}),
     });
   }
   const candidate = { kind: "structured" as const, version: 1 as const, questions };
@@ -757,6 +760,23 @@ const handleRequest = (
         ? Effect.void
         : requestSettled({ requestId, workItemId, runAttemptId });
     /**
+     * Scope-closure finaliser: remove only this caller's exact registration and
+     * close the durable row if it is still pending or an unclaimed staged row.
+     * Already decided rows and deliveries with a positive local receipt are
+     * left untouched. Kept short and uninterruptible so it cannot be cut off by
+     * the same scope closure that triggered it.
+     */
+    const finalizeRequest = (
+      requestId: string,
+      deferred: Deferred.Deferred<unknown>,
+    ): Effect.Effect<void> =>
+      Effect.uninterruptible(
+        Effect.gen(function* () {
+          yield* liveRequests.withdrawPending(runAttemptId, requestId, deferred);
+          yield* markSettled(requestId);
+        }).pipe(Effect.catch(() => Effect.void)),
+      );
+    /**
      * Resolve what happened when this runtime's own wait elapsed.
      *
      * `expired` means this runtime won the settlement claim and no human
@@ -820,6 +840,13 @@ const handleRequest = (
           ...(command !== undefined ? { command } : {}),
         }) ?? Effect.succeed({ status: "recorded" as const })
       ).pipe(
+        Effect.onInterrupt(() =>
+          liveRequests.withdrawPending(
+            runAttemptId,
+            requestId,
+            deferred as Deferred.Deferred<unknown>,
+          ),
+        ),
         Effect.map((result) => result ?? { status: "recorded" as const }),
         Effect.catch(() => Effect.succeed({ status: "record_failed" as const })),
       );
@@ -827,7 +854,11 @@ const handleRequest = (
         // Publication failed or the durable history is decided/mismatched.
         // Withdraw only this caller's just-registered Deferred, then report the
         // provider error; no invisible waiter survives.
-        yield* liveRequests.withdrawPending(runAttemptId, requestId);
+        yield* liveRequests.withdrawPending(
+          runAttemptId,
+          requestId,
+          deferred as Deferred.Deferred<unknown>,
+        );
         yield* client.raw
           .respondError(
             request.id,
@@ -840,23 +871,25 @@ const handleRequest = (
           .pipe(Effect.catch(() => Effect.void));
         return;
       }
-      const decision = yield* waitForAnswer<ApprovalDecision>(
-        deferred,
-        Duration.millis(waitTimeoutMs),
-      );
-      // Denying an expired approval is the policy-safe terminal outcome, not a
-      // fabricated human decision. The durable row records `expired`.
-      const effectiveDecision = Option.isSome(decision)
-        ? decision.value
-        : yield* Effect.gen(function* () {
-            const outcome = yield* resolveAfterWait(deferred, requestId);
-            if (outcome._tag === "answered") return outcome.value;
-            if (outcome._tag === "settled") yield* markSettled(requestId);
-            return "rejected" as ApprovalDecision;
-          });
-      yield* client.raw
-        .respond(request.id, { decision: toCodexApprovalDecision(effectiveDecision) })
-        .pipe(Effect.catch(() => Effect.void));
+      yield* Effect.gen(function* () {
+        const decision = yield* waitForAnswer<ApprovalDecision>(
+          deferred,
+          Duration.millis(waitTimeoutMs),
+        );
+        // Denying an expired approval is the policy-safe terminal outcome, not
+        // a fabricated human decision. The durable row records `expired`.
+        const effectiveDecision = Option.isSome(decision)
+          ? decision.value
+          : yield* Effect.gen(function* () {
+              const outcome = yield* resolveAfterWait(deferred, requestId);
+              if (outcome._tag === "answered") return outcome.value;
+              if (outcome._tag === "settled") yield* markSettled(requestId);
+              return "rejected" as ApprovalDecision;
+            });
+        yield* client.raw
+          .respond(request.id, { decision: toCodexApprovalDecision(effectiveDecision) })
+          .pipe(Effect.catch(() => Effect.void));
+      }).pipe(Effect.ensuring(finalizeRequest(requestId, deferred as Deferred.Deferred<unknown>)));
     } else if (isUserInputRequest(request.method)) {
       const requestId = String(params.requestId ?? request.id);
       const promptText = userInputRequestText(params, request.method);
@@ -899,11 +932,22 @@ const handleRequest = (
           questionPayload,
         }) ?? Effect.succeed({ status: "recorded" as const })
       ).pipe(
+        Effect.onInterrupt(() =>
+          liveRequests.withdrawPending(
+            runAttemptId,
+            requestId,
+            deferred as Deferred.Deferred<unknown>,
+          ),
+        ),
         Effect.map((result) => result ?? { status: "recorded" as const }),
         Effect.catch(() => Effect.succeed({ status: "record_failed" as const })),
       );
       if (record.status !== "recorded" && record.status !== "duplicate_pending") {
-        yield* liveRequests.withdrawPending(runAttemptId, requestId);
+        yield* liveRequests.withdrawPending(
+          runAttemptId,
+          requestId,
+          deferred as Deferred.Deferred<unknown>,
+        );
         yield* client.raw
           .respondError(
             request.id,
@@ -916,53 +960,55 @@ const handleRequest = (
           .pipe(Effect.catch(() => Effect.void));
         return;
       }
-      const answer = yield* waitForAnswer<UserInputAnswers>(
-        deferred,
-        Duration.millis(waitTimeoutMs),
-      );
-      const sendAnswers = (answers: UserInputAnswers) => {
-        // Never send a partial map: a missing or extra id would silence a
-        // blocking question or answer the wrong one.
-        const problems = answerMapProblems(questionIds, answers);
-        return problems.length > 0
-          ? client.raw
+      yield* Effect.gen(function* () {
+        const answer = yield* waitForAnswer<UserInputAnswers>(
+          deferred,
+          Duration.millis(waitTimeoutMs),
+        );
+        const sendAnswers = (answers: UserInputAnswers) => {
+          // Never send a partial map: a missing or extra id would silence a
+          // blocking question or answer the wrong one.
+          const problems = answerMapProblems(questionIds, answers);
+          return problems.length > 0
+            ? client.raw
+                .respondError(
+                  request.id,
+                  CodexErrors.CodexAppServerRequestError.invalidParams(
+                    `The operator answers did not match the provider questions: ${problems.join("; ")}`,
+                  ),
+                )
+                .pipe(Effect.catch(() => Effect.void))
+            : client.raw
+                .respond(request.id, toCodexUserInputResponse(questionIds, answers))
+                .pipe(Effect.catch(() => Effect.void));
+        };
+        if (Option.isSome(answer)) {
+          yield* sendAnswers(answer.value);
+        } else {
+          const outcome = yield* resolveAfterWait(deferred, requestId);
+          if (outcome._tag === "answered") {
+            yield* sendAnswers(outcome.value);
+          } else {
+            if (outcome._tag === "settled") yield* markSettled(requestId);
+            // A question has no safe default answer. Terminate its provider
+            // request explicitly and leave the durable row `expired`/`interrupted`
+            // instead of sending an empty synthetic answer that looks human.
+            const message =
+              outcome._tag === "expired"
+                ? "The operator did not answer before the request wait expired. The request is expired; answer a current request."
+                : "The request was settled before an answer arrived (the run was cancelled or interrupted).";
+            yield* client.raw
               .respondError(
                 request.id,
-                CodexErrors.CodexAppServerRequestError.invalidParams(
-                  `The operator answers did not match the provider questions: ${problems.join("; ")}`,
-                ),
+                new CodexErrors.CodexAppServerRequestError({
+                  code: -32001,
+                  errorMessage: message,
+                }),
               )
-              .pipe(Effect.catch(() => Effect.void))
-          : client.raw
-              .respond(request.id, toCodexUserInputResponse(questionIds, answers))
               .pipe(Effect.catch(() => Effect.void));
-      };
-      if (Option.isSome(answer)) {
-        yield* sendAnswers(answer.value);
-      } else {
-        const outcome = yield* resolveAfterWait(deferred, requestId);
-        if (outcome._tag === "answered") {
-          yield* sendAnswers(outcome.value);
-        } else {
-          if (outcome._tag === "settled") yield* markSettled(requestId);
-          // A question has no safe default answer. Terminate its provider
-          // request explicitly and leave the durable row `expired`/`interrupted`
-          // instead of sending an empty synthetic answer that looks human.
-          const message =
-            outcome._tag === "expired"
-              ? "The operator did not answer before the request wait expired. The request is expired; answer a current request."
-              : "The request was settled before an answer arrived (the run was cancelled or interrupted).";
-          yield* client.raw
-            .respondError(
-              request.id,
-              new CodexErrors.CodexAppServerRequestError({
-                code: -32001,
-                errorMessage: message,
-              }),
-            )
-            .pipe(Effect.catch(() => Effect.void));
+          }
         }
-      }
+      }).pipe(Effect.ensuring(finalizeRequest(requestId, deferred as Deferred.Deferred<unknown>)));
     } else {
       yield* client.raw
         .respondError(
