@@ -1,15 +1,17 @@
-import type { AutonomyLevel, EffectiveWorkflowConfig, NormalizedIssue } from "@neokod/contracts";
+import type {
+  AcceptedDeliveryScope,
+  AcceptedGuidanceSnapshot,
+  AcceptedPermissionScope,
+  AutonomyLevel,
+  EffectiveWorkflowConfig,
+  NormalizedIssue,
+} from "@neokod/contracts";
 
-import {
-  extractAcceptanceCriteria,
-  resolveAcceptedPermissions,
-  type AcceptedDeliveryScope,
-  type AcceptedGuidanceSnapshot,
-  type AcceptedGuidanceText,
-  type AcceptedPermissionScope,
-} from "./AcceptedGuidance.ts";
+import { extractAcceptanceCriteria, resolveAcceptedPermissions } from "./AcceptedGuidance.ts";
 
 export { extractAcceptanceCriteria } from "./AcceptedGuidance.ts";
+
+type AcceptedGuidanceText = AcceptedGuidanceSnapshot["guidance"];
 
 /**
  * Prompt building for Symphony runs (plan 8.1, SPEC 7.1).

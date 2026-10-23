@@ -1,21 +1,19 @@
 import * as NodeCrypto from "node:crypto";
 
 import type {
+  AcceptedGuidanceSnapshot,
+  AcceptedInstructionText,
+  AcceptedPermissionScope,
   AutonomyLevel,
   EffectiveWorkflowConfig,
   IsoDateTime,
   NormalizedIssue,
-  ProviderInstanceRef,
+  TrackerKind,
   WorkflowId,
   WorkSource,
 } from "@neokod/contracts";
 
-import {
-  resolveRunnerPolicy,
-  type CodexApprovalPolicy,
-  type CodexThreadSandbox,
-  type CodexTurnSandboxPolicy,
-} from "./Policy.ts";
+import { resolveRunnerPolicy } from "./Policy.ts";
 
 /**
  * Immutable guidance accepted for one Symphony run attempt (plan 16.16/16.17).
@@ -25,6 +23,9 @@ import {
  * guidance, and the permission/delivery scope. Later edits to `WORKFLOW.md`,
  * the tracker issue, or the workflow's policy affect future attempts; they do
  * not rewrite this snapshot.
+ *
+ * The snapshot shape is the canonical `AcceptedGuidanceSnapshotSchema` from
+ * `@neokod/contracts`. This module only builds, digests and narrows it.
  *
  * Boundaries this module keeps structural:
  *
@@ -39,100 +40,16 @@ import {
  * - The digest is a content hash, never a credential or environment value.
  */
 
-export const ACCEPTED_GUIDANCE_SCHEMA_VERSION = 1 as const;
-
 /**
- * Distinguishes missing operator text from deliberately empty text. An empty
- * present value is user intent; absence is not defaulted to an empty string.
+ * Sub-shapes are derived from the canonical snapshot so this module does not
+ * declare a competing contract.
  */
-export type AcceptedInstructionText =
-  | { readonly state: "absent" }
-  | { readonly state: "present"; readonly text: string };
+type AcceptedWorkflowGuidance = AcceptedGuidanceSnapshot["workflow"];
+type AcceptedSourceSnapshot = AcceptedGuidanceSnapshot["source"];
+type AcceptedGuidanceText = AcceptedGuidanceSnapshot["guidance"];
+type AcceptedTarget = AcceptedGuidanceSnapshot["target"];
 
-export interface AcceptedWorkflowGuidance {
-  readonly id: WorkflowId;
-  readonly path: string;
-  /**
-   * Persisted workflow `updatedAt` at acceptance. This is the revision the
-   * existing authority reports; it is not a stronger content version claim.
-   */
-  readonly revision: IsoDateTime;
-  readonly digest: string;
-  /** Agent-facing Markdown body. Front matter is excluded by construction. */
-  readonly instructions: string;
-  readonly validationRequired: readonly string[];
-}
-
-export interface AcceptedSourceSnapshot {
-  /** Tracker-native issue id from the normalised issue. */
-  readonly trackerId: string;
-  readonly kind: WorkSource["kind"];
-  readonly externalId?: string;
-  readonly externalUrl?: string;
-  readonly identifier: string;
-  readonly title: string;
-  readonly description: string | null;
-  readonly acceptanceCriteria: readonly string[];
-  readonly labels: readonly string[];
-  /** Tracker `updatedAt` at acceptance; null means the tracker did not report one. */
-  readonly revision: IsoDateTime | null;
-  readonly digest: string;
-}
-
-export interface AcceptedGuidanceText {
-  readonly batch: AcceptedInstructionText;
-  readonly story: AcceptedInstructionText;
-  readonly digest: string;
-}
-
-export interface AcceptedTarget {
-  readonly repositoryId?: string;
-  /** Repository path the workflow config owns for this attempt. */
-  readonly repositoryPath: string;
-  readonly workflowPath: string;
-  readonly workspacePath?: string;
-  readonly baseBranch?: string;
-  readonly provider: ProviderInstanceRef;
-  readonly model?: string;
-}
-
-export interface AcceptedDeliveryScope {
-  /**
-   * Configured delivery gate. `null` records that the workflow did not state a
-   * value; it is not coerced to `false`.
-   */
-  readonly approvalBeforePush: boolean | null;
-  readonly approvalBeforePullRequest: boolean | null;
-  readonly approvalBeforeMerge: boolean | null;
-}
-
-export interface AcceptedPermissionScope {
-  readonly autonomy: AutonomyLevel;
-  readonly approvalPolicy: CodexApprovalPolicy;
-  readonly threadSandbox: CodexThreadSandbox;
-  readonly turnSandboxPolicy: CodexTurnSandboxPolicy;
-  readonly editsAllowed: boolean;
-  readonly approvalsEnabled: boolean;
-  readonly protectedPaths: readonly string[];
-  readonly delivery: AcceptedDeliveryScope;
-}
-
-export interface AcceptedGuidanceSnapshot {
-  readonly schemaVersion: typeof ACCEPTED_GUIDANCE_SCHEMA_VERSION;
-  readonly acceptedAt: IsoDateTime;
-  /** Content digest over the accepted content: workflow, source, guidance, target and permission. */
-  readonly digest: string;
-  readonly workflow: AcceptedWorkflowGuidance;
-  readonly source: AcceptedSourceSnapshot;
-  readonly guidance: AcceptedGuidanceText;
-  readonly target: AcceptedTarget;
-  readonly permission: AcceptedPermissionScope;
-}
-
-/** Structural carrier used until the shared contract owns the field. */
-export interface AcceptedGuidanceCarrier {
-  readonly acceptedGuidance?: AcceptedGuidanceSnapshot;
-}
+const ACCEPTED_GUIDANCE_SCHEMA_VERSION = 1 as const;
 
 export interface FreezeAcceptedGuidanceInput {
   /** Server clock value at admission. Pure callers pass it in. */
@@ -247,6 +164,14 @@ const sourceIdentity = (
   "externalId" in source ? { externalId: source.externalId, externalUrl: source.externalUrl } : {};
 
 /**
+ * The canonical snapshot records a `TrackerKind`. A manual work item has no
+ * tracker-native kind; the workflow's configured tracker is the only kind in
+ * scope, and its external identity remains absent rather than invented.
+ */
+const sourceKindFor = (source: WorkSource, config: EffectiveWorkflowConfig): TrackerKind =>
+  source.kind === "manual" ? config.trackerKind : source.kind;
+
+/**
  * Freeze the effective brief for an accepted attempt. Callers pass only
  * already-parsed workflow text and configured target/authority; this function
  * neither reads the environment nor invents a machine identity.
@@ -270,7 +195,7 @@ export const freezeAcceptedGuidance = (
 
   const sourceBase = {
     trackerId: issue.id,
-    kind: input.workItem.source.kind,
+    kind: sourceKindFor(input.workItem.source, config),
     ...sourceIdentity(input.workItem.source),
     identifier: issue.identifier,
     title: issue.title,
@@ -329,19 +254,19 @@ const AUTONOMY_RANK: Record<AutonomyLevel, number> = {
   deliver: 3,
 };
 
-const APPROVAL_RANK: Record<CodexApprovalPolicy, number> = {
+const APPROVAL_RANK: Record<AcceptedPermissionScope["approvalPolicy"], number> = {
   untrusted: 0,
   "on-request": 1,
   never: 2,
 };
 
-const SANDBOX_RANK: Record<CodexThreadSandbox, number> = {
+const SANDBOX_RANK: Record<AcceptedPermissionScope["threadSandbox"], number> = {
   "read-only": 0,
   "workspace-write": 1,
   "danger-full-access": 2,
 };
 
-const TURN_SANDBOX_RANK: Record<CodexTurnSandboxPolicy["type"], number> = {
+const TURN_SANDBOX_RANK: Record<AcceptedPermissionScope["turnSandboxPolicy"]["type"], number> = {
   readOnly: 0,
   workspaceWrite: 1,
   dangerFullAccess: 2,
@@ -350,7 +275,9 @@ const TURN_SANDBOX_RANK: Record<CodexTurnSandboxPolicy["type"], number> = {
 const narrower = <T extends string>(rank: Record<T, number>, left: T, right: T): T =>
   rank[left] <= rank[right] ? left : right;
 
-const turnSandboxFor = (sandbox: CodexThreadSandbox): CodexTurnSandboxPolicy => {
+const turnSandboxFor = (
+  sandbox: AcceptedPermissionScope["threadSandbox"],
+): AcceptedPermissionScope["turnSandboxPolicy"] => {
   switch (sandbox) {
     case "read-only":
       return { type: "readOnly" };
@@ -361,7 +288,9 @@ const turnSandboxFor = (sandbox: CodexThreadSandbox): CodexTurnSandboxPolicy => 
   }
 };
 
-const turnSandboxPolicyFor = (type: CodexTurnSandboxPolicy["type"]): CodexTurnSandboxPolicy => {
+const turnSandboxPolicyFor = (
+  type: AcceptedPermissionScope["turnSandboxPolicy"]["type"],
+): AcceptedPermissionScope["turnSandboxPolicy"] => {
   switch (type) {
     case "readOnly":
       return { type: "readOnly" };
@@ -443,7 +372,9 @@ export const narrowAcceptedPermissions = (
  * built from fresh workflow text. Legacy rows without a snapshot may accept
  * their first one.
  */
-export const preserveAcceptedGuidance = <A extends AcceptedGuidanceCarrier>(
+export const preserveAcceptedGuidance = <
+  A extends { readonly acceptedGuidance?: AcceptedGuidanceSnapshot },
+>(
   existing: A,
   incoming: A,
 ): A => {

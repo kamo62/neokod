@@ -1,6 +1,16 @@
 import { describe, expect, it } from "@effect/vitest";
-import { ProviderDriverKind, ProviderInstanceId, WorkflowId } from "@neokod/contracts";
-import type { EffectiveWorkflowConfig, NormalizedIssue } from "@neokod/contracts";
+import {
+  AcceptedGuidanceSnapshotSchema,
+  ProviderDriverKind,
+  ProviderInstanceId,
+  WorkflowId,
+} from "@neokod/contracts";
+import type {
+  AcceptedGuidanceSnapshot,
+  EffectiveWorkflowConfig,
+  NormalizedIssue,
+} from "@neokod/contracts";
+import { Schema } from "effect";
 
 import {
   digestAcceptedContent,
@@ -8,7 +18,6 @@ import {
   narrowAcceptedPermissions,
   preserveAcceptedGuidance,
   resolveAcceptedPermissions,
-  type AcceptedGuidanceSnapshot,
   type FreezeAcceptedGuidanceInput,
 } from "./AcceptedGuidance.ts";
 
@@ -205,6 +214,27 @@ describe("freezeAcceptedGuidance", () => {
     });
     expect(JSON.stringify(snapshot.source)).not.toContain("Ignore the tracker");
     expect(JSON.stringify(snapshot.guidance)).not.toContain("Fix the login bug");
+  });
+
+  it("uses the workflow tracker kind for a manual source without inventing identity", () => {
+    const snapshot = freeze({
+      workItem: { source: { kind: "manual" } },
+      config: makeConfig({ trackerKind: "linear" }),
+    });
+
+    expect(snapshot.source.kind).toBe("linear");
+    expect(snapshot.source.externalId).toBeUndefined();
+    expect(snapshot.source.externalUrl).toBeUndefined();
+    expect(snapshot.source.trackerId).toBe("tracker-1");
+  });
+
+  it("produces a snapshot the canonical contract decodes unchanged", () => {
+    const snapshot = freeze({
+      workItem: { source: { kind: "manual" } },
+      batchInstructions: "",
+    });
+
+    expect(Schema.decodeUnknownSync(AcceptedGuidanceSnapshotSchema)(snapshot)).toEqual(snapshot);
   });
 
   it("digests only the supplied content", () => {
