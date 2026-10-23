@@ -23,6 +23,7 @@ import {
 import { decodeJson, encodeJson } from "../Json.ts";
 import {
   WorkItemRepository,
+  type ClaimFence,
   type WorkItemRepositoryShape,
 } from "../Services/WorkItemRepository.ts";
 
@@ -292,6 +293,18 @@ const toBusyOrSqlError =
     isBusy(cause)
       ? new SymphonyBusy({ operation })
       : new SymphonyPersistenceSqlError({ operation, detail: "Failed to execute", cause });
+
+/**
+ * Null-safe exact-claim predicate. SQLite `IS` compares NULL to NULL, so a
+ * late release cannot match a claim whose identity (including an absent pid)
+ * has changed since the caller captured it.
+ */
+const claimFenceCondition = (sql: SqlClient.SqlClient, fence: ClaimFence) =>
+  sql`owner_token = ${fence.ownerToken}
+    AND generation = ${fence.generation}
+    AND owner_pid IS ${fence.ownerPid}
+    AND owner_pgid IS ${fence.ownerPgid}
+    AND owner_birth_token IS ${fence.ownerBirthToken}`;
 
 const makeRepository = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
@@ -664,13 +677,28 @@ const makeRepository = Effect.gen(function* () {
       return row.length > 0;
     });
 
-  const getClaimFence: WorkItemRepositoryShape["getClaimFence"] = (id) =>
-    sql<{ readonly ownerToken: string | null; readonly generation: number }>`
-      SELECT owner_token AS "ownerToken", generation
+  const getClaimOwnership: WorkItemRepositoryShape["getClaimOwnership"] = (id) =>
+    sql<{
+      readonly lifecycle: WorkLifecycle;
+      readonly claimedAt: string | null;
+      readonly ownerToken: string | null;
+      readonly generation: number;
+      readonly ownerPid: number | null;
+      readonly ownerPgid: number | null;
+      readonly ownerBirthToken: string | null;
+    }>`
+      SELECT
+        lifecycle,
+        claimed_at AS "claimedAt",
+        owner_token AS "ownerToken",
+        generation,
+        owner_pid AS "ownerPid",
+        owner_pgid AS "ownerPgid",
+        owner_birth_token AS "ownerBirthToken"
       FROM symphony_work_items
       WHERE id = ${id}
     `.pipe(
-      Effect.mapError(toSqlError("WorkItemRepository.getClaimFence")),
+      Effect.mapError(toSqlError("WorkItemRepository.getClaimOwnership")),
       Effect.map((rows) => rows[0] ?? null),
     );
 
@@ -713,10 +741,7 @@ const makeRepository = Effect.gen(function* () {
   const releaseClaim: WorkItemRepositoryShape["releaseClaim"] = (id, to, fence) =>
     Effect.gen(function* () {
       const now = yield* nowIso;
-      const fenceClause =
-        fence === undefined
-          ? sql``
-          : sql`AND owner_token = ${fence.ownerToken} AND generation = ${fence.generation}`;
+      const fenceClause = fence === undefined ? sql`` : sql`AND ${claimFenceCondition(sql, fence)}`;
       const row = yield* sql<Schema.Schema.Type<typeof WorkItemRowSchema>>`
         UPDATE symphony_work_items SET
           lifecycle = ${to},
@@ -754,14 +779,32 @@ const makeRepository = Effect.gen(function* () {
           generation = generation + 1,
           updated_at = ${now}
         WHERE id = ${id}
-          AND owner_token = ${fence.ownerToken}
-          AND generation = ${fence.generation}
+          AND ${claimFenceCondition(sql, fence)}
           AND lifecycle IN (
             'draft', 'ineligible', 'queued', 'preparing', 'blocked',
             'running', 'testing', 'waiting_for_approval', 'retry_scheduled'
           )
         RETURNING ${cols}
       `.pipe(Effect.mapError(toBusyOrSqlError("WorkItemRepository.releaseConfirmedStop")));
+      return row.length > 0;
+    });
+
+  const parkConfirmedCancellation: WorkItemRepositoryShape["parkConfirmedCancellation"] = (
+    id,
+    fence,
+  ) =>
+    Effect.gen(function* () {
+      const now = yield* nowIso;
+      const row = yield* sql<Schema.Schema.Type<typeof WorkItemRowSchema>>`
+        UPDATE symphony_work_items SET
+          lifecycle = 'blocked',
+          updated_at = ${now}
+        WHERE id = ${id}
+          AND lifecycle = 'cancelled'
+          AND owner_token IS NULL
+          AND generation = ${fence.generation}
+        RETURNING ${cols}
+      `.pipe(Effect.mapError(toBusyOrSqlError("WorkItemRepository.parkConfirmedCancellation")));
       return row.length > 0;
     });
 
@@ -803,11 +846,12 @@ const makeRepository = Effect.gen(function* () {
     claim,
     setClaimOwnerPid,
     setClaimOwnerProcessIdentity,
-    getClaimFence,
+    getClaimOwnership,
     setBaseBranch,
     transition,
     releaseClaim,
     releaseConfirmedStop,
+    parkConfirmedCancellation,
     writeOverrides,
     refreshTrackerSnapshot,
   } satisfies WorkItemRepositoryShape;

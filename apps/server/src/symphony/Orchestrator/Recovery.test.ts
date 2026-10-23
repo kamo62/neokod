@@ -11,7 +11,6 @@ import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import type { ProcessBirthReader, ProcessGroupSignaller } from "@neokod/shared/processGroup";
 import * as Ref from "effect/Ref";
@@ -117,6 +116,28 @@ const seedAttempt = (
     });
   });
 
+const seedClaimedItem = (
+  workItem: WorkItem,
+  identity?: { readonly pid: number; readonly pgid?: number; readonly birthToken?: string },
+) =>
+  Effect.gen(function* () {
+    const repo = yield* WorkItemRepository;
+    yield* repo.upsert({ ...workItem, lifecycle: "queued" });
+    const claimed = yield* repo.claim(workItem.id, "owner-recovery");
+    if (identity !== undefined) {
+      yield* repo.setClaimOwnerProcessIdentity(
+        workItem.id,
+        "owner-recovery",
+        claimed.generation,
+        identity,
+      );
+    }
+    yield* repo.transition(workItem.id, "running", {
+      ownerToken: "owner-recovery",
+      generation: claimed.generation,
+    });
+  });
+
 const fakeDispatcherIdle = Layer.succeed(RunDispatcher, {
   dispatchWorkItem: () => Effect.never,
   cancelRun: (runAttemptId) =>
@@ -156,7 +177,7 @@ layer("Recovery startup", (it) => {
     Effect.gen(function* () {
       yield* seedWorkflow("/repo");
       const workItem = makeWorkItem("3001", "running");
-      yield* WorkItemRepository.pipe(Effect.flatMap((repo) => repo.upsert(workItem)));
+      yield* seedClaimedItem(workItem);
       yield* seedAttempt(
         workItem.id,
         "succeeded",
@@ -180,7 +201,7 @@ layer("Recovery startup", (it) => {
     Effect.gen(function* () {
       yield* seedWorkflow("/repo");
       const workItem = makeWorkItem("3002", "running");
-      yield* WorkItemRepository.pipe(Effect.flatMap((repo) => repo.upsert(workItem)));
+      yield* seedClaimedItem(workItem);
       yield* seedAttempt(workItem.id, "streaming_turn");
 
       yield* runRecovery();
@@ -204,7 +225,7 @@ layer("Recovery startup", (it) => {
     Effect.gen(function* () {
       yield* seedWorkflow("/repo");
       const workItem = makeWorkItem("3003", "running");
-      yield* WorkItemRepository.pipe(Effect.flatMap((repo) => repo.upsert(workItem)));
+      yield* seedClaimedItem(workItem);
       yield* seedAttempt(workItem.id, "streaming_turn", 5);
 
       yield* runRecovery();
@@ -219,7 +240,7 @@ layer("Recovery startup", (it) => {
     Effect.gen(function* () {
       yield* seedWorkflow("/repo");
       const workItem = makeWorkItem("3004", "running");
-      yield* WorkItemRepository.pipe(Effect.flatMap((repo) => repo.upsert(workItem)));
+      yield* seedClaimedItem(workItem);
       yield* seedAttempt(workItem.id, "streaming_turn");
 
       yield* runRecovery();
@@ -267,60 +288,6 @@ layer("Recovery startup", (it) => {
     },
   });
 
-  const seedClaimPid = (workItemId: WorkItemId, pid: number) =>
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`UPDATE symphony_work_items SET owner_pid = ${pid} WHERE id = ${workItemId}`;
-    });
-
-  const seedClaimedItem = (
-    workItem: WorkItem,
-    identity: { readonly pid: number; readonly pgid?: number; readonly birthToken?: string },
-  ) =>
-    Effect.gen(function* () {
-      const repo = yield* WorkItemRepository;
-      yield* repo.upsert({ ...workItem, lifecycle: "queued" });
-      const claimed = yield* repo.claim(workItem.id, "owner-recovery");
-      yield* repo.setClaimOwnerProcessIdentity(
-        workItem.id,
-        "owner-recovery",
-        claimed.generation,
-        identity,
-      );
-      yield* repo.transition(workItem.id, "running", {
-        ownerToken: "owner-recovery",
-        generation: claimed.generation,
-      });
-    });
-
-  /** Expose persisted group identity that the current schema cannot store yet. */
-  const withIdentity = (
-    base: WorkItemRepositoryShape,
-    identities: ReadonlyMap<
-      string,
-      Partial<Pick<WorkItem, "ownerPid" | "ownerPgid" | "ownerBirthToken">>
-    >,
-    readOverride?: (item: WorkItem) => WorkItem,
-  ): WorkItemRepositoryShape => ({
-    ...base,
-    listByLifecycle: (lifecycles, options) =>
-      base
-        .listByLifecycle(lifecycles, options)
-        .pipe(
-          Effect.map((items) =>
-            items.map((item) => ({ ...item, ...(identities.get(String(item.id)) ?? {}) })),
-          ),
-        ),
-    getById: (id) =>
-      base.getById(id).pipe(
-        Effect.map((item) => {
-          if (item === null) return null;
-          const decorated = { ...item, ...(identities.get(String(item.id)) ?? {}) };
-          return readOverride === undefined ? decorated : readOverride(decorated);
-        }),
-      ),
-  });
-
   const runRecoveryWith = (input: {
     readonly workItems?: WorkItemRepositoryShape;
     readonly processClosure?: Parameters<typeof runStartupRecovery>[0]["processClosure"];
@@ -352,9 +319,8 @@ layer("Recovery startup", (it) => {
     Effect.gen(function* () {
       yield* seedWorkflow("/repo");
       const workItem = makeWorkItem("3101", "running");
-      yield* WorkItemRepository.pipe(Effect.flatMap((repo) => repo.upsert(workItem)));
+      yield* seedClaimedItem(workItem, { pid: 987654 });
       yield* seedAttempt(workItem.id, "streaming_turn");
-      yield* seedClaimPid(workItem.id, 987654);
       const { signaller, signals } = yield* makeRecordingSignaller({
         aliveAfterTerm: false,
         aliveAfterKill: false,
@@ -390,9 +356,8 @@ layer("Recovery startup", (it) => {
     Effect.gen(function* () {
       yield* seedWorkflow("/repo");
       const workItem = makeWorkItem("3102", "running");
-      yield* WorkItemRepository.pipe(Effect.flatMap((repo) => repo.upsert(workItem)));
+      yield* seedClaimedItem(workItem, { pid: process.pid });
       yield* seedAttempt(workItem.id, "streaming_turn");
-      yield* seedClaimPid(workItem.id, process.pid);
       const { signaller, signals } = yield* makeRecordingSignaller({
         aliveAfterTerm: false,
         aliveAfterKill: false,
@@ -410,7 +375,7 @@ layer("Recovery startup", (it) => {
     Effect.gen(function* () {
       yield* seedWorkflow("/repo");
       const workItem = makeWorkItem("3103", "running");
-      yield* WorkItemRepository.pipe(Effect.flatMap((repo) => repo.upsert(workItem)));
+      yield* seedClaimedItem(workItem);
       yield* seedAttempt(workItem.id, "streaming_turn");
       const { signaller, signals } = yield* makeRecordingSignaller({
         aliveAfterTerm: false,
@@ -463,7 +428,7 @@ layer("Recovery startup", (it) => {
     }),
   );
 
-  it.effect("does not signal when the generation/claim changed after the snapshot", () =>
+  it.effect("does not release a replacement claim or signal during the preparation window", () =>
     Effect.gen(function* () {
       yield* seedWorkflow("/repo");
       const workItem = makeWorkItem("3202", "running");
@@ -473,23 +438,39 @@ layer("Recovery startup", (it) => {
         pgid: 5151,
         birthToken: "born-5151",
       });
-      yield* seedAttempt(workItem.id, "streaming_turn");
+      yield* seedAttempt(workItem.id, "streaming_turn", 1, "1960-01-01T00:00:00.000Z");
+
+      // A replacement execution claims before it has created its attempt row:
+      // the previous attempt is still the latest, but it does not belong to the
+      // new claim generation/owner.
+      const firstOwnership = yield* base.getClaimOwnership(workItem.id);
+      if (firstOwnership?.ownerToken === null || firstOwnership === null) {
+        throw new Error("expected the seeded claim");
+      }
+      yield* base.releaseClaim(workItem.id, "queued", {
+        ownerToken: firstOwnership.ownerToken,
+        generation: firstOwnership.generation,
+        ownerPid: firstOwnership.ownerPid,
+        ownerPgid: firstOwnership.ownerPgid,
+        ownerBirthToken: firstOwnership.ownerBirthToken,
+      });
+      const replacement = yield* base.claim(workItem.id, "owner-replacement");
+      yield* base.setClaimOwnerProcessIdentity(
+        workItem.id,
+        "owner-replacement",
+        replacement.generation,
+        {
+          pid: 6161,
+          pgid: 6161,
+          birthToken: "born-6161",
+        },
+      );
+
       const { signaller, signals } = yield* makeRecordingSignaller({
         aliveAfterTerm: false,
         aliveAfterKill: false,
       });
       yield* runRecoveryWith({
-        workItems: withIdentity(
-          base,
-          new Map([
-            [
-              String(workItem.id),
-              { ownerPid: 5151, ownerPgid: 5151, ownerBirthToken: "born-5151" },
-            ],
-          ]),
-          // A re-claim/stop changed the recorded owner between reads.
-          (item) => ({ ...item, ownerPid: 6161 }),
-        ),
         processClosure: {
           signaller,
           reader: tokenReader({ 5151: "born-5151", 6161: "born-6161" }),
@@ -498,7 +479,9 @@ layer("Recovery startup", (it) => {
         },
       });
       expect(yield* Ref.get(signals)).toEqual([]);
-      expect((yield* base.getById(workItem.id))?.lifecycle).toBe("running");
+      const after = yield* base.getById(workItem.id);
+      expect(after?.lifecycle).toBe("preparing");
+      expect(after?.ownerPid).toBe(6161);
     }),
   );
 
@@ -570,6 +553,54 @@ layer("Recovery startup", (it) => {
         ),
       );
       expect(events.filter((event) => event.eventType === "interrupted")).toHaveLength(1);
+    }),
+  );
+
+  it.effect("settles a held Stop after restart instead of retrying the run", () =>
+    Effect.gen(function* () {
+      yield* seedWorkflow("/repo");
+      const workItem = makeWorkItem("3206", "running");
+      const base = yield* WorkItemRepository;
+      yield* seedClaimedItem(workItem, {
+        pid: 8282,
+        pgid: 8282,
+        birthToken: "born-8282",
+      });
+      yield* seedAttempt(workItem.id, "streaming_turn");
+      const attempt = yield* latestAttempt(workItem.id);
+      const events = yield* RunEventRepository;
+      yield* events.append(attempt?.id ?? RunAttemptId.make("none"), "stop_requested", {
+        workItemId: String(workItem.id),
+      });
+      yield* events.append(attempt?.id ?? RunAttemptId.make("none"), "stop_unconfirmed", {
+        workItemId: String(workItem.id),
+        reason: "dispatch_not_exited",
+      });
+
+      const { signaller, signals } = yield* makeRecordingSignaller({
+        aliveAfterTerm: false,
+        aliveAfterKill: false,
+      });
+      yield* runRecoveryWith({
+        processClosure: {
+          signaller,
+          reader: tokenReader({ 8282: "born-8282" }),
+          platform: "linux",
+          graceMs: 1,
+        },
+      });
+
+      expect((yield* Ref.get(signals)).map((entry) => entry.signal)).toEqual(["SIGTERM"]);
+      const after = yield* base.getById(workItem.id);
+      expect(after?.lifecycle).toBe("cancelled");
+      expect(after?.ownerPid ?? null).toBeNull();
+      const settledAttempt = yield* latestAttempt(workItem.id);
+      expect(settledAttempt?.status).toBe("user_cancelled");
+      const settledEvents = yield* events.listForAttempt(
+        settledAttempt?.id ?? RunAttemptId.make("none"),
+      );
+      expect(settledEvents.some((event) => event.eventType === "retry_scheduled")).toBe(false);
+      expect(settledEvents.some((event) => event.eventType === "stop_confirmed")).toBe(true);
     }),
   );
 

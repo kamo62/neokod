@@ -1905,54 +1905,77 @@ const makeOrchestrator = Effect.gen(function* () {
 
   const cancelRun: SymphonyOrchestratorShape["cancelRun"] = (runAttemptId) =>
     Effect.gen(function* () {
-      const outcome = yield* dispatcher
-        .cancelRun(RunAttemptId.make(runAttemptId))
+      const attemptId = RunAttemptId.make(runAttemptId);
+      const before = yield* runAttempts
+        .getById(attemptId)
         .pipe(Effect.catch(() => Effect.succeed(null)));
-      if (outcome !== null && outcome.status === "confirmed") {
+      const priorEvents = yield* runEvents
+        .listForAttempt(attemptId)
+        .pipe(Effect.catch(() => Effect.succeed([])));
+      const alreadyUnconfirmed = priorEvents.some(
+        (event) => event.eventType === "stop_unconfirmed",
+      );
+      const outcome = yield* dispatcher
+        .cancelRun(attemptId)
+        .pipe(Effect.catch(() => Effect.succeed(null)));
+      if (outcome === null) {
+        return {
+          status: "held" as const,
+          runAttemptId: attemptId,
+          reason: "stop_request_failed",
+        };
+      }
+
+      if (outcome.status === "confirmed") {
+        // A repeat confirmed Stop is idempotent: do not republish history.
+        if (before?.status !== "user_cancelled") {
+          yield* auditRepository
+            .record({
+              actor: "symphony",
+              eventType: "run_cancelled",
+              runAttemptId,
+              payload: { evidence: outcome.evidence, released: outcome.released },
+            })
+            .pipe(Effect.catch(() => Effect.void));
+          yield* notifications
+            .publish({
+              kind: "run_failed",
+              title: "Run cancelled",
+              message: `Run ${runAttemptId} was cancelled after its process ownership was confirmed closed.`,
+              runAttemptId,
+              createdAt: yield* nowIso,
+            })
+            .pipe(Effect.catch(() => Effect.void));
+        }
+        return outcome;
+      }
+
+      // Held: never report a cancellation ownership does not support, and do
+      // not repeat the same unconfirmed audit/notification on idempotent
+      // retries.
+      if (!alreadyUnconfirmed) {
         yield* auditRepository
           .record({
             actor: "symphony",
-            eventType: "run_cancelled",
+            eventType: "run_stop_held",
             runAttemptId,
-            payload: { evidence: outcome.evidence, released: outcome.released },
+            payload: {
+              reason: outcome.reason,
+              ...(outcome.detail === undefined ? {} : { detail: outcome.detail }),
+            },
           })
           .pipe(Effect.catch(() => Effect.void));
         yield* notifications
           .publish({
-            kind: "run_failed",
-            title: "Run cancelled",
-            message: `Run ${runAttemptId} was cancelled after its process ownership was confirmed closed.`,
+            kind: "attention_raised",
+            title: "Run stop unconfirmed",
+            message: `Run ${runAttemptId} is still holding its claim: ${outcome.reason}. Reconcile the process ownership before restarting it.`,
             runAttemptId,
             createdAt: yield* nowIso,
           })
           .pipe(Effect.catch(() => Effect.void));
-        return;
       }
-      // Held (or the dispatcher call itself failed): never report a
-      // cancellation that ownership does not support.
-      const reason = outcome === null ? "stop_request_failed" : outcome.reason;
-      yield* auditRepository
-        .record({
-          actor: "symphony",
-          eventType: "run_stop_held",
-          runAttemptId,
-          payload: {
-            reason,
-            ...(outcome !== null && "detail" in outcome && outcome.detail !== undefined
-              ? { detail: outcome.detail }
-              : {}),
-          },
-        })
-        .pipe(Effect.catch(() => Effect.void));
-      yield* notifications
-        .publish({
-          kind: "attention_raised",
-          title: "Run stop unconfirmed",
-          message: `Run ${runAttemptId} is still holding its claim: ${reason}. Reconcile the process ownership before restarting it.`,
-          runAttemptId,
-          createdAt: yield* nowIso,
-        })
-        .pipe(Effect.catch(() => Effect.void));
+      return outcome;
     });
 
   /**

@@ -7,12 +7,21 @@ import {
 import * as Effect from "effect/Effect";
 
 import { nowIso } from "../Domain/Time.ts";
-import { WorkItemRepository } from "../Persistence/Services/WorkItemRepository.ts";
+import {
+  WorkItemRepository,
+  type ClaimFence,
+  type ClaimOwnership,
+} from "../Persistence/Services/WorkItemRepository.ts";
 import { RunAttemptRepository } from "../Persistence/Services/RunAttemptRepository.ts";
 import { RunEventRepository } from "../Persistence/Services/RunEventRepository.ts";
 import { WorkflowRepository } from "../Persistence/Services/WorkflowRepository.ts";
 import { RunDispatcher } from "../Runner/Dispatcher.ts";
 import { WORKFLOW_DEFAULTS } from "../Workflow/Config.ts";
+import {
+  attemptAssociatesWithClaim,
+  hasPendingStopIntent,
+  settleConfirmedStopIntent,
+} from "./Recovery.ts";
 
 /**
  * Claim reconciliation (plan 9.4, 9.7.3 to 9.7.5).
@@ -37,7 +46,10 @@ import { WORKFLOW_DEFAULTS } from "../Workflow/Config.ts";
  * owner must resolve closed through the same shared identity policy startup
  * recovery and Stop use. An unverifiable owner keeps its claim and records a
  * durable `reconciliation_hold` instead, so a startup/Stop hold is never undone
- * by the next poll.
+ * by the next poll. A claim newer than the inspected attempt is a preparation
+ * window and is preserved. A durable pending Stop always settles through the
+ * fenced confirmed-stop path once closure is known; it is never queued or
+ * retried.
  */
 
 const TERMINAL_STATUSES: ReadonlySet<string> = new Set([
@@ -70,66 +82,41 @@ export interface ReconcilerDeps {
   readonly ownPid?: number;
 }
 
-type ReconcilerHoldReason =
-  | Extract<ProcessClosureResult, { readonly status: "held" }>["reason"]
-  | "claim_changed"
-  | "claim_unreadable";
+const ownershipFence = (ownership: ClaimOwnership): ClaimFence | null =>
+  ownership.ownerToken === null
+    ? null
+    : {
+        ownerToken: ownership.ownerToken,
+        generation: ownership.generation,
+        ownerPid: ownership.ownerPid,
+        ownerPgid: ownership.ownerPgid,
+        ownerBirthToken: ownership.ownerBirthToken,
+      };
 
 /**
- * Resolve the recorded owner's closure with the same policy as recovery and
- * Stop. The claim is re-read first so a replacement owner is never signalled.
+ * Resolve the recorded owner's closure from one atomic ownership row. The
+ * fence and identity therefore always describe the same claim.
  */
 const resolveOwnerClosure = (
   deps: ReconcilerDeps,
-  item: WorkItem,
-  fence: { readonly ownerToken: string | null; readonly generation: number },
+  ownership: ClaimOwnership,
 ): Effect.Effect<
   | ProcessClosureResult
-  | {
-      readonly status: "held";
-      readonly reason: ReconcilerHoldReason;
-      readonly detail?: string;
-    }
+  | { readonly status: "held"; readonly reason: "claim_unreadable"; readonly detail?: string }
 > =>
-  Effect.gen(function* () {
-    const currentFence = yield* deps.workItems
-      .getClaimFence(item.id)
-      .pipe(Effect.catch(() => Effect.succeed(null)));
-    if (
-      currentFence === null ||
-      currentFence.ownerToken !== fence.ownerToken ||
-      currentFence.generation !== fence.generation
-    ) {
-      return { status: "held", reason: "claim_changed" } as const;
-    }
-    if (item.ownerPid === null || item.ownerPid === undefined) {
-      return { status: "closed", evidence: "no_owner_recorded" } as const;
-    }
-    const current = yield* deps.workItems
-      .getById(item.id)
-      .pipe(Effect.catch(() => Effect.succeed(null)));
-    if (current === null) {
-      return { status: "held", reason: "claim_unreadable" } as const;
-    }
-    const unchanged =
-      current.lifecycle === item.lifecycle &&
-      (current.claimedAt ?? null) === (item.claimedAt ?? null) &&
-      (current.ownerPid ?? null) === (item.ownerPid ?? null) &&
-      (current.ownerPgid ?? null) === (item.ownerPgid ?? null) &&
-      (current.ownerBirthToken ?? null) === (item.ownerBirthToken ?? null);
-    if (!unchanged) {
-      return { status: "held", reason: "claim_changed" } as const;
-    }
-    return yield* confirmOwnedProcessClosure(
-      {
-        ...(item.ownerPid === undefined ? {} : { ownerPid: item.ownerPid }),
-        ...(item.ownerPgid === undefined ? {} : { ownerPgid: item.ownerPgid }),
-        ...(item.ownerBirthToken === undefined ? {} : { ownerBirthToken: item.ownerBirthToken }),
-        ...(deps.ownPid === undefined ? {} : { ownPid: deps.ownPid }),
-      },
-      deps.processClosure ?? {},
-    );
-  });
+  ownership.ownerPid === null
+    ? Effect.succeed({ status: "closed", evidence: "no_owner_recorded" } as const)
+    : confirmOwnedProcessClosure(
+        {
+          ownerPid: ownership.ownerPid,
+          ...(ownership.ownerPgid === null ? {} : { ownerPgid: ownership.ownerPgid }),
+          ...(ownership.ownerBirthToken === null
+            ? {}
+            : { ownerBirthToken: ownership.ownerBirthToken }),
+          ...(deps.ownPid === undefined ? {} : { ownPid: deps.ownPid }),
+        },
+        deps.processClosure ?? {},
+      );
 
 /** Stall threshold for an attempt, or null when stall detection is disabled. */
 const stallTimeoutFor = (workflow: WorkflowRecord | undefined): number | null => {
@@ -169,6 +156,9 @@ const reconcileItem = (
   now: string,
 ) =>
   Effect.gen(function* () {
+    const ownership = yield* deps.workItems
+      .getClaimOwnership(item.id)
+      .pipe(Effect.catch(() => Effect.succeed(null)));
     const attempt = yield* deps.runAttempts
       .latestForWorkItem(item.id)
       .pipe(Effect.catch(() => Effect.succeed(null)));
@@ -184,32 +174,57 @@ const reconcileItem = (
       return;
     }
 
-    const fence = yield* deps.workItems
-      .getClaimFence(item.id)
-      .pipe(Effect.catch(() => Effect.succeed(null)));
-    if (fence === null) {
+    if (ownership === null || ownership.ownerToken === null) {
       return;
     }
-    const releaseFence =
-      fence.ownerToken === null
-        ? undefined
-        : { ownerToken: fence.ownerToken, generation: fence.generation };
+    const releaseFence = ownershipFence(ownership);
+    if (releaseFence === null) {
+      return;
+    }
+
     const recordHold = (reason: string, detail?: string) =>
       deps.runEvents
         .appendOnce(attempt.id, "reconciliation_hold", {
           workItemId: String(item.id),
           reason,
           ...(detail === undefined ? {} : { detail }),
-          ownerPid: item.ownerPid ?? null,
+          ownerPid: ownership.ownerPid,
+          generation: ownership.generation,
           terminalAttempt: TERMINAL_STATUSES.has(attempt.status),
         })
         .pipe(Effect.catch(() => Effect.succeed(false)));
 
+    // Preserve the preparation window: a claim newer than the latest attempt
+    // belongs to a replacement execution that has not created its attempt row.
+    if (!attemptAssociatesWithClaim(attempt, ownership)) {
+      yield* recordHold("claim_not_associated");
+      return;
+    }
+
     // Closure is required before ANY release or requeue, including a terminal
     // attempt. A startup recovery hold or an unconfirmed Stop stays held here.
-    const closure = yield* resolveOwnerClosure(deps, item, fence);
+    const closure = yield* resolveOwnerClosure(deps, ownership);
     if (closure.status === "held") {
       yield* recordHold(closure.reason, closure.detail);
+      return;
+    }
+
+    // A durable Stop settles once closure is confirmed; it never becomes a
+    // queue or retry, even after a restart or late descendant exit.
+    const stopPending = yield* hasPendingStopIntent(deps.runEvents, attempt.id);
+    if (stopPending) {
+      const settled = yield* settleConfirmedStopIntent({
+        workItems: deps.workItems,
+        runAttempts: deps.runAttempts,
+        runEvents: deps.runEvents,
+        runAttemptId: attempt.id,
+        workItemId: item.id,
+        ownership,
+        now,
+      });
+      if (!settled) {
+        yield* recordHold("claim_changed");
+      }
       return;
     }
 
@@ -220,9 +235,8 @@ const reconcileItem = (
         yield* deps.workItems
           .transition(item.id, "ready_for_review", {
             from: ["preparing", "running", "testing"],
-            ...(releaseFence === undefined
-              ? {}
-              : { ownerToken: releaseFence.ownerToken, generation: releaseFence.generation }),
+            ownerToken: releaseFence.ownerToken,
+            generation: releaseFence.generation,
           })
           .pipe(Effect.catch(() => Effect.void));
         return;

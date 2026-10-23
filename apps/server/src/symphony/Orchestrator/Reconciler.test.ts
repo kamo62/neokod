@@ -135,6 +135,30 @@ const fakeDispatcherIdle = Layer.succeed(RunDispatcher, {
   stopAllRuns: () => Effect.succeed({ confirmed: 0, held: 0 }),
 } as RunDispatcher["Service"]);
 
+const seedClaimed = (
+  workItem: WorkItem,
+  identity?: { readonly pid: number; readonly pgid?: number; readonly birthToken?: string },
+) =>
+  Effect.gen(function* () {
+    const repo = yield* WorkItemRepository;
+    yield* repo.upsert({ ...workItem, lifecycle: "queued" });
+    const claimed = yield* repo.claim(workItem.id, "owner-reconciler");
+    if (identity !== undefined) {
+      yield* repo.setClaimOwnerProcessIdentity(
+        workItem.id,
+        "owner-reconciler",
+        claimed.generation,
+        identity,
+      );
+    }
+    if (workItem.lifecycle !== "preparing") {
+      yield* repo.transition(workItem.id, workItem.lifecycle, {
+        ownerToken: "owner-reconciler",
+        generation: claimed.generation,
+      });
+    }
+  });
+
 const layer = (dispatcher: Layer.Layer<RunDispatcher>) =>
   it.layer(
     dispatcher.pipe(
@@ -177,13 +201,8 @@ layer(fakeDispatcherIdle)("Reconciler claim release", (it) => {
     Effect.gen(function* () {
       yield* seedWorkflow("/repo");
       const workItem = makeWorkItem("2001", "preparing");
-      yield* WorkItemRepository.pipe(Effect.flatMap((repo) => repo.upsert(workItem)));
-      yield* seedAttempt(
-        workItem.id,
-        "user_cancelled",
-        "2026-08-05T00:00:00.000Z",
-        "2026-08-05T00:05:00.000Z",
-      );
+      yield* seedClaimed(workItem);
+      yield* seedAttempt(workItem.id, "user_cancelled", yield* nowIso, yield* nowIso);
 
       yield* runReconcile();
 
@@ -198,8 +217,8 @@ layer(fakeDispatcherIdle)("Reconciler claim release", (it) => {
     Effect.gen(function* () {
       yield* seedWorkflow("/repo");
       const workItem = makeWorkItem("2002", "running");
-      yield* WorkItemRepository.pipe(Effect.flatMap((repo) => repo.upsert(workItem)));
-      yield* seedAttempt(workItem.id, "streaming_turn", "1970-01-01T00:00:00.000Z");
+      yield* seedClaimed(workItem);
+      yield* seedAttempt(workItem.id, "streaming_turn", yield* nowIso);
       yield* TestClock.adjust("600000 millis");
 
       yield* runReconcile();
@@ -311,12 +330,55 @@ layer(fakeDispatcherIdle)("Reconciler claim release", (it) => {
     }),
   );
 
+  it.effect("settles a held Stop once late descendants exit, never requeueing", () =>
+    Effect.gen(function* () {
+      yield* seedWorkflow("/repo");
+      const workItem = makeWorkItem("2012", "running");
+      const repo = yield* WorkItemRepository;
+      yield* seedClaimed(workItem, { pid: 838_383, pgid: 838_383, birthToken: "born-838383" });
+      yield* seedAttempt(workItem.id, "streaming_turn", yield* nowIso);
+      const attempts = yield* RunAttemptRepository;
+      const attempt = yield* attempts.latestForWorkItem(workItem.id);
+      const events = yield* RunEventRepository;
+      yield* events.append(attempt?.id ?? RunAttemptId.make("none"), "stop_requested", {
+        workItemId: String(workItem.id),
+      });
+      yield* events.append(attempt?.id ?? RunAttemptId.make("none"), "stop_unconfirmed", {
+        workItemId: String(workItem.id),
+        reason: "leader_gone_descendants_unconfirmed",
+      });
+      yield* TestClock.adjust("600000 millis");
+
+      // The leader and group are now gone, so closure is finally confirmed.
+      yield* runReconcile({
+        processClosure: {
+          reader: { readBirthToken: () => Effect.succeed({ kind: "no_such_process" } as const) },
+          signaller: {
+            signalGroup: () => Effect.succeed("no_such_group"),
+            isGroupAlive: () => Effect.succeed(false),
+          },
+          platform: "linux",
+          graceMs: 0,
+        },
+      });
+
+      const after = yield* repo.getById(workItem.id);
+      expect(after?.lifecycle).toBe("cancelled");
+      expect(after?.ownerPid ?? null).toBeNull();
+      const settled = yield* attempts.latestForWorkItem(workItem.id);
+      expect(settled?.status).toBe("user_cancelled");
+      const settledEvents = yield* events.listForAttempt(settled?.id ?? RunAttemptId.make("none"));
+      expect(settledEvents.some((event) => event.eventType === "stop_confirmed")).toBe(true);
+      expect(settledEvents.some((event) => event.eventType === "stalled")).toBe(false);
+    }),
+  );
+
   it.effect("leaves a recent non-terminal run alone", () =>
     Effect.gen(function* () {
       yield* seedWorkflow("/repo");
       const workItem = makeWorkItem("2003", "running");
-      yield* WorkItemRepository.pipe(Effect.flatMap((repo) => repo.upsert(workItem)));
-      yield* seedAttempt(workItem.id, "streaming_turn", "2099-01-01T00:00:00.000Z");
+      yield* seedClaimed(workItem);
+      yield* seedAttempt(workItem.id, "streaming_turn", yield* nowIso);
 
       yield* runReconcile();
 
@@ -338,8 +400,8 @@ layer(fakeDispatcherActive)("Reconciler live agent", (it) => {
     Effect.gen(function* () {
       yield* seedWorkflow("/repo");
       const workItem = makeWorkItem("2004", "running");
-      yield* WorkItemRepository.pipe(Effect.flatMap((repo) => repo.upsert(workItem)));
-      yield* seedAttempt(workItem.id, "streaming_turn", "2026-08-01T00:00:00.000Z");
+      yield* seedClaimed(workItem);
+      yield* seedAttempt(workItem.id, "streaming_turn", yield* nowIso);
 
       yield* runReconcile();
 
