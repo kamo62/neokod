@@ -117,7 +117,22 @@ const fakeOrchestratorLayer = Layer.succeed(SymphonyOrchestrator, {
       dispatchCalls.push({ workItemId, explicit: true });
     }).pipe(Effect.as({ status: "started" } as const)),
   cancelRun: (runAttemptId: string) =>
-    Effect.logInfo(`cancelled ${runAttemptId}`).pipe(Effect.asVoid),
+    runAttemptId === "run-confirmed"
+      ? Effect.succeed({
+          status: "confirmed" as const,
+          runAttemptId: RunAttemptIdValue.make(runAttemptId),
+          evidence: "group_terminated",
+          released: true,
+        })
+      : runAttemptId === "run-held"
+        ? Effect.succeed({
+            status: "held" as const,
+            runAttemptId: RunAttemptIdValue.make(runAttemptId),
+            reason: "unverified_owner",
+            detail: "no birth token",
+          })
+        : Effect.logInfo(`cancelled ${runAttemptId}`).pipe(Effect.asVoid),
+  stopAllRuns: () => Effect.succeed({ confirmed: 1, held: 1 }),
   listQueuesForRepository: () => Effect.succeed([]),
 } as unknown as (typeof SymphonyOrchestrator)["Service"]);
 
@@ -160,6 +175,25 @@ const failingBoardOrchestratorLayer = Layer.succeed(SymphonyOrchestrator, {
   getProjectBoard: () =>
     Effect.fail(new SymphonyPersistenceSqlError({ operation: "test", detail: "disk I/O error" })),
 } as unknown as (typeof SymphonyOrchestrator)["Service"]);
+
+const legacyStopAllOrchestratorLayer = Layer.succeed(SymphonyOrchestrator, {
+  stopAllRuns: () => Effect.succeed(2),
+} as unknown as (typeof SymphonyOrchestrator)["Service"]);
+
+it.layer(legacyStopAllOrchestratorLayer)(
+  "Symphony WS RPC handlers - legacy stop-all count",
+  (it) => {
+    it.effect("preserves the legacy numeric stop-all result", () =>
+      Effect.gen(function* () {
+        const handlers = makeSymphonyRpcHandlers();
+        const result = yield* Effect.scoped(
+          handlers[SYMPHONY_WS_METHODS.stopAllRuns]({ confirm: "stop-all-runs" }),
+        );
+        expect(result).toEqual({ ok: true });
+      }),
+    );
+  },
+);
 
 it.layer(failingBoardOrchestratorLayer)("Symphony WS RPC handlers - board read failure", (it) => {
   const expectBoardUnavailable = (exit: Exit.Exit<unknown, unknown>) => {
@@ -334,7 +368,57 @@ it.layer(fakeOrchestratorLayer.pipe(Layer.provideMerge(fakeApprovalsLayer)))(
         const result = yield* Effect.scoped(
           handler({ runAttemptId: RunAttemptIdValue.make("run-1") }),
         );
+        // Legacy void result stays unknown, never a confirmation.
         expect(result).toEqual({ ok: true });
+      }),
+    );
+
+    it.effect("cancelRun returns confirmed evidence only when the server observed it", () =>
+      Effect.gen(function* () {
+        const handlers = makeSymphonyRpcHandlers();
+        const result = yield* Effect.scoped(
+          handlers[SYMPHONY_WS_METHODS.cancelRun]({
+            runAttemptId: RunAttemptIdValue.make("run-confirmed"),
+          }),
+        );
+        expect(result).toEqual({
+          ok: true,
+          outcome: {
+            status: "confirmed",
+            runAttemptId: "run-confirmed",
+            evidence: "group_terminated",
+            released: true,
+          },
+        });
+      }),
+    );
+
+    it.effect("cancelRun reports a held stop as not ok", () =>
+      Effect.gen(function* () {
+        const handlers = makeSymphonyRpcHandlers();
+        const result = yield* Effect.scoped(
+          handlers[SYMPHONY_WS_METHODS.cancelRun]({
+            runAttemptId: RunAttemptIdValue.make("run-held"),
+          }),
+        );
+        expect(result).toMatchObject({
+          ok: false,
+          outcome: {
+            status: "held",
+            runAttemptId: "run-held",
+            reason: "unverified_owner",
+          },
+        });
+      }),
+    );
+
+    it.effect("stopAllRuns separates confirmed from held and never counts held as stopped", () =>
+      Effect.gen(function* () {
+        const handlers = makeSymphonyRpcHandlers();
+        const result = yield* Effect.scoped(
+          handlers[SYMPHONY_WS_METHODS.stopAllRuns]({ confirm: "stop-all-runs" }),
+        );
+        expect(result).toEqual({ ok: false, confirmed: 1, held: 1 });
       }),
     );
 

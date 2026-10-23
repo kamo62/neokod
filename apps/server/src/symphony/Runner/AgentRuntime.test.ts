@@ -1115,6 +1115,36 @@ it("preserves empty option descriptions and falls back to a valid description la
   ).toBe("unsupported");
 });
 
+it.effect("refuses an unrepresentable accepted permission before spawn", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const peer = yield* makeFakeCodexPeer();
+      const liveRequests = yield* makeLiveRequests;
+      const runtime = yield* makeFakeCodexRuntime({ peer, liveRequests });
+      const base = acceptedSnapshot();
+      const refused = yield* Effect.result(
+        runtime.runTurn({
+          issue: makeRunnerTestIssue("1"),
+          config: makeRunnerTestConfig(),
+          workspacePath: "/tmp/fake-ws",
+          branch: "b",
+          runAttemptId: RunAttemptId.make("run-permission-conflict"),
+          workItemId: WorkItemId.make("wi-permission-conflict"),
+          acceptedGuidance: {
+            ...base,
+            permission: { ...base.permission, approvalPolicy: "never" },
+          },
+        }),
+      );
+      expect(refused._tag).toBe("Failure");
+      if (refused._tag === "Failure") {
+        expect(String(refused.failure)).toContain("permission cannot be enforced");
+      }
+      expect(yield* peer.spawnCount).toBe(0);
+    }),
+  ),
+);
+
 it.effect("rejects a redelivered decided request without creating an invisible waiter", () =>
   Effect.scoped(
     Effect.gen(function* () {
