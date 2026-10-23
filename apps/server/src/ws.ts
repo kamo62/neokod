@@ -453,7 +453,9 @@ const stopResultFrom = (
   if (Option.isSome(outcome)) {
     return { ok: outcome.value.status === "confirmed", outcome: outcome.value };
   }
-  return { ok: true };
+  // Absent/undecodable outcome is unknown, not success. Legacy servers and
+  // malformed values must never present a Stop as confirmed.
+  return { ok: false };
 };
 
 /**

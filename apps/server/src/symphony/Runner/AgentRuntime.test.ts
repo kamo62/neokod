@@ -954,7 +954,11 @@ it.effect("fails closed before provider use when child ownership cannot be recor
       );
       expect(result._tag).toBe("Failure");
       if (result._tag === "Failure") {
-        expect(String(result.failure)).toContain("recording its ownership failed");
+        expect(result.failure).toBeInstanceOf(AgentRuntimeChildOwnershipError);
+        if (result.failure instanceof AgentRuntimeChildOwnershipError) {
+          expect(result.failure.pid).toBe(4242);
+          expect(result.failure.message).toContain("Failed to record agent child ownership");
+        }
       }
       const requests = yield* peer.received;
       // The child is preserved as known evidence, but no initialize/turn is

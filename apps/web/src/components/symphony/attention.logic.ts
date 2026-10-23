@@ -75,6 +75,8 @@ export interface ApprovalRequestHistory {
   readonly answered: boolean;
   /** Staged content whose history finalisation did not complete. */
   readonly deliveryPending: boolean;
+  /** Local staged submission even when delivery remains unknown. */
+  readonly stagedDecision: "answered" | "approved" | "rejected" | null;
   /** Stored answer content, labelled honestly; null when nothing was stored. */
   readonly answerText: string | null;
   readonly answerRedacted: boolean;
@@ -101,6 +103,14 @@ const answerText = (value: string | ReadonlyArray<string>): string =>
 export function approvalRequestHistory(request: ApprovalRequest): ApprovalRequestHistory {
   const answer = request.answer;
   const note = request.decisionNote;
+  const stagedDecision =
+    request.decision === "answered" ||
+    request.decision === "approved" ||
+    request.decision === "rejected"
+      ? request.decision
+      : null;
+  const deliveryPending =
+    request.state === "delivering" || (request.state === "interrupted" && stagedDecision !== null);
   const answerTextValue =
     answer === undefined
       ? null
@@ -119,15 +129,15 @@ export function approvalRequestHistory(request: ApprovalRequest): ApprovalReques
 
   return {
     answered: request.state === "answered",
-    deliveryPending: request.state === "delivering",
+    deliveryPending,
+    stagedDecision,
     answerText: answerTextValue,
     answerRedacted: answer?.answers.some((entry) => entry.redacted === true) ?? false,
-    answerDeliveryLabel:
-      answer === undefined
+    answerDeliveryLabel: deliveryPending
+      ? `Delivery unknown; staged ${stagedDecision ?? "submission"} recorded locally, provider receipt unconfirmed`
+      : answer === undefined
         ? null
-        : request.state === "delivering"
-          ? "Delivery unknown; local acceptance recorded, provider receipt unconfirmed"
-          : "Provider receipt not confirmed",
+        : "Provider receipt not confirmed",
     noteText: note?.text ?? null,
     noteDeliveryLabel: note === undefined ? null : "History only; not sent to the agent",
     historyUnavailable: request.historyUnavailable ?? null,

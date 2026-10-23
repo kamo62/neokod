@@ -139,6 +139,26 @@ describe("approvalRequestHistory", () => {
     expect(history.answerDeliveryLabel).toContain("Delivery unknown");
   });
 
+  it("shows the staged decision for an interrupted delivery-unknown row", () => {
+    const history = approvalRequestHistory(
+      approvalRequest({
+        action: "command_execution",
+        kind: "approval",
+        state: "interrupted",
+        decision: "approved",
+        decisionNote: {
+          text: "approved locally",
+          delivery: "history_only",
+          actor: "local_operator",
+          recordedAt: "2026-08-08T10:00:05.000Z",
+        },
+      }),
+    );
+    expect(history.deliveryPending).toBe(true);
+    expect(history.stagedDecision).toBe("approved");
+    expect(history.answerDeliveryLabel).toContain("staged approved");
+  });
+
   it("labels redacted and history-only content honestly", () => {
     const history = approvalRequestHistory(
       approvalRequest({

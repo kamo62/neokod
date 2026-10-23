@@ -431,6 +431,32 @@ layer("ApprovalRepository request vocabulary", (it) => {
     }),
   );
 
+  it.effect("reconciliation preserves the staged decision as delivery-unknown", () =>
+    Effect.gen(function* () {
+      yield* seedWorkItem("wi-staged-decision");
+      const repository = yield* ApprovalRepository;
+      const created = yield* record({
+        id: "sym-staged-decision",
+        requestId: "50",
+        action: "command_execution",
+        workItemId: "wi-staged-decision",
+      });
+      yield* repository.stageDelivery(created.id, "approved", {
+        decisionNote: {
+          text: "approved locally",
+          delivery: "history_only",
+          actor: "local_operator",
+          recordedAt: "2026-08-05T00:00:01.000Z",
+        },
+      });
+      yield* repository.reconcileDelivery(created.id, "interrupted");
+      const reloaded = yield* repository.getById(created.id);
+      expect(reloaded?.state).toBe("interrupted");
+      expect(reloaded?.decision).toBe("approved");
+      expect(reloaded?.decisionNote?.text).toBe("approved locally");
+    }),
+  );
+
   it.effect("keeps a redelivered provider request as one durable row", () =>
     Effect.gen(function* () {
       yield* seedWorkItem("wi-duplicate-1");

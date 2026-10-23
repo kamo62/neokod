@@ -380,11 +380,12 @@ const makeRepository = Effect.gen(function* () {
   const reconcileDelivery: ApprovalRepositoryShape["reconcileDelivery"] = (id, decision) =>
     Effect.gen(function* () {
       const decidedAt = yield* nowIso;
-      // Preserve answer/note content: it may have reached the provider, so the
-      // row stays explicit delivery-unknown rather than being erased.
+      // Preserve the staged local decision (approved/rejected/answered). The
+      // state becomes interrupted because delivery remains unknown; it is a
+      // separate fact from what the operator submitted here.
       yield* sql`
         UPDATE symphony_approvals
-        SET state = ${decision}, decision = ${decision}, decided_at = ${decidedAt}
+        SET state = ${decision}, decided_at = ${decidedAt}
         WHERE id = ${id} AND state = 'delivering'
       `.pipe(Effect.mapError(toSqlError("ApprovalRepository.reconcileDelivery")));
     });
