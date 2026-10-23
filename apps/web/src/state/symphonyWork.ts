@@ -1,8 +1,6 @@
 import type {
   AttentionItem,
   EnvironmentId,
-  RunAttemptId,
-  RunDetails,
   RunSummary,
   SymphonyProjectBoard,
   SymphonyProjectId,
@@ -11,16 +9,15 @@ import { useMemo } from "react";
 
 import {
   projectSymphonyWorkCollection,
-  projectSymphonyWorkItem,
   type SymphonyWorkAttentionFacts,
   type SymphonyWorkAttemptFact,
   type SymphonyWorkBoardFacts,
+  type SymphonyWorkClosureEvidence,
   type SymphonyWorkCollection,
   type SymphonyWorkCoverage,
   type SymphonyWorkDispatchFacts,
   type SymphonyWorkEvidence,
   type SymphonyWorkFilter,
-  type SymphonyWorkItemProjection,
   type SymphonyWorkRunFacts,
 } from "../symphonyWork.logic";
 import { useEnvironmentQuery } from "./query";
@@ -49,18 +46,6 @@ const ATTENTION_COVERAGE: SymphonyWorkCoverage = {
     "Attention is read from capped pending-request and open-item lists; some read failures are returned as an empty list, so an empty response is not known empty.",
 };
 
-const RUN_DETAIL_COVERAGE: SymphonyWorkCoverage = {
-  state: "bounded",
-  reason:
-    "Only the exact run attempt is loaded; earlier and later attempts, and attention on them, are not included.",
-};
-
-const RUN_DETAIL_ATTENTION_COVERAGE: SymphonyWorkCoverage = {
-  state: "unknown",
-  reason:
-    "Only pending requests for this attempt are loaded; some read failures are returned as an empty list, and attention on other attempts is not included.",
-};
-
 function attemptFactFromSummary(run: RunSummary): SymphonyWorkAttemptFact {
   return {
     runAttemptId: run.runAttemptId,
@@ -74,20 +59,6 @@ function attemptFactFromSummary(run: RunSummary): SymphonyWorkAttemptFact {
   };
 }
 
-function attemptFactFromDetail(details: RunDetails): SymphonyWorkAttemptFact {
-  const attempt = details.runAttempt;
-  return {
-    runAttemptId: attempt.id,
-    workItemId: attempt.workItemId,
-    attemptNumber: attempt.attemptNumber,
-    status: attempt.status,
-    startedAt: attempt.startedAt,
-    finishedAt: attempt.finishedAt,
-    provider: attempt.provider,
-    ...(attempt.model === undefined ? {} : { model: attempt.model }),
-  };
-}
-
 function evidenceFromQuery<A, B>(input: {
   readonly data: A | null;
   readonly error: string | null;
@@ -98,7 +69,7 @@ function evidenceFromQuery<A, B>(input: {
     return {
       state: "known",
       value: input.toValue(input.data),
-      ...(input.error === null ? {} : { stale: true }),
+      ...(input.error === null ? {} : { staleReason: input.error }),
     };
   }
   if (input.error !== null) {
@@ -139,22 +110,34 @@ export interface SymphonyProjectWorkOptions {
   readonly filter?: SymphonyWorkFilter | undefined;
   /**
    * Local dispatch facts. Pass the command whose acknowledgement is still
-   * unknown and the most recent refusal per item; the hook adds no clock.
+   * unknown, the latest refusal per item, and the lifecycle observed before
+   * sending. The hook adds no clock.
    */
   readonly dispatch?: SymphonyWorkDispatchFacts | undefined;
+  /** Positive stop closure supplied by an authoritative observer, if any. */
+  readonly closures?: ReadonlyArray<SymphonyWorkClosureEvidence> | undefined;
+}
+
+export interface SymphonyProjectWorkErrors {
+  readonly board: string | null;
+  readonly runs: string | null;
+  readonly attention: string | null;
 }
 
 export interface SymphonyProjectWorkView {
   readonly work: SymphonyWorkCollection | null;
   readonly isPending: boolean;
+  /** Board failure, retained for existing callers. */
   readonly error: string | null;
+  /** Per-source failures, including stale retained data. */
+  readonly errors: SymphonyProjectWorkErrors;
   readonly refresh: () => void;
 }
 
 /**
- * Project work projection. The board is the primary query; run and attention
- * reads remain explicit evidence inside the result even when one of them
- * fails, so a failed read is never flattened to "nothing here".
+ * Project work projection. Each source keeps its own last-known data, failure
+ * reason and coverage. A failed run or attention read is never flattened to an
+ * empty known result, and stale sources cannot authorise actions.
  */
 export function useSymphonyProjectWork(
   environmentId: EnvironmentId | null,
@@ -179,33 +162,32 @@ export function useSymphonyProjectWork(
 
   const filter = options?.filter ?? "all";
   const dispatch = options?.dispatch;
+  const closures = options?.closures;
   const work = useMemo(() => {
     if (environmentId === null) return null;
-    const board = evidenceFromQuery({
-      data: boardQuery.data,
-      error: boardQuery.error,
-      toValue: boardFacts,
-      pendingReason: "The project board has not loaded.",
-    });
-    const runs = evidenceFromQuery({
-      data: runsQuery.data,
-      error: runsQuery.error,
-      toValue: runFacts,
-      pendingReason: "Project runs have not loaded.",
-    });
-    const attention = evidenceFromQuery({
-      data: attentionQuery.data,
-      error: attentionQuery.error,
-      toValue: attentionFacts,
-      pendingReason: "Attention has not loaded.",
-    });
     return projectSymphonyWorkCollection({
       environmentId,
       projectId,
-      board,
-      runs,
-      attention,
+      board: evidenceFromQuery({
+        data: boardQuery.data,
+        error: boardQuery.error,
+        toValue: boardFacts,
+        pendingReason: "The project board has not loaded.",
+      }),
+      runs: evidenceFromQuery({
+        data: runsQuery.data,
+        error: runsQuery.error,
+        toValue: runFacts,
+        pendingReason: "Project runs have not loaded.",
+      }),
+      attention: evidenceFromQuery({
+        data: attentionQuery.data,
+        error: attentionQuery.error,
+        toValue: attentionFacts,
+        pendingReason: "Attention has not loaded.",
+      }),
       ...(dispatch === undefined ? {} : { dispatch }),
+      ...(closures === undefined ? {} : { closures }),
       filter,
     });
   }, [
@@ -213,6 +195,7 @@ export function useSymphonyProjectWork(
     attentionQuery.error,
     boardQuery.data,
     boardQuery.error,
+    closures,
     dispatch,
     environmentId,
     filter,
@@ -225,72 +208,15 @@ export function useSymphonyProjectWork(
     work,
     isPending: environmentId !== null && boardQuery.isPending,
     error: boardQuery.error,
+    errors: {
+      board: boardQuery.error,
+      runs: runsQuery.error,
+      attention: attentionQuery.error,
+    },
     refresh: () => {
       boardQuery.refresh();
       runsQuery.refresh();
       attentionQuery.refresh();
     },
-  };
-}
-
-export interface SymphonyRunWorkView {
-  readonly work: SymphonyWorkItemProjection | null;
-  readonly isPending: boolean;
-  readonly error: string | null;
-  readonly refresh: () => void;
-}
-
-/**
- * Exact run-attempt projection. Uses the durable work item and the exact
- * attempt; it does not infer a project-wide latest attempt from this one read.
- */
-export function useSymphonyRunWork(
-  environmentId: EnvironmentId | null,
-  runAttemptId: RunAttemptId | null,
-): SymphonyRunWorkView {
-  const detail = useEnvironmentQuery(
-    environmentId === null || runAttemptId === null
-      ? null
-      : symphonyEnvironment.getRun({
-          environmentId,
-          input: { runAttemptId },
-        }),
-  );
-
-  const work = useMemo(() => {
-    const details = detail.data;
-    if (environmentId === null || runAttemptId === null || details === null) return null;
-    const attention: SymphonyWorkEvidence<SymphonyWorkAttentionFacts> = {
-      state: "known",
-      value: {
-        items: details.attentionItems,
-        coverage: RUN_DETAIL_ATTENTION_COVERAGE,
-      },
-      ...(detail.error === null ? {} : { stale: true }),
-    };
-    return projectSymphonyWorkItem({
-      environmentId,
-      workItemId: details.workItem.id,
-      ...(details.workItem.projectId === undefined
-        ? {}
-        : { projectId: details.workItem.projectId }),
-      workItem: { state: "known", value: details.workItem },
-      currentRunAttemptId: details.runAttempt.id,
-      runs: {
-        state: "known",
-        value: {
-          runs: [attemptFactFromDetail(details)],
-          coverage: RUN_DETAIL_COVERAGE,
-        },
-      },
-      attention,
-    });
-  }, [detail.data, detail.error, environmentId, runAttemptId]);
-
-  return {
-    work,
-    isPending: environmentId !== null && runAttemptId !== null && detail.isPending,
-    error: detail.error,
-    refresh: detail.refresh,
   };
 }
