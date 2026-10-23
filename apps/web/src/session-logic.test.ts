@@ -265,6 +265,101 @@ describe("derivePendingUserInputs", () => {
     ]);
   });
 
+  it("keeps no-option questions in mixed and all-free-text prompts", () => {
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "user-input-mixed",
+        createdAt: "2026-02-23T00:00:01.000Z",
+        kind: "user-input.requested",
+        summary: "User input requested",
+        tone: "info",
+        payload: {
+          requestId: "req-user-input-mixed",
+          questions: [
+            {
+              id: "choice",
+              header: "Choice",
+              question: "Pick one",
+              options: [{ label: "Allow" }],
+            },
+            {
+              id: "details",
+              header: "Details",
+              question: "Explain the change",
+              options: [],
+            },
+          ],
+        },
+      }),
+      makeActivity({
+        id: "user-input-free-text",
+        createdAt: "2026-02-23T00:00:02.000Z",
+        kind: "user-input.requested",
+        summary: "User input requested",
+        tone: "info",
+        payload: {
+          requestId: "req-user-input-free-text",
+          questions: [
+            {
+              id: "free_a",
+              header: "First",
+              question: "What should happen first?",
+              options: null,
+            },
+            {
+              id: "free_b",
+              header: "Second",
+              question: "What should happen next?",
+            },
+          ],
+        },
+      }),
+    ];
+
+    expect(derivePendingUserInputs(activities)).toEqual([
+      {
+        requestId: "req-user-input-mixed",
+        createdAt: "2026-02-23T00:00:01.000Z",
+        questions: [
+          {
+            id: "choice",
+            header: "Choice",
+            question: "Pick one",
+            options: [{ label: "Allow", description: "Allow" }],
+            multiSelect: false,
+          },
+          {
+            id: "details",
+            header: "Details",
+            question: "Explain the change",
+            options: [],
+            multiSelect: false,
+          },
+        ],
+      },
+      {
+        requestId: "req-user-input-free-text",
+        createdAt: "2026-02-23T00:00:02.000Z",
+        questions: [
+          {
+            id: "free_a",
+            header: "First",
+            question: "What should happen first?",
+            options: [],
+            multiSelect: false,
+          },
+          {
+            id: "free_b",
+            header: "Second",
+            question: "What should happen next?",
+            options: [],
+            multiSelect: false,
+          },
+        ],
+      },
+    ]);
+  });
+
   it("clears stale pending user-input prompts when the provider reports an orphaned request", () => {
     const activities: OrchestrationThreadActivity[] = [
       makeActivity({
