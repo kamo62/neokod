@@ -92,3 +92,120 @@ describe("ApprovalRequestSchema request kind", () => {
     ).toBe("interrupted");
   });
 });
+
+describe("ApprovalRequestSchema question payload and answer history", () => {
+  const questionPayload = {
+    kind: "structured",
+    version: 1,
+    questions: [
+      {
+        id: "q1",
+        header: "Branch",
+        question: "Which branch?",
+        options: [
+          { label: "main", description: "default branch" },
+          { label: "release", description: "release branch" },
+        ],
+      },
+      {
+        id: "q2",
+        header: "Checks",
+        question: "Which checks should run?",
+        options: [
+          { label: "unit", description: "unit tests" },
+          { label: "lint", description: "lint" },
+        ],
+        multiSelect: true,
+        sensitive: false,
+      },
+    ],
+  } as const;
+
+  it("round-trips structured questions with options and multi-select", () => {
+    const decoded = decodeApprovalRequest({
+      ...approvalRequest,
+      kind: "user_input",
+      action: "user_input",
+      state: "answered",
+      decision: "answered",
+      questionPayload,
+      answer: {
+        answers: [
+          { questionId: "q1", answer: "main" },
+          { questionId: "q2", answer: ["unit", "lint"] },
+        ],
+        delivery: "unknown",
+        actor: "local_operator",
+        recordedAt: "2026-08-08T10:00:05.000Z",
+      },
+    });
+    expect(decoded.questionPayload).toMatchObject({ kind: "structured", version: 1 });
+    if (decoded.questionPayload?.kind !== "structured") throw new Error("expected structured");
+    expect(decoded.questionPayload.questions.map((question) => question.id)).toEqual(["q1", "q2"]);
+    expect(decoded.questionPayload.questions[1]?.multiSelect).toBe(true);
+    expect(decoded.answer?.answers).toEqual([
+      { questionId: "q1", answer: "main" },
+      { questionId: "q2", answer: ["unit", "lint"] },
+    ]);
+  });
+
+  it("decodes a legacy free-text question without inventing choices", () => {
+    const decoded = decodeApprovalRequest({
+      ...approvalRequest,
+      kind: "user_input",
+      action: "user_input",
+      questionPayload: { kind: "legacy_text", text: "Which branch?" },
+      answer: {
+        answers: [],
+        legacyText: "main",
+        delivery: "unknown",
+        actor: "local_operator",
+        recordedAt: "2026-08-08T10:00:05.000Z",
+      },
+    });
+    expect(decoded.questionPayload).toEqual({ kind: "legacy_text", text: "Which branch?" });
+    expect(decoded.answer?.legacyText).toBe("main");
+  });
+
+  it("keeps an unsupported question payload explicit", () => {
+    expect(
+      decodeApprovalRequest({
+        ...approvalRequest,
+        kind: "user_input",
+        action: "user_input",
+        questionPayload: {
+          kind: "unsupported",
+          providerMethod: "item/tool/requestUserInput",
+          detail: "missing question id",
+        },
+      }).questionPayload,
+    ).toEqual({
+      kind: "unsupported",
+      providerMethod: "item/tool/requestUserInput",
+      detail: "missing question id",
+    });
+  });
+
+  it("rejects a structured payload with an unknown version", () => {
+    expect(() =>
+      decodeApprovalRequest({
+        ...approvalRequest,
+        questionPayload: { ...questionPayload, version: 2 },
+      }),
+    ).toThrow();
+  });
+
+  it("decodes a history-only decision note", () => {
+    expect(
+      decodeApprovalRequest({
+        ...approvalRequest,
+        decisionNote: {
+          text: "Approved for this run only",
+          delivery: "history_only",
+          actor: "local_operator",
+          recordedAt: "2026-08-08T10:00:05.000Z",
+        },
+      }).decisionNote?.delivery,
+    ).toBe("history_only");
+  });
+});

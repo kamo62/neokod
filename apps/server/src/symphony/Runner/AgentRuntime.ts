@@ -1,6 +1,8 @@
 import type {
   EffectiveWorkflowConfig,
   NormalizedIssue,
+  ApprovalQuestion,
+  ApprovalQuestionPayload,
   RunAttemptId,
   WorkItemId,
 } from "@neokod/contracts";
@@ -26,7 +28,12 @@ import { WORKFLOW_DEFAULTS } from "../Workflow/Config.ts";
 import { buildCodexInitializeParams } from "../../provider/Layers/CodexProvider.ts";
 import { buildRunPrompt, type ReviewFeedbackContext } from "./Prompt.ts";
 import { resolveRunnerPolicy } from "./Policy.ts";
-import { type ApprovalDecision, type LiveRequestsService } from "./LiveRequests.ts";
+import {
+  type ApprovalDecision,
+  type LiveRequestsService,
+  answerMapProblems,
+  type UserInputAnswers,
+} from "./LiveRequests.ts";
 
 /**
  * Agent runtime (WS-J, SPEC 10.1 to 10.5).
@@ -116,18 +123,25 @@ export const toCodexApprovalDecision = (
   EffectCodexSchema.FileChangeRequestApprovalResponse["decision"] =>
   decision === "approved" ? "accept" : "decline";
 
+export interface CodexUserInputResponse {
+  readonly answers: Record<string, { readonly answers: ReadonlyArray<string> }>;
+}
+
+/**
+ * Map independent answers onto Codex's per-question response. The caller must
+ * pass answers validated against exactly these ids: this function never
+ * duplicates one value under another question or invents a missing answer.
+ */
 export const toCodexUserInputResponse = (
-  questions: unknown,
-  text: string,
-): EffectCodexSchema.ToolRequestUserInputResponse => ({
+  questionIds: ReadonlyArray<string>,
+  answers: UserInputAnswers,
+): CodexUserInputResponse => ({
   answers: Object.fromEntries(
-    (Array.isArray(questions) ? questions : []).flatMap((question) =>
-      typeof question === "object" &&
-      question !== null &&
-      typeof (question as { id?: unknown }).id === "string"
-        ? [[(question as { id: string }).id, { answers: [text] }] as const]
-        : [],
-    ),
+    questionIds.flatMap((id) => {
+      const value = answers[id];
+      if (value === undefined) return [];
+      return [[id, { answers: typeof value === "string" ? [value] : [...value] }] as const];
+    }),
   ),
 });
 
@@ -150,6 +164,8 @@ export interface AgentRuntimeDeps {
     readonly command?: string;
     /** The agent's question (user-input requests) or its stated reason (approvals). */
     readonly reason?: string;
+    /** Preserved structured question shape for a user-input request. */
+    readonly questionPayload?: ApprovalQuestionPayload;
   }) => Effect.Effect<void>;
   /**
    * The runtime's own wait elapsed. Competes for the request through the live
@@ -382,6 +398,78 @@ export const userInputRequestText = (params: Record<string, unknown>, method: st
   return text.length > 0 ? text : `The agent needs your input for ${method}.`;
 };
 
+const unsupportedQuestionPayload = (detail: string): ApprovalQuestionPayload => ({
+  kind: "unsupported",
+  providerMethod: CodexRpc.SERVER_REQUEST_METHODS["item/tool/requestUserInput"],
+  detail,
+});
+
+/**
+ * Preserve the provider's question structure for the durable record.
+ *
+ * Codex may omit `options` (or send null), so an empty option list is valid,
+ * but a question without a stable id or text is not: the whole payload becomes
+ * explicitly `unsupported` rather than dropping one question and letting the
+ * remaining answers shift ids. `isSecret` is carried through for the durable
+ * redaction policy.
+ */
+export const parseQuestionPayload = (params: Record<string, unknown>): ApprovalQuestionPayload => {
+  const rawQuestions = Array.isArray(params.questions) ? params.questions : [];
+  if (rawQuestions.length === 0) {
+    return unsupportedQuestionPayload("the provider request did not include a question list");
+  }
+  const questions: ApprovalQuestion[] = [];
+  for (const raw of rawQuestions) {
+    if (typeof raw !== "object" || raw === null) {
+      return unsupportedQuestionPayload("a question was not an object");
+    }
+    const question = raw as Record<string, unknown>;
+    const id = typeof question.id === "string" ? question.id.trim() : "";
+    const text = typeof question.question === "string" ? question.question.trim() : "";
+    if (id.length === 0 || text.length === 0) {
+      return unsupportedQuestionPayload("a question did not include an id and question text");
+    }
+    const header =
+      typeof question.header === "string" && question.header.trim().length > 0
+        ? question.header.trim()
+        : text;
+    const options =
+      question.options === undefined || question.options === null
+        ? []
+        : Array.isArray(question.options)
+          ? question.options
+          : null;
+    if (options === null) {
+      return unsupportedQuestionPayload(`question ${id} had an unsupported options shape`);
+    }
+    const parsedOptions: Array<{ readonly label: string; readonly description: string }> = [];
+    for (const rawOption of options) {
+      if (typeof rawOption !== "object" || rawOption === null) {
+        return unsupportedQuestionPayload(`question ${id} had an unsupported option`);
+      }
+      const option = rawOption as Record<string, unknown>;
+      const label = typeof option.label === "string" ? option.label.trim() : "";
+      const description = typeof option.description === "string" ? option.description.trim() : "";
+      if (label.length === 0) {
+        return unsupportedQuestionPayload(`question ${id} had an option without a label`);
+      }
+      parsedOptions.push({ label, description });
+    }
+    questions.push({
+      id,
+      header,
+      question: text,
+      options: parsedOptions,
+      ...(question.multiSelect === true ? { multiSelect: true } : {}),
+      ...(question.isSecret === true ? { sensitive: true } : {}),
+    });
+  }
+  return { kind: "structured", version: 1, questions };
+};
+
+const questionPayloadIds = (payload: ApprovalQuestionPayload): ReadonlyArray<string> =>
+  payload.kind === "structured" ? payload.questions.map((question) => question.id) : [];
+
 const consumeIncoming = (
   client: CodexClientService,
   runAttemptId: RunAttemptId,
@@ -425,22 +513,32 @@ const handleRequest = (
       requestTimedOut === undefined
         ? Effect.succeed(true)
         : requestTimedOut({ requestId, workItemId, runAttemptId });
-    // The wait elapsed. Only this runtime's own claim authorises a fallback:
-    // when a human answer won instead, send exactly what the agent observed so
-    // the provider response and the durable decision cannot disagree.
-    const answerAfterTimeout = <A>(
+    /**
+     * Resolve what happened when this runtime's own wait elapsed.
+     *
+     * `expired` means this runtime won the settlement claim and no human
+     * answer exists. `settled` means another path (cancellation, run
+     * settlement) closed the request. `answered` means a human answer won
+     * first, and that exact answer must be sent.
+     */
+    const resolveAfterWait = <A>(
       deferred: Deferred.Deferred<A>,
-      fallback: A,
       requestId: string,
-    ): Effect.Effect<A> =>
+    ): Effect.Effect<
+      | { readonly _tag: "answered"; readonly value: A }
+      | { readonly _tag: "expired" }
+      | { readonly _tag: "settled" }
+    > =>
       Effect.gen(function* () {
         const won = yield* settleTimedOut(requestId);
         if (won) {
-          return fallback;
+          return { _tag: "expired" as const };
         }
         const winner = yield* Effect.result(Deferred.await(deferred));
         // A failed Deferred means run settlement/cancellation, not an answer.
-        return winner._tag === "Success" ? winner.success : fallback;
+        return winner._tag === "Success"
+          ? { _tag: "answered" as const, value: winner.success }
+          : { _tag: "settled" as const };
       });
     if (isApprovalRequest(request.method)) {
       const requestId = String(params.requestId ?? params.approvalId ?? request.id);
@@ -470,42 +568,93 @@ const handleRequest = (
         deferred,
         Duration.millis(waitTimeoutMs),
       );
+      // Denying an expired approval is the policy-safe terminal outcome, not a
+      // fabricated human decision. The durable row records `expired`.
       const effectiveDecision = Option.isSome(decision)
         ? decision.value
-        : yield* answerAfterTimeout(deferred, "rejected" as ApprovalDecision, requestId);
+        : yield* resolveAfterWait(deferred, requestId).pipe(
+            Effect.map((outcome) =>
+              outcome._tag === "answered" ? outcome.value : ("rejected" as ApprovalDecision),
+            ),
+          );
       yield* client.raw
         .respond(request.id, { decision: toCodexApprovalDecision(effectiveDecision) })
         .pipe(Effect.catch(() => Effect.void));
     } else if (isUserInputRequest(request.method)) {
       const requestId = String(params.requestId ?? request.id);
       const promptText = userInputRequestText(params, request.method);
+      const questionPayload = parseQuestionPayload(params);
+      const questionIds = questionPayloadIds(questionPayload);
       const deferred = yield* liveRequests
         .registerUserInput({
           requestId,
           workItemId,
           runAttemptId,
           prompt: promptText,
+          questionIds,
         })
-        .pipe(Effect.catch(() => Effect.never as Effect.Effect<Deferred.Deferred<string>>));
+        .pipe(
+          Effect.catch(() => Effect.never as Effect.Effect<Deferred.Deferred<UserInputAnswers>>),
+        );
       yield* (
         recordRequest?.({
           requestId,
           workItemId,
           runAttemptId,
           action: "user_input",
-          // Persist the question itself: the live registry only holds it in
-          // memory, so without this the Attention tab can only say that
-          // something was asked.
+          // Persist the question itself and its preserved structure: the live
+          // registry only holds it in memory, so without this the Attention tab
+          // can only say that something was asked.
           reason: promptText,
+          questionPayload,
         }).pipe(Effect.catch(() => Effect.void)) ?? Effect.void
       );
-      const answer = yield* waitForAnswer<string>(deferred, Duration.millis(waitTimeoutMs));
-      const effectiveAnswer = Option.isSome(answer)
-        ? answer.value
-        : yield* answerAfterTimeout(deferred, "", requestId);
-      yield* client.raw
-        .respond(request.id, toCodexUserInputResponse(params.questions, effectiveAnswer))
-        .pipe(Effect.catch(() => Effect.void));
+      const answer = yield* waitForAnswer<UserInputAnswers>(
+        deferred,
+        Duration.millis(waitTimeoutMs),
+      );
+      const sendAnswers = (answers: UserInputAnswers) => {
+        // Never send a partial map: a missing or extra id would silence a
+        // blocking question or answer the wrong one.
+        const problems = answerMapProblems(questionIds, answers);
+        return problems.length > 0
+          ? client.raw
+              .respondError(
+                request.id,
+                CodexErrors.CodexAppServerRequestError.invalidParams(
+                  `The operator answers did not match the provider questions: ${problems.join("; ")}`,
+                ),
+              )
+              .pipe(Effect.catch(() => Effect.void))
+          : client.raw
+              .respond(request.id, toCodexUserInputResponse(questionIds, answers))
+              .pipe(Effect.catch(() => Effect.void));
+      };
+      if (Option.isSome(answer)) {
+        yield* sendAnswers(answer.value);
+      } else {
+        const outcome = yield* resolveAfterWait(deferred, requestId);
+        if (outcome._tag === "answered") {
+          yield* sendAnswers(outcome.value);
+        } else {
+          // A question has no safe default answer. Terminate its provider
+          // request explicitly and leave the durable row `expired`/`interrupted`
+          // instead of sending an empty synthetic answer that looks human.
+          const message =
+            outcome._tag === "expired"
+              ? "The operator did not answer before the request wait expired. The request is expired; answer a current request."
+              : "The request was settled before an answer arrived (the run was cancelled or interrupted).";
+          yield* client.raw
+            .respondError(
+              request.id,
+              new CodexErrors.CodexAppServerRequestError({
+                code: -32001,
+                errorMessage: message,
+              }),
+            )
+            .pipe(Effect.catch(() => Effect.void));
+        }
+      }
     } else {
       yield* client.raw
         .respondError(

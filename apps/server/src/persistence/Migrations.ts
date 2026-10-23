@@ -58,6 +58,7 @@ import Migration0041 from "./Migrations/041_SymphonyProjects.ts";
 import Migration0042 from "./Migrations/042_SymphonyIneligibleLifecycle.ts";
 import Migration0043 from "./Migrations/043_ProjectionTurnsPendingWorkspace.ts";
 import Migration0044 from "./Migrations/044_TurnSettlementOutbox.ts";
+import Migration0045 from "./Migrations/045_SymphonyApprovalQuestionsAndAnswers.ts";
 
 /**
  * Migration loader with all migrations defined inline.
@@ -114,6 +115,7 @@ export const migrationEntries = [
   [42, "SymphonyIneligibleLifecycle", Migration0042],
   [43, "ProjectionTurnsPendingWorkspace", Migration0043],
   [44, "TurnSettlementOutbox", Migration0044],
+  [45, "SymphonyApprovalQuestionsAndAnswers", Migration0045],
 ] as const;
 
 export const makeMigrationLoader = (throughId?: number) =>
