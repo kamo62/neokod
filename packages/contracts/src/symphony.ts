@@ -265,6 +265,18 @@ export const RunErrorSchema = Schema.Struct({
 });
 export type RunError = typeof RunErrorSchema.Type;
 
+/**
+ * Positive, server-owned Stop closure for one exact attempt. It is produced
+ * only after confirmed process closure; absence is unknown/legacy.
+ */
+export const SymphonyStopClosureSchema = Schema.Struct({
+  state: Schema.Literal("confirmed"),
+  runAttemptId: RunAttemptId,
+  observedAt: IsoDateTime,
+  source: Schema.Literal("recovery.stop_confirmed"),
+});
+export type SymphonyStopClosure = typeof SymphonyStopClosureSchema.Type;
+
 export const TrackerKindSchema = Schema.Literals([
   "github",
   "jira",
@@ -397,6 +409,11 @@ export const RunAttemptSchema = Schema.Struct({
   threadId: Schema.optional(TrimmedNonEmptyString),
   /** Frozen at admission; undefined for attempts recorded before this field existed. */
   acceptedGuidance: Schema.optional(AcceptedGuidanceSnapshotSchema),
+  /**
+   * Server-owned confirmed Stop closure. Absent means unknown or legacy; never
+   * derive it from a cancelled status, PID match or timer.
+   */
+  stopClosure: Schema.optional(SymphonyStopClosureSchema),
 });
 export type RunAttempt = typeof RunAttemptSchema.Type;
 
@@ -591,6 +608,8 @@ export const WorkItemSchema = Schema.Struct({
   blocked: Schema.optionalKey(Schema.Boolean),
   eligibilityReasons: Schema.Array(TrimmedNonEmptyString),
   evidence: Schema.NullOr(EvidenceBundleSchema),
+  /** Server-owned confirmed Stop closure for the exact attempt, when observed. */
+  stopClosure: Schema.optional(SymphonyStopClosureSchema),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
   /** When the claim was taken (REVIEW P1 #10: orphan claims are detectable). */
@@ -1423,6 +1442,50 @@ export const SymphonySetLocalPriorityInput = Schema.Struct({
 export const SymphonyCancelRunInput = Schema.Struct({
   runAttemptId: RunAttemptId,
 });
+
+/**
+ * Honest Stop acknowledgement.
+ *
+ * `held` means ownership was deliberately kept; a caller must not present the
+ * run as stopped or released. `evidence` is the closure evidence string from
+ * the shared process helper; contracts do not import runtime helper enums.
+ */
+export const SymphonyStopOutcomeSchema = Schema.Union([
+  Schema.Struct({
+    status: Schema.Literal("confirmed"),
+    runAttemptId: RunAttemptId,
+    evidence: Schema.String,
+    released: Schema.Boolean,
+  }),
+  Schema.Struct({
+    status: Schema.Literal("held"),
+    runAttemptId: RunAttemptId,
+    reason: Schema.String,
+    detail: Schema.optional(Schema.String),
+  }),
+]);
+export type SymphonyStopOutcome = typeof SymphonyStopOutcomeSchema.Type;
+
+/**
+ * `outcome` is optional for compatibility with older servers. Its absence means
+ * unknown, never confirmed. `ok` is not stop proof.
+ */
+export const SymphonyStopResultSchema = Schema.Struct({
+  ok: Schema.Boolean,
+  outcome: Schema.optional(SymphonyStopOutcomeSchema),
+});
+export type SymphonyStopResult = typeof SymphonyStopResultSchema.Type;
+
+/**
+ * Stop-all keeps the legacy `ok` shape and adds confirmed/held counts only when
+ * the server actually observed them. Held runs are not counted as stopped.
+ */
+export const SymphonyStopAllResultSchema = Schema.Struct({
+  ok: Schema.Boolean,
+  confirmed: Schema.optional(NonNegativeInt),
+  held: Schema.optional(NonNegativeInt),
+});
+export type SymphonyStopAllResult = typeof SymphonyStopAllResultSchema.Type;
 export const SymphonyStopAllRunsInput = Schema.Struct({
   confirm: Schema.Literal("stop-all-runs"),
 });
