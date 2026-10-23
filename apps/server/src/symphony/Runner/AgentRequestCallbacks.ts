@@ -31,8 +31,22 @@ export const approvalServiceRequestCallbacks = (
         ...(input.questionPayload !== undefined ? { questionPayload: input.questionPayload } : {}),
       })
       .pipe(
-        Effect.asVoid,
-        Effect.catch(() => Effect.void),
+        Effect.map((request) => {
+          if (request.state !== "pending") {
+            return { status: "duplicate_decided" as const };
+          }
+          const samePayload = request.reason === input.reason && request.command === input.command;
+          return samePayload
+            ? { status: "recorded" as const }
+            : { status: "duplicate_mismatched" as const };
+        }),
+        Effect.tapError((cause) =>
+          Effect.logWarning("symphony.agent.request_record_failed", {
+            requestId: input.requestId,
+            cause,
+          }),
+        ),
+        Effect.catch(() => Effect.succeed({ status: "record_failed" as const })),
       ),
   // True only when the timeout won the live claim; a human answer that won
   // first makes the runtime send that answer instead of its fallback.

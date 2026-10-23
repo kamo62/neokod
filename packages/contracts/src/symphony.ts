@@ -283,10 +283,7 @@ export type AutonomyLevel = typeof AutonomyLevelSchema.Type;
  * A tracker kind plus the real manual work source. Saved source provenance must
  * not relabel a manual item as whichever tracker the workflow happens to use.
  */
-export const AcceptedSourceKindSchema = Schema.Union([
-  TrackerKindSchema,
-  Schema.Literal("manual"),
-]);
+export const AcceptedSourceKindSchema = Schema.Union([TrackerKindSchema, Schema.Literal("manual")]);
 export type AcceptedSourceKind = typeof AcceptedSourceKindSchema.Type;
 
 /** Operator text that was deliberately absent versus deliberately empty. */
@@ -691,6 +688,7 @@ export type ApprovalAction = typeof ApprovalActionSchema.Type;
 
 export const ApprovalRequestStateSchema = Schema.Literals([
   "pending",
+  "delivering",
   "answered",
   "approved",
   "rejected",
@@ -732,6 +730,17 @@ export const ApprovalQuestionSchemaVersion = 1 as const;
  */
 export const ApprovalQuestionSchema = Schema.Struct({
   ...UserInputQuestion.fields,
+  /**
+   * Codex option descriptions are not guaranteed to be non-empty. Keep them as
+   * strings so a blank description is preserved evidence instead of making the
+   * whole durable row undecodable.
+   */
+  options: Schema.Array(
+    Schema.Struct({
+      label: TrimmedNonEmptyString,
+      description: Schema.String,
+    }),
+  ),
   /** Provider flagged this answer as secret; history stores a redaction only. */
   sensitive: Schema.optional(Schema.Boolean),
 });
@@ -857,7 +866,7 @@ export const ApprovalRequestSchema = Schema.Struct({
    * request was pending), so an interrupted row stays decodable.
    */
   decision: Schema.optional(
-    Schema.Literals(["answered", "approved", "rejected", "expired", "interrupted"]),
+    Schema.Literals(["delivering", "answered", "approved", "rejected", "expired", "interrupted"]),
   ),
 });
 export type ApprovalRequest = typeof ApprovalRequestSchema.Type;

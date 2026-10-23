@@ -63,6 +63,15 @@ const resolveThreadSandbox = (config: EffectiveWorkflowConfig): CodexThreadSandb
 const reviewerFor = (approvalPolicy: CodexApprovalPolicy): CodexReviewer =>
   approvalPolicy === "never" ? "auto_review" : "user";
 
+/**
+ * Canonical reviewer rule for a resolved permission scope. A read-only turn
+ * sandbox always asks the user, regardless of the approval policy.
+ */
+export const reviewerForPolicy = (
+  approvalPolicy: CodexApprovalPolicy,
+  turnSandboxPolicy?: CodexTurnSandboxPolicy,
+): CodexReviewer => (turnSandboxPolicy?.type === "readOnly" ? "user" : reviewerFor(approvalPolicy));
+
 const turnSandboxFor = (threadSandbox: CodexThreadSandbox): CodexTurnSandboxPolicy => {
   switch (threadSandbox) {
     case "read-only":
@@ -81,22 +90,19 @@ const turnSandboxFor = (threadSandbox: CodexThreadSandbox): CodexTurnSandboxPoli
 export const resolveRunnerPolicy = (config: EffectiveWorkflowConfig): RunnerPolicy => {
   const approvalPolicy = resolveApprovalPolicy(config);
   const threadSandbox = resolveThreadSandbox(config);
-  const reviewer = config.codexTurnSandboxPolicy
-    ? config.codexTurnSandboxPolicy === "readOnly"
-      ? "user"
-      : reviewerFor(approvalPolicy)
-    : reviewerFor(approvalPolicy);
+  const turnSandboxPolicy =
+    config.codexTurnSandboxPolicy === "dangerFullAccess"
+      ? { type: "dangerFullAccess" as const }
+      : config.codexTurnSandboxPolicy === "readOnly"
+        ? { type: "readOnly" as const }
+        : turnSandboxFor(threadSandbox);
+  const reviewer = reviewerForPolicy(approvalPolicy, turnSandboxPolicy);
 
   return {
     approvalPolicy,
     threadSandbox,
     reviewer,
-    turnSandboxPolicy:
-      config.codexTurnSandboxPolicy === "dangerFullAccess"
-        ? { type: "dangerFullAccess" }
-        : config.codexTurnSandboxPolicy === "readOnly"
-          ? { type: "readOnly" }
-          : turnSandboxFor(threadSandbox),
+    turnSandboxPolicy,
     editsAllowed: threadSandbox !== "read-only",
     approvalsEnabled: approvalPolicy !== "never",
   };

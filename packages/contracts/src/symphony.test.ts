@@ -284,8 +284,62 @@ describe("RunAttemptSchema accepted guidance", () => {
     expect(decoded.acceptedGuidance?.guidance.story).toEqual({ state: "present", text: "" });
     expect(decoded.acceptedGuidance?.permission.delivery.approvalBeforePush).toBeNull();
   });
+
+  it("preserves a manual work source instead of relabelling it as a tracker", () => {
+    const decoded = decodeRunAttempt({
+      ...runAttempt,
+      acceptedGuidance: {
+        ...acceptedGuidance,
+        source: {
+          ...acceptedGuidance.source,
+          trackerId: "manual:item-1",
+          kind: "manual",
+        },
+      },
+    });
+    expect(decoded.acceptedGuidance?.source.kind).toBe("manual");
+  });
 });
 
+describe("ApprovalRequestSchema question payload robustness", () => {
+  it("accepts an empty option description while keeping the label", () => {
+    const decoded = decodeApprovalRequest({
+      ...approvalRequest,
+      kind: "user_input",
+      action: "user_input",
+      questionPayload: {
+        kind: "structured",
+        version: 1,
+        questions: [
+          {
+            id: "q1",
+            header: "Branch",
+            question: "Which branch?",
+            options: [{ label: "main", description: "" }],
+          },
+        ],
+      },
+    });
+    if (decoded.questionPayload?.kind !== "structured") {
+      throw new Error("expected structured");
+    }
+    expect(decoded.questionPayload.questions[0]?.options).toEqual([
+      { label: "main", description: "" },
+    ]);
+  });
+
+  it("decodes a staged delivery state", () => {
+    expect(
+      decodeApprovalRequest({
+        ...approvalRequest,
+        kind: "user_input",
+        action: "user_input",
+        state: "delivering",
+        decision: "answered",
+      }).state,
+    ).toBe("delivering");
+  });
+});
 
 describe("AcceptedSourceSnapshot manual source", () => {
   it("preserves a manual work source instead of relabelling it as a tracker", () => {

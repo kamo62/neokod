@@ -9,9 +9,12 @@ import type {
   RunAttemptId,
   WorkItemId,
 } from "@neokod/contracts";
+import { ApprovalQuestionPayloadSchema } from "@neokod/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
 import * as Crypto from "effect/Crypto";
 import * as Semaphore from "effect/Semaphore";
 
@@ -60,6 +63,28 @@ export class ApprovalAnswerValidationError extends Error {
   }
 }
 
+/**
+ * The accepted content could not be finalised in durable history. `delivered`
+ * distinguishes a write that failed before live consumption (nothing sent, safe
+ * to retry normally) from one that failed after the live Deferred was resolved
+ * (provider delivery cannot be repeated; retrying only finalises history).
+ */
+export class ApprovalHistoryPendingError extends Error {
+  readonly requestId: string;
+  readonly delivered: boolean;
+
+  constructor(requestId: string, delivered: boolean, detail: string) {
+    super(
+      delivered
+        ? `The answer for request ${requestId} was delivered to the agent, but its history could not be saved (${detail}). Retry to finish recording it; do not resend the provider response.`
+        : `The answer for request ${requestId} could not be saved (${detail}); nothing was delivered. Retry the request.`,
+    );
+    this.name = "ApprovalHistoryPendingError";
+    this.requestId = requestId;
+    this.delivered = delivered;
+  }
+}
+
 export interface ApprovalDecisionSubmission {
   /** Saved to durable history only; Codex approval responses carry no note. */
   readonly note?: string;
@@ -86,6 +111,31 @@ const isSensitiveQuestion = (question: ApprovalQuestion): boolean =>
   SENSITIVE_QUESTION_PATTERN.test(question.question);
 
 const REDACTED_ANSWER = "[redacted]";
+
+const decodeQuestionPayload = Schema.decodeUnknownOption(ApprovalQuestionPayloadSchema);
+
+/**
+ * Validate the whole payload before persistence. Anything that cannot be
+ * represented becomes explicitly `unsupported`; no partial question list is
+ * written where a later list decode could hide every other request.
+ */
+const normaliseQuestionPayload = (
+  payload: ApprovalQuestionPayload | undefined,
+): ApprovalQuestionPayload | undefined => {
+  if (payload === undefined) return undefined;
+  const decoded = decodeQuestionPayload(payload);
+  return Option.isSome(decoded)
+    ? decoded.value
+    : {
+        kind: "unsupported",
+        providerMethod:
+          payload.kind === "unsupported" ? payload.providerMethod : "item/tool/requestUserInput",
+        detail: "the question payload could not be validated",
+      };
+};
+
+const hasRedactedAnswer = (record: ApprovalAnswerRecord | undefined): boolean =>
+  record?.answers.some((entry) => entry.redacted === true) ?? false;
 
 const normaliseNote = (note: string | undefined): string | undefined => {
   const trimmed = note?.trim();
@@ -306,7 +356,7 @@ export interface ApprovalServiceShape {
   readonly approve: (
     requestId: string,
     submission?: ApprovalDecisionSubmission,
-  ) => Effect.Effect<void, ApprovalRequestNotFoundError>;
+  ) => Effect.Effect<void, ApprovalRequestNotFoundError | ApprovalHistoryPendingError>;
 
   /**
    * Reject a pending live request: answer the Deferred with rejection and
@@ -315,13 +365,16 @@ export interface ApprovalServiceShape {
   readonly reject: (
     requestId: string,
     submission?: ApprovalDecisionSubmission,
-  ) => Effect.Effect<void, ApprovalRequestNotFoundError>;
+  ) => Effect.Effect<void, ApprovalRequestNotFoundError | ApprovalHistoryPendingError>;
 
   /** Answer a user-input request with structured answers (or legacy text). */
   readonly respondToUserInput: (
     requestId: string,
     submission: UserInputAnswerSubmission,
-  ) => Effect.Effect<void, ApprovalRequestNotFoundError | ApprovalAnswerValidationError>;
+  ) => Effect.Effect<
+    void,
+    ApprovalRequestNotFoundError | ApprovalAnswerValidationError | ApprovalHistoryPendingError
+  >;
 
   /** List pending durable requests (for the attention UI). */
   readonly listPending: (options?: { readonly limit?: number }) => Effect.Effect<ApprovalRequest[]>;
@@ -385,25 +438,35 @@ export const makeApprovalService = Effect.gen(function* () {
     );
 
   const recordPending: ApprovalServiceShape["recordPending"] = (input) =>
-    Effect.gen(function* () {
-      const id = yield* makeId();
-      return yield* repository.create({
-        id,
-        requestId: input.requestId,
-        workItemId: String(input.workItemId),
-        runAttemptId: input.runAttemptId,
-        action: input.action,
-        scope: input.scope,
-        ...(input.command !== undefined ? { command: input.command } : {}),
-        ...(input.workingDirectory !== undefined
-          ? { workingDirectory: input.workingDirectory }
-          : {}),
-        ...(input.reason !== undefined ? { reason: input.reason } : {}),
-        ...(input.affectedFiles !== undefined ? { affectedFiles: input.affectedFiles } : {}),
-        ...(input.policySource !== undefined ? { policySource: input.policySource } : {}),
-        ...(input.questionPayload !== undefined ? { questionPayload: input.questionPayload } : {}),
-      });
-    });
+    withResolution(
+      Effect.gen(function* () {
+        const existing = yield* repository
+          .findByRequest(input.runAttemptId, input.requestId)
+          .pipe(Effect.catch(() => Effect.succeed(null)));
+        // One logical provider request per (run attempt, request id). A
+        // redelivery returns the existing history instead of creating a second
+        // row or replacing the live Deferred.
+        if (existing !== null) return existing;
+        const id = yield* makeId();
+        const questionPayload = normaliseQuestionPayload(input.questionPayload);
+        return yield* repository.create({
+          id,
+          requestId: input.requestId,
+          workItemId: String(input.workItemId),
+          runAttemptId: input.runAttemptId,
+          action: input.action,
+          scope: input.scope,
+          ...(input.command !== undefined ? { command: input.command } : {}),
+          ...(input.workingDirectory !== undefined
+            ? { workingDirectory: input.workingDirectory }
+            : {}),
+          ...(input.reason !== undefined ? { reason: input.reason } : {}),
+          ...(input.affectedFiles !== undefined ? { affectedFiles: input.affectedFiles } : {}),
+          ...(input.policySource !== undefined ? { policySource: input.policySource } : {}),
+          ...(questionPayload !== undefined ? { questionPayload } : {}),
+        });
+      }),
+    );
 
   const logHistoryFailure = (operation: string, id: string) =>
     Effect.logWarning(`Symphony could not persist ${operation} history for request ${id}`);
@@ -412,7 +475,7 @@ export const makeApprovalService = Effect.gen(function* () {
     id: string,
     decision: ApprovalDecision,
     submission: ApprovalDecisionSubmission | undefined,
-  ): Effect.Effect<void, ApprovalRequestNotFoundError> =>
+  ): Effect.Effect<void, ApprovalRequestNotFoundError | ApprovalHistoryPendingError> =>
     withResolution(
       Effect.gen(function* () {
         const record = yield* repository.getById(id).pipe(Effect.catch(() => Effect.succeed(null)));
@@ -426,9 +489,21 @@ export const makeApprovalService = Effect.gen(function* () {
           return yield* Effect.fail(new ApprovalRequestNotFoundError(id));
         }
         const note = yield* decisionNote(submission?.note);
+        const details = note === undefined ? {} : { decisionNote: note };
         // A retried submission after a lost response is idempotent when it
         // carries the same outcome. A different outcome for the same record is
         // stale, never a second decision.
+        if (record.state === "delivering") {
+          if (record.decision !== decision || !sameNote(record.decisionNote, note?.text)) {
+            return yield* Effect.fail(new ApprovalRequestNotFoundError(id));
+          }
+          yield* repository
+            .completeDelivery(record.id, decision)
+            .pipe(
+              Effect.mapError((cause) => new ApprovalHistoryPendingError(id, true, String(cause))),
+            );
+          return;
+        }
         if (record.state !== "pending") {
           if (record.state === decision && sameNote(record.decisionNote, note?.text)) {
             return;
@@ -438,20 +513,27 @@ export const makeApprovalService = Effect.gen(function* () {
         if (record.runAttemptId === undefined) {
           return yield* Effect.fail(new ApprovalRequestNotFoundError(id));
         }
+        yield* repository
+          .stageDelivery(record.id, decision, details)
+          .pipe(
+            Effect.mapError((cause) => new ApprovalHistoryPendingError(id, false, String(cause))),
+          );
         const live = yield* Effect.result(
           liveRequests.respondToApproval(record.runAttemptId, record.requestId, decision),
         );
         if (live._tag === "Failure") {
-          // Another resolver (a timeout, run settlement) already claimed the
-          // request: record nothing so the row keeps that single outcome.
+          // The live claim lost (timeout, run settlement or another resolver).
+          // The staged content was never delivered, so close it explicitly
+          // rather than leaving an invisible delivering row.
+          yield* repository
+            .abortDelivery(record.id, "interrupted")
+            .pipe(Effect.catch(() => logHistoryFailure("aborted delivery", id)));
           return yield* Effect.fail(new ApprovalRequestNotFoundError(id));
         }
         yield* repository
-          .decide(record.id, decision, note === undefined ? {} : { decisionNote: note })
+          .completeDelivery(record.id, decision)
           .pipe(
-            // The agent already has the decision. A history write failure must
-            // stay visible in logs and must not be reported as provider receipt.
-            Effect.catch(() => logHistoryFailure("decision", id)),
+            Effect.mapError((cause) => new ApprovalHistoryPendingError(id, true, String(cause))),
           );
       }),
     );
@@ -476,8 +558,26 @@ export const makeApprovalService = Effect.gen(function* () {
           return yield* Effect.fail(new ApprovalRequestNotFoundError(id));
         }
         const prepared = yield* prepareAnswer(record, submission);
+        if (record.state === "delivering") {
+          // A secret answer cannot be compared from its redacted history. A
+          // retry is therefore stale/unknown, never a success that claims a
+          // different secret was delivered.
+          if (hasRedactedAnswer(record.answer) || !sameAnswers(record.answer, prepared.record)) {
+            return yield* Effect.fail(new ApprovalRequestNotFoundError(id));
+          }
+          yield* repository
+            .completeDelivery(record.id, "answered")
+            .pipe(
+              Effect.mapError((cause) => new ApprovalHistoryPendingError(id, true, String(cause))),
+            );
+          return;
+        }
         if (record.state !== "pending") {
-          if (record.state === "answered" && sameAnswers(record.answer, prepared.record)) {
+          if (
+            record.state === "answered" &&
+            !hasRedactedAnswer(record.answer) &&
+            sameAnswers(record.answer, prepared.record)
+          ) {
             return;
           }
           return yield* Effect.fail(new ApprovalRequestNotFoundError(id));
@@ -485,6 +585,11 @@ export const makeApprovalService = Effect.gen(function* () {
         if (record.runAttemptId === undefined) {
           return yield* Effect.fail(new ApprovalRequestNotFoundError(id));
         }
+        yield* repository
+          .stageDelivery(record.id, "answered", { answer: prepared.record })
+          .pipe(
+            Effect.mapError((cause) => new ApprovalHistoryPendingError(id, false, String(cause))),
+          );
         const result = yield* Effect.result(
           liveRequests.respondToUserInput(
             record.runAttemptId,
@@ -493,11 +598,16 @@ export const makeApprovalService = Effect.gen(function* () {
           ),
         );
         if (result._tag === "Failure") {
+          yield* repository
+            .abortDelivery(record.id, "interrupted")
+            .pipe(Effect.catch(() => logHistoryFailure("aborted answer", id)));
           return yield* Effect.fail(new ApprovalRequestNotFoundError(id));
         }
         yield* repository
-          .decide(record.id, "answered", { answer: prepared.record })
-          .pipe(Effect.catch(() => logHistoryFailure("answer", id)));
+          .completeDelivery(record.id, "answered")
+          .pipe(
+            Effect.mapError((cause) => new ApprovalHistoryPendingError(id, true, String(cause))),
+          );
       }),
     );
 
