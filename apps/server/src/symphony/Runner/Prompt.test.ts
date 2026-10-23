@@ -300,6 +300,45 @@ describe("buildRunPrompt", () => {
     );
   });
 
+  it("renders later live restrictions while keeping the accepted source frozen", () => {
+    const accepted = makeAcceptedGuidance();
+    const prompt = buildRunPrompt({
+      issue: makeIssue({ title: "Edited live title" }),
+      config: makeConfig({
+        autonomy: "prepare",
+        approvalsBeforePush: true,
+      }),
+      acceptedGuidance: accepted,
+    });
+
+    expect(prompt).toContain("Fix the login bug");
+    expect(prompt).not.toContain("Edited live title");
+    expect(prompt).toContain("Autonomy level: prepare");
+    expect(prompt).toContain("Effective sandbox: read-only");
+    expect(prompt).toContain("Work in plan mode");
+    expect(prompt).toContain("push required");
+    expect(prompt).not.toContain("Stage and commit");
+    expect(prompt).not.toContain("Write SYMPHONY_EVIDENCE.md");
+  });
+
+  it("refuses to render execution when approval escalation cannot be intersected", () => {
+    const accepted = makeAcceptedGuidance({
+      config: makeConfig({ autonomy: "execute", codexApprovalPolicy: "never" }),
+    });
+    const prompt = buildRunPrompt({
+      issue: makeIssue(),
+      config: makeConfig({ autonomy: "execute", codexApprovalPolicy: "on-request" }),
+      acceptedGuidance: accepted,
+    });
+
+    expect(prompt).toContain("Execution is blocked");
+    expect(prompt).toContain("forbids approval escalation");
+    expect(prompt).toContain("Do not modify any files");
+    expect(prompt).not.toContain("Work in execution mode");
+    expect(prompt).not.toContain("Stage and commit");
+    expect(prompt).not.toContain("Write SYMPHONY_EVIDENCE.md");
+  });
+
   it("does not re-send accepted guidance on a continuation turn", () => {
     const accepted = makeAcceptedGuidance();
     const prompt = buildRunPrompt({

@@ -16,7 +16,6 @@ import {
   digestAcceptedContent,
   freezeAcceptedGuidance,
   narrowAcceptedPermissions,
-  preserveAcceptedGuidance,
   resolveAcceptedPermissions,
   type FreezeAcceptedGuidanceInput,
 } from "./AcceptedGuidance.ts";
@@ -244,13 +243,25 @@ describe("freezeAcceptedGuidance", () => {
 });
 
 describe("narrowAcceptedPermissions", () => {
+  const narrowedPermission = (
+    accepted: ReturnType<typeof resolveAcceptedPermissions>,
+    live: ReturnType<typeof resolveAcceptedPermissions>,
+  ) => {
+    const result = narrowAcceptedPermissions(accepted, live);
+    expect(result._tag).toBe("narrowed");
+    if (result._tag !== "narrowed") {
+      throw new Error(`expected a narrowed permission, received ${result.reason}`);
+    }
+    return result.permission;
+  };
+
   it("keeps the accepted scope when the live workflow widens", () => {
     const accepted = resolveAcceptedPermissions(makeConfig({ autonomy: "execute" }));
     const live = resolveAcceptedPermissions(
       makeConfig({ autonomy: "deliver", codexThreadSandbox: "danger-full-access" }),
     );
 
-    const narrowed = narrowAcceptedPermissions(accepted, live);
+    const narrowed = narrowedPermission(accepted, live);
 
     expect(narrowed.autonomy).toBe("execute");
     expect(narrowed.threadSandbox).toBe("workspace-write");
@@ -275,7 +286,7 @@ describe("narrowAcceptedPermissions", () => {
       }),
     );
 
-    const narrowed = narrowAcceptedPermissions(accepted, live);
+    const narrowed = narrowedPermission(accepted, live);
 
     expect(narrowed).toMatchObject({
       autonomy: "prepare",
@@ -301,40 +312,71 @@ describe("narrowAcceptedPermissions", () => {
       makeConfig({ autonomy: "deliver", codexThreadSandbox: "danger-full-access" }),
     );
 
-    const narrowed = narrowAcceptedPermissions(accepted, live);
+    const narrowed = narrowedPermission(accepted, live);
 
     expect(narrowed.threadSandbox).toBe("read-only");
     expect(narrowed.turnSandboxPolicy).toEqual({ type: "readOnly" });
     expect(narrowed.editsAllowed).toBe(false);
   });
-});
 
-describe("preserveAcceptedGuidance", () => {
-  type Carrier = { readonly id: string; readonly acceptedGuidance?: AcceptedGuidanceSnapshot };
-  const snapshot = freeze();
-  const otherSnapshot: AcceptedGuidanceSnapshot = {
-    ...snapshot,
-    acceptedAt: "2026-10-24T08:00:00.000Z",
-  };
+  it("keeps accepted no-escalation when both sides forbid approval requests", () => {
+    const accepted = resolveAcceptedPermissions(
+      makeConfig({ autonomy: "execute", codexApprovalPolicy: "never" }),
+    );
+    const live = resolveAcceptedPermissions(
+      makeConfig({ autonomy: "deliver", codexApprovalPolicy: "never" }),
+    );
 
-  it("allows the first accepted snapshot on a legacy row", () => {
-    const legacy: Carrier = { id: "run-1" };
-    const updated = preserveAcceptedGuidance(legacy, { id: "run-1", acceptedGuidance: snapshot });
-    expect(updated.acceptedGuidance).toBe(snapshot);
+    const narrowed = narrowedPermission(accepted, live);
+
+    expect(narrowed.approvalPolicy).toBe("never");
+    expect(narrowed.approvalsEnabled).toBe(false);
   });
 
-  it("never replaces an accepted snapshot", () => {
-    const existing: Carrier = { id: "run-1", acceptedGuidance: snapshot };
-    const incoming: Carrier = { id: "run-1", acceptedGuidance: otherSnapshot };
-    const updated = preserveAcceptedGuidance(existing, incoming);
-    expect(updated.acceptedGuidance).toBe(snapshot);
-    expect(updated.id).toBe("run-1");
+  it("refuses to re-enable escalation when accepted forbids it and live allows it", () => {
+    const accepted = resolveAcceptedPermissions(
+      makeConfig({ autonomy: "execute", codexApprovalPolicy: "never" }),
+    );
+    const live = resolveAcceptedPermissions(
+      makeConfig({ autonomy: "execute", codexApprovalPolicy: "on-request" }),
+    );
+
+    expect(narrowAcceptedPermissions(accepted, live)).toEqual({
+      _tag: "unrepresentable",
+      reason: "approval_escalation_conflict",
+      acceptedApprovalPolicy: "never",
+      liveApprovalPolicy: "on-request",
+    });
   });
 
-  it("leaves a row without a snapshot unchanged", () => {
-    const existing: Carrier = { id: "run-1" };
-    const incoming: Carrier = { id: "run-1" };
-    const updated = preserveAcceptedGuidance(existing, incoming);
-    expect(updated).toEqual({ id: "run-1" });
+  it("lets a later live no-escalation policy narrow an accepted approval-enabled policy", () => {
+    const accepted = resolveAcceptedPermissions(
+      makeConfig({ autonomy: "execute", codexApprovalPolicy: "on-request" }),
+    );
+    const live = resolveAcceptedPermissions(
+      makeConfig({ autonomy: "execute", codexApprovalPolicy: "never" }),
+    );
+
+    const narrowed = narrowedPermission(accepted, live);
+
+    expect(narrowed.approvalPolicy).toBe("never");
+    expect(narrowed.approvalsEnabled).toBe(false);
+  });
+
+  it("keeps approvals disabled when the accepted scope disabled them", () => {
+    const accepted = {
+      ...resolveAcceptedPermissions(
+        makeConfig({ autonomy: "execute", codexApprovalPolicy: "on-request" }),
+      ),
+      approvalsEnabled: false,
+    };
+    const live = resolveAcceptedPermissions(
+      makeConfig({ autonomy: "execute", codexApprovalPolicy: "untrusted" }),
+    );
+
+    const narrowed = narrowedPermission(accepted, live);
+
+    expect(narrowed.approvalPolicy).toBe("untrusted");
+    expect(narrowed.approvalsEnabled).toBe(false);
   });
 });
