@@ -3,7 +3,12 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as TestClock from "effect/testing/TestClock";
 import type { AcceptedGuidanceSnapshot } from "@neokod/contracts";
-import { RunAttemptId, WorkItemId } from "@neokod/contracts";
+import {
+  ProviderDriverKind,
+  ProviderInstanceId,
+  RunAttemptId,
+  WorkItemId,
+} from "@neokod/contracts";
 
 import { makeLiveRequests } from "./LiveRequests.ts";
 import {
@@ -1176,6 +1181,63 @@ it.effect("withdraws its own registration when request publication fails", () =>
       expect(yield* liveRequests.listPending(runAttemptId)).toHaveLength(0);
       yield* peer.completeTurn("completed");
       yield* Fiber.join(fiber);
+    }),
+  ),
+);
+
+it.effect("refuses an unsupported provider before spawn", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const peer = yield* makeFakeCodexPeer();
+      const liveRequests = yield* makeLiveRequests;
+      const runtime = yield* makeFakeCodexRuntime({ peer, liveRequests });
+      const result = yield* Effect.result(
+        runtime.runTurn({
+          issue: makeRunnerTestIssue("1"),
+          config: makeRunnerTestConfig({
+            agentProvider: {
+              instanceId: ProviderInstanceId.make("claude_default"),
+              driver: ProviderDriverKind.make("claude"),
+            },
+          }),
+          workspacePath: "/tmp/fake-ws",
+          branch: "b",
+          runAttemptId: RunAttemptId.make("run-unsupported-provider"),
+          workItemId: WorkItemId.make("wi-unsupported-provider"),
+        }),
+      );
+      expect(result._tag).toBe("Failure");
+      if (result._tag === "Failure") {
+        expect(String(result.failure)).toContain("supports the default Codex provider");
+      }
+      expect(yield* peer.spawnCount).toBe(0);
+    }),
+  ),
+);
+
+it.effect("refuses an unsupported instance for the Codex driver before spawn", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const peer = yield* makeFakeCodexPeer();
+      const liveRequests = yield* makeLiveRequests;
+      const runtime = yield* makeFakeCodexRuntime({ peer, liveRequests });
+      const result = yield* Effect.result(
+        runtime.runTurn({
+          issue: makeRunnerTestIssue("1"),
+          config: makeRunnerTestConfig({
+            agentProvider: {
+              instanceId: ProviderInstanceId.make("codex_other"),
+              driver: ProviderDriverKind.make("codex"),
+            },
+          }),
+          workspacePath: "/tmp/fake-ws",
+          branch: "b",
+          runAttemptId: RunAttemptId.make("run-unsupported-instance"),
+          workItemId: WorkItemId.make("wi-unsupported-instance"),
+        }),
+      );
+      expect(result._tag).toBe("Failure");
+      expect(yield* peer.spawnCount).toBe(0);
     }),
   ),
 );

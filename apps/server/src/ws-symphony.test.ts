@@ -180,6 +180,25 @@ const legacyStopAllOrchestratorLayer = Layer.succeed(SymphonyOrchestrator, {
   stopAllRuns: () => Effect.succeed(2),
 } as unknown as (typeof SymphonyOrchestrator)["Service"]);
 
+const unrecognisedStopAllOrchestratorLayer = Layer.succeed(SymphonyOrchestrator, {
+  stopAllRuns: () => Effect.succeed("unexpected"),
+} as unknown as (typeof SymphonyOrchestrator)["Service"]);
+
+it.layer(unrecognisedStopAllOrchestratorLayer)(
+  "Symphony WS RPC handlers - unrecognised stop-all result",
+  (it) => {
+    it.effect("treats an unrecognised stop-all result as unknown, not success", () =>
+      Effect.gen(function* () {
+        const handlers = makeSymphonyRpcHandlers();
+        const result = yield* Effect.scoped(
+          handlers[SYMPHONY_WS_METHODS.stopAllRuns]({ confirm: "stop-all-runs" }),
+        );
+        expect(result).toEqual({ ok: false });
+      }),
+    );
+  },
+);
+
 it.layer(legacyStopAllOrchestratorLayer)(
   "Symphony WS RPC handlers - legacy stop-all count",
   (it) => {
