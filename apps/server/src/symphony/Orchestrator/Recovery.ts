@@ -24,6 +24,7 @@ import { WorkflowRepository } from "../Persistence/Services/WorkflowRepository.t
 import {
   RunDispatcher,
   claimBindingMatches,
+  hasOwnershipFailureEvent,
   readAttemptClaimBinding,
 } from "../Runner/Dispatcher.ts";
 import type { WorkspaceOwnershipRepositoryShape } from "../Persistence/Services/WorkspaceOwnershipRepository.ts";
@@ -118,12 +119,18 @@ const ownershipFence = (ownership: ClaimOwnership): ClaimFence | null =>
  * clears it. Restart/reconciliation consult this so an explicit Stop is never
  * converted back into a queue or retry.
  */
-export const hasPendingStopIntent = (
+export type StopIntentState = "pending" | "none" | "unknown";
+
+/**
+ * Durable Stop intent. A read failure is `unknown`, never "no Stop": callers
+ * must hold rather than treat unreadable history as ordinary work.
+ */
+export const readStopIntent = (
   runEvents: RunEventRepository["Service"],
   runAttemptId: RunAttempt["id"],
-): Effect.Effect<boolean> =>
+): Effect.Effect<StopIntentState> =>
   runEvents.listForAttempt(runAttemptId).pipe(
-    Effect.map((events) => {
+    Effect.map((events): StopIntentState => {
       let pending = false;
       for (const event of events) {
         if (event.eventType === "stop_requested" || event.eventType === "stop_unconfirmed") {
@@ -132,9 +139,9 @@ export const hasPendingStopIntent = (
           pending = false;
         }
       }
-      return pending;
+      return pending ? "pending" : "none";
     }),
-    Effect.catch(() => Effect.succeed(false)),
+    Effect.catch(() => Effect.succeed("unknown" as const)),
   );
 
 /**
@@ -256,20 +263,34 @@ const recoverItem = (
   now: string,
 ) =>
   Effect.gen(function* () {
-    const ownership = yield* deps.workItems
-      .getClaimOwnership(item.id)
-      .pipe(Effect.catch(() => Effect.succeed(null)));
+    const ownershipProbe = yield* Effect.result(deps.workItems.getClaimOwnership(item.id));
+    if (ownershipProbe._tag === "Failure") {
+      // Unknown ownership is not absence. Keep the claim for reconciliation.
+      yield* Effect.logWarning("symphony.recovery.ownership_unreadable", {
+        workItemId: String(item.id),
+      });
+      return;
+    }
+    const ownership = ownershipProbe.success;
     const releaseFence = ownership === null ? null : ownershipFence(ownership);
-    const attempt = yield* deps.runAttempts
-      .latestForWorkItem(item.id)
-      .pipe(Effect.catch(() => Effect.succeed(null)));
+    const attemptProbe = yield* Effect.result(deps.runAttempts.latestForWorkItem(item.id));
+    if (attemptProbe._tag === "Failure") {
+      // An undecodable/unreadable attempt is evidence failure, not "no attempt".
+      yield* Effect.logWarning("symphony.recovery.attempt_unreadable", {
+        workItemId: String(item.id),
+      });
+      return;
+    }
+    const attempt = attemptProbe.success;
     if (attempt === null) {
-      // A claim without any attempt is normally an in-flight dispatch
-      // window; leave it alone to avoid racing the dispatcher. But a claim
-      // that predates this server start by more than the stall window is a
-      // crash between claim and attempt-create: release it so the item is not
-      // stuck in `preparing` forever (REVIEW P1 #10).
-      const claimedAtValue = ownership?.claimedAt ?? item.claimedAt ?? null;
+      // A positively missing attempt row is normally an in-flight dispatch
+      // window. The age-based crash-window release applies only when the
+      // exact claim records no child process at all; any recorded or unknown
+      // ownership stays held rather than being released without evidence.
+      if (ownership === null || releaseFence === null || ownership.ownerPid !== null) {
+        return;
+      }
+      const claimedAtValue = ownership.claimedAt;
       const claimedAt = claimedAtValue === null ? null : Date.parse(claimedAtValue);
       if (
         claimedAt !== null &&
@@ -277,7 +298,7 @@ const recoverItem = (
         (yield* Clock.currentTimeMillis) - claimedAt > STALL_WINDOW_MS
       ) {
         yield* deps.workItems
-          .releaseClaim(item.id, "queued", releaseFence ?? undefined)
+          .releaseClaim(item.id, "queued", releaseFence)
           .pipe(Effect.catch(() => Effect.void));
       }
       return;
@@ -312,6 +333,19 @@ const recoverItem = (
       return;
     }
 
+    if (yield* hasOwnershipFailureEvent(deps.runEvents, attempt.id)) {
+      yield* deps.runEvents
+        .appendOnce(attempt.id, "recovery_hold", {
+          workItemId: String(item.id),
+          reason: "ownership_unverified",
+          ownerPid: ownership.ownerPid,
+          generation: ownership.generation,
+          terminalAttempt: TERMINAL_STATUSES.has(attempt.status),
+        })
+        .pipe(Effect.catch(() => Effect.succeed(false)));
+      return;
+    }
+
     // Identity and closure come before ANY release, interruption or terminal
     // transition, including the terminal-attempt shortcut below. An
     // unverifiable owner keeps the claim, lease and lifecycle exactly as they
@@ -332,8 +366,20 @@ const recoverItem = (
     }
 
     // A durable Stop always wins over retry/requeue once closure is confirmed.
-    const stopPending = yield* hasPendingStopIntent(deps.runEvents, attempt.id);
-    if (stopPending) {
+    const stopIntent = yield* readStopIntent(deps.runEvents, attempt.id);
+    if (stopIntent === "unknown") {
+      yield* deps.runEvents
+        .appendOnce(attempt.id, "recovery_hold", {
+          workItemId: String(item.id),
+          reason: "stop_intent_unreadable",
+          ownerPid: ownership.ownerPid,
+          generation: ownership.generation,
+          terminalAttempt: TERMINAL_STATUSES.has(attempt.status),
+        })
+        .pipe(Effect.catch(() => Effect.succeed(false)));
+      return;
+    }
+    if (stopIntent === "pending") {
       const settled = yield* settleConfirmedStopIntent({
         workItems: deps.workItems,
         runAttempts: deps.runAttempts,

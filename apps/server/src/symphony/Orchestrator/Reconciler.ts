@@ -18,10 +18,11 @@ import { WorkflowRepository } from "../Persistence/Services/WorkflowRepository.t
 import {
   RunDispatcher,
   claimBindingMatches,
+  hasOwnershipFailureEvent,
   readAttemptClaimBinding,
 } from "../Runner/Dispatcher.ts";
 import { WORKFLOW_DEFAULTS } from "../Workflow/Config.ts";
-import { hasPendingStopIntent, settleConfirmedStopIntent } from "./Recovery.ts";
+import { readStopIntent, settleConfirmedStopIntent } from "./Recovery.ts";
 
 /**
  * Claim reconciliation (plan 9.4, 9.7.3 to 9.7.5).
@@ -202,6 +203,11 @@ const reconcileItem = (
       return;
     }
 
+    if (yield* hasOwnershipFailureEvent(deps.runEvents, attempt.id)) {
+      yield* recordHold("ownership_unverified");
+      return;
+    }
+
     // Closure is required before ANY release or requeue, including a terminal
     // attempt. A startup recovery hold or an unconfirmed Stop stays held here.
     const closure = yield* resolveOwnerClosure(deps, ownership);
@@ -212,8 +218,12 @@ const reconcileItem = (
 
     // A durable Stop settles once closure is confirmed; it never becomes a
     // queue or retry, even after a restart or late descendant exit.
-    const stopPending = yield* hasPendingStopIntent(deps.runEvents, attempt.id);
-    if (stopPending) {
+    const stopIntent = yield* readStopIntent(deps.runEvents, attempt.id);
+    if (stopIntent === "unknown") {
+      yield* recordHold("stop_intent_unreadable");
+      return;
+    }
+    if (stopIntent === "pending") {
       const settled = yield* settleConfirmedStopIntent({
         workItems: deps.workItems,
         runAttempts: deps.runAttempts,
