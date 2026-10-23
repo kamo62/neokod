@@ -1,3 +1,4 @@
+import { useAtomValue } from "@effect/atom-react";
 import type {
   AttentionItem,
   EnvironmentId,
@@ -7,8 +8,10 @@ import type {
 } from "@neokod/contracts";
 import { useMemo } from "react";
 
+import { environmentCatalog } from "../connection/catalog";
 import {
   projectSymphonyWorkCollection,
+  symphonyWorkConnectionStaleReason,
   type SymphonyWorkAttentionFacts,
   type SymphonyWorkAttemptFact,
   type SymphonyWorkBoardFacts,
@@ -20,6 +23,7 @@ import {
   type SymphonyWorkFilter,
   type SymphonyWorkRunFacts,
 } from "../symphonyWork.logic";
+import { useEnvironmentPresentation } from "./presentation";
 import { useEnvironmentQuery } from "./query";
 import { symphonyEnvironment } from "./symphony";
 
@@ -62,14 +66,18 @@ function attemptFactFromSummary(run: RunSummary): SymphonyWorkAttemptFact {
 function evidenceFromQuery<A, B>(input: {
   readonly data: A | null;
   readonly error: string | null;
+  readonly staleReason: string | null;
   readonly toValue: (value: A) => B;
   readonly pendingReason: string;
 }): SymphonyWorkEvidence<B> {
   if (input.data !== null) {
+    const staleReasons = [input.staleReason, input.error].filter(
+      (reason): reason is string => reason !== null && reason.length > 0,
+    );
     return {
       state: "known",
       value: input.toValue(input.data),
-      ...(input.error === null ? {} : { staleReason: input.error }),
+      ...(staleReasons.length === 0 ? {} : { staleReason: staleReasons.join(" ") }),
     };
   }
   if (input.error !== null) {
@@ -79,7 +87,10 @@ function evidenceFromQuery<A, B>(input: {
       retryable: true,
     };
   }
-  return { state: "unknown", reason: input.pendingReason };
+  return {
+    state: "unknown",
+    reason: input.staleReason ?? input.pendingReason,
+  };
 }
 
 function boardFacts(board: SymphonyProjectBoard): SymphonyWorkBoardFacts {
@@ -119,6 +130,7 @@ export interface SymphonyProjectWorkOptions {
 }
 
 export interface SymphonyProjectWorkErrors {
+  readonly connection: string | null;
   readonly board: string | null;
   readonly runs: string | null;
   readonly attention: string | null;
@@ -159,6 +171,15 @@ export function useSymphonyProjectWork(
       ? null
       : symphonyEnvironment.attention({ environmentId, input: { projectId } }),
   );
+  const environment = useEnvironmentPresentation(environmentId);
+  const networkStatus = useAtomValue(environmentCatalog.networkStatusValueAtom);
+  const connectionStaleReason =
+    environmentId === null
+      ? null
+      : symphonyWorkConnectionStaleReason(
+          environment.presentation?.connection.phase ?? null,
+          networkStatus,
+        );
 
   const filter = options?.filter ?? "all";
   const dispatch = options?.dispatch;
@@ -171,18 +192,21 @@ export function useSymphonyProjectWork(
       board: evidenceFromQuery({
         data: boardQuery.data,
         error: boardQuery.error,
+        staleReason: connectionStaleReason,
         toValue: boardFacts,
         pendingReason: "The project board has not loaded.",
       }),
       runs: evidenceFromQuery({
         data: runsQuery.data,
         error: runsQuery.error,
+        staleReason: connectionStaleReason,
         toValue: runFacts,
         pendingReason: "Project runs have not loaded.",
       }),
       attention: evidenceFromQuery({
         data: attentionQuery.data,
         error: attentionQuery.error,
+        staleReason: connectionStaleReason,
         toValue: attentionFacts,
         pendingReason: "Attention has not loaded.",
       }),
@@ -196,6 +220,7 @@ export function useSymphonyProjectWork(
     boardQuery.data,
     boardQuery.error,
     closures,
+    connectionStaleReason,
     dispatch,
     environmentId,
     filter,
@@ -209,6 +234,7 @@ export function useSymphonyProjectWork(
     isPending: environmentId !== null && boardQuery.isPending,
     error: boardQuery.error,
     errors: {
+      connection: connectionStaleReason,
       board: boardQuery.error,
       runs: runsQuery.error,
       attention: attentionQuery.error,

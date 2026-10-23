@@ -14,6 +14,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   projectSymphonyWorkCollection,
   projectSymphonyWorkItem,
+  symphonyWorkConnectionStaleReason,
   type SymphonyWorkAttemptFact,
   type SymphonyWorkClosureEvidence,
   type SymphonyWorkCollectionInput,
@@ -140,6 +141,24 @@ function collectionInput(
     ...overrides,
   };
 }
+
+describe("environment connection freshness", () => {
+  it("only treats a connected environment on an online network as fresh", () => {
+    expect(symphonyWorkConnectionStaleReason("connected", "online")).toBeNull();
+    expect(symphonyWorkConnectionStaleReason("connected", "offline")).not.toBeNull();
+    expect(symphonyWorkConnectionStaleReason("connected", "unknown")).not.toBeNull();
+    for (const phase of [
+      "available",
+      "offline",
+      "connecting",
+      "reconnecting",
+      "error",
+      null,
+    ] as const) {
+      expect(symphonyWorkConnectionStaleReason(phase, "online")).not.toBeNull();
+    }
+  });
+});
 
 describe("projectSymphonyWorkItem lifecycle", () => {
   it.each([
@@ -403,6 +422,115 @@ describe("stop requests and confirmed closure", () => {
     expect(value.ownership.state).toBe("unknown");
     expect(startAction(value)?.state).toBe("unknown");
   });
+
+  it("does not let an older work-item closure confirm a later cancelled attempt", () => {
+    const value = projection({
+      card: known(boardCard({ lifecycle: "cancelled", latestRunAttemptId: secondRunId })),
+      currentRunAttemptId: secondRunId,
+      runs: known({
+        runs: [
+          attemptFact(secondRunId, "user_cancelled", {
+            attemptNumber: 2,
+            startedAt: "2026-10-23T11:00:00.000Z",
+          }),
+        ],
+        coverage: exhaustive,
+      }),
+      closures: [
+        {
+          workItemId,
+          observedAt: "2026-10-23T10:00:00.000Z",
+          source: "recovery.stop_confirmed",
+        },
+      ],
+    });
+    expect(value.attempts.history[0]?.outcome.state).toBe("stop_requested");
+    expect(value.ownership.state).toBe("unknown");
+    expect(startAction(value)?.state).toBe("unknown");
+  });
+
+  it("requires an exact closure timestamp after the attempt started", () => {
+    const before = projection({
+      card: known(boardCard({ lifecycle: "cancelled", latestRunAttemptId: secondRunId })),
+      currentRunAttemptId: secondRunId,
+      runs: known({
+        runs: [
+          attemptFact(secondRunId, "user_cancelled", {
+            attemptNumber: 2,
+            startedAt: "2026-10-23T11:00:00.000Z",
+          }),
+        ],
+        coverage: exhaustive,
+      }),
+      closures: [closure(secondRunId)],
+    });
+    expect(before.attempts.history[0]?.outcome.state).toBe("stop_requested");
+
+    const after = projection({
+      card: known(boardCard({ lifecycle: "cancelled", latestRunAttemptId: secondRunId })),
+      currentRunAttemptId: secondRunId,
+      runs: known({
+        runs: [
+          attemptFact(secondRunId, "user_cancelled", {
+            attemptNumber: 2,
+            startedAt: "2026-10-23T09:00:00.000Z",
+          }),
+        ],
+        coverage: exhaustive,
+      }),
+      closures: [closure(secondRunId)],
+    });
+    expect(after.attempts.history[0]?.outcome.state).toBe("stopped");
+  });
+
+  it("keeps an old unconfirmed stop in history without flooding In progress", () => {
+    const value = projection({
+      card: known(boardCard({ lifecycle: "failed", latestRunAttemptId: secondRunId })),
+      currentRunAttemptId: secondRunId,
+      runs: known({
+        runs: [
+          attemptFact(firstRunId, "interrupted", { attemptNumber: 1 }),
+          attemptFact(secondRunId, "succeeded", {
+            attemptNumber: 2,
+            startedAt: "2026-10-23T11:00:00.000Z",
+          }),
+        ],
+        coverage: exhaustive,
+      }),
+    });
+    expect(value.attempts.history.map((attempt) => attempt.outcome.state)).toEqual([
+      "succeeded",
+      "stop_requested",
+    ]);
+    expect(value.ownership.state).toBe("unknown");
+    expect(startAction(value)?.state).toBe("unknown");
+    expect(value.membership).toMatchObject({
+      all: true,
+      inProgress: false,
+      needsAttention: false,
+      history: true,
+      reconciliation: true,
+    });
+  });
+
+  it("keeps an unresolved older stop in In progress and attention", () => {
+    const value = projection({
+      card: known(boardCard({ lifecycle: "failed", latestRunAttemptId: secondRunId })),
+      currentRunAttemptId: secondRunId,
+      runs: known({
+        runs: [
+          attemptFact(firstRunId, "interrupted", { attemptNumber: 1 }),
+          attemptFact(secondRunId, "failed", { attemptNumber: 2 }),
+        ],
+        coverage: exhaustive,
+      }),
+    });
+    expect(value.membership).toMatchObject({
+      inProgress: true,
+      needsAttention: true,
+      reconciliation: true,
+    });
+  });
 });
 
 describe("refused admission", () => {
@@ -417,8 +545,19 @@ describe("refused admission", () => {
       reason: "refused",
       detail: "global",
     });
+    expect(startAction(value)?.state).toBe("available");
+    expect(startAction(value)?.reason).toContain("concurrency_cap");
+    expect(value.refusal?.detail).toBe("global");
+  });
+
+  it("keeps a refused retry unknown when another affirmative gate is missing", () => {
+    const value = projection({
+      card: known(boardCard({ lifecycle: "queued" })),
+      refusal: { reason: "concurrency_cap", priorLifecycle: "failed" },
+      runs: known({ runs: [], coverage: cappedCoverage }),
+    });
+    expect(value.lifecycle.phase).toBe("not_started");
     expect(startAction(value)?.state).toBe("unknown");
-    expect(startAction(value)?.reason).toContain("recheck");
   });
 
   it("keeps an already admitted item in progress when a later command is refused", () => {
