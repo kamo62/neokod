@@ -2091,6 +2091,359 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
     }),
   );
 
+  it.effect("settles only the turn named by an explicit session outcome", () =>
+    Effect.gen(function* () {
+      const projectionPipeline = yield* OrchestrationProjectionPipeline;
+      const eventStore = yield* OrchestrationEventStore;
+      const sql = yield* SqlClient.SqlClient;
+      const appendAndProject = (event: Parameters<typeof eventStore.append>[0]) =>
+        eventStore
+          .append(event)
+          .pipe(Effect.flatMap((savedEvent) => projectionPipeline.projectEvent(savedEvent)));
+      const now = "2026-03-01T13:00:00.000Z";
+      const endedAt = "2026-03-01T13:01:00.000Z";
+      const threadId = ThreadId.make("thread-explicit-outcome");
+      const staleTurnId = TurnId.make("turn-explicit-stale");
+      const newerTurnId = TurnId.make("turn-explicit-newer");
+
+      yield* appendAndProject({
+        type: "thread.created",
+        eventId: EventId.make("evt-explicit-outcome-1"),
+        aggregateKind: "thread",
+        aggregateId: threadId,
+        occurredAt: now,
+        commandId: CommandId.make("cmd-explicit-outcome-1"),
+        causationEventId: null,
+        correlationId: CorrelationId.make("cmd-explicit-outcome-1"),
+        metadata: {},
+        payload: {
+          threadId,
+          projectId: ProjectId.make("project-explicit-outcome"),
+          title: "Explicit outcome",
+          modelSelection: {
+            instanceId: ProviderInstanceId.make("codex"),
+            model: "gpt-5-codex",
+          },
+          runtimeMode: "full-access",
+          branch: null,
+          worktreePath: null,
+          createdAt: now,
+          updatedAt: now,
+        },
+      });
+
+      yield* appendAndProject({
+        type: "thread.session-set",
+        eventId: EventId.make("evt-explicit-outcome-2"),
+        aggregateKind: "thread",
+        aggregateId: threadId,
+        occurredAt: "2026-03-01T13:00:01.000Z",
+        commandId: CommandId.make("cmd-explicit-outcome-2"),
+        causationEventId: null,
+        correlationId: CorrelationId.make("cmd-explicit-outcome-2"),
+        metadata: {},
+        payload: {
+          threadId,
+          session: {
+            threadId,
+            status: "running",
+            providerName: "codex",
+            runtimeMode: "full-access",
+            activeTurnId: staleTurnId,
+            lastError: null,
+            updatedAt: "2026-03-01T13:00:01.000Z",
+          },
+        },
+      });
+
+      // Newer work is already running when the stale turn's outcome arrives.
+      // A new active turn normally supersedes the previous row, so insert the
+      // newer running row and session binding directly to isolate the
+      // late-outcome guard.
+      yield* sql`
+        INSERT INTO projection_turns (
+          thread_id, turn_id, state, requested_at, started_at, checkpoint_files_json
+        ) VALUES (
+          ${threadId}, ${newerTurnId}, 'running',
+          '2026-03-01T13:00:30.000Z', '2026-03-01T13:00:30.000Z', '[]'
+        )
+      `;
+      yield* sql`
+        UPDATE projection_thread_sessions
+        SET status = 'running',
+            active_turn_id = ${newerTurnId},
+            updated_at = '2026-03-01T13:00:30.000Z'
+        WHERE thread_id = ${threadId}
+      `;
+      yield* sql`
+        UPDATE projection_threads
+        SET latest_turn_id = ${newerTurnId}
+        WHERE thread_id = ${threadId}
+      `;
+
+      yield* appendAndProject({
+        type: "thread.session-set",
+        eventId: EventId.make("evt-explicit-outcome-3"),
+        aggregateKind: "thread",
+        aggregateId: threadId,
+        occurredAt: endedAt,
+        commandId: CommandId.make("cmd-explicit-outcome-3"),
+        causationEventId: null,
+        correlationId: CorrelationId.make("cmd-explicit-outcome-3"),
+        metadata: {},
+        payload: {
+          threadId,
+          session: {
+            threadId,
+            status: "ready",
+            providerName: "codex",
+            runtimeMode: "full-access",
+            activeTurnId: null,
+            lastError: null,
+            updatedAt: endedAt,
+          },
+          interruptedTurnId: staleTurnId,
+          latestTurnOutcome: "interrupted",
+        },
+      });
+
+      const rows = yield* sql<{
+        readonly turnId: string;
+        readonly state: string;
+        readonly completedAt: string | null;
+      }>`
+        SELECT turn_id AS "turnId", state, completed_at AS "completedAt"
+        FROM projection_turns
+        WHERE thread_id = ${threadId}
+        ORDER BY requested_at
+      `;
+      assert.deepEqual(rows, [
+        { turnId: staleTurnId, state: "interrupted", completedAt: endedAt },
+        { turnId: newerTurnId, state: "running", completedAt: null },
+      ]);
+
+      const settlements = yield* sql<{
+        readonly turnId: string;
+        readonly completedAt: string | null;
+      }>`
+        SELECT turn_id AS "turnId", completed_at AS "completedAt"
+        FROM projection_turn_settlements
+        WHERE thread_id = ${threadId}
+        ORDER BY turn_id
+      `;
+      assert.deepEqual(settlements, [{ turnId: staleTurnId, completedAt: endedAt }]);
+
+      const sessions = yield* sql<{
+        readonly status: string;
+        readonly activeTurnId: string | null;
+      }>`
+        SELECT status, active_turn_id AS "activeTurnId"
+        FROM projection_thread_sessions
+        WHERE thread_id = ${threadId}
+      `;
+      assert.deepEqual(sessions, [{ status: "running", activeTurnId: newerTurnId }]);
+
+      const threadRows = yield* sql<{ readonly latestTurnId: string | null }>`
+        SELECT latest_turn_id AS "latestTurnId"
+        FROM projection_threads
+        WHERE thread_id = ${threadId}
+      `;
+      assert.deepEqual(threadRows, [{ latestTurnId: newerTurnId }]);
+    }),
+  );
+
+  it.effect(
+    "corrects an inferred completion and keeps it through final message, checkpoint and late running session",
+    () =>
+      Effect.gen(function* () {
+        const projectionPipeline = yield* OrchestrationProjectionPipeline;
+        const eventStore = yield* OrchestrationEventStore;
+        const sql = yield* SqlClient.SqlClient;
+        const appendAndProject = (event: Parameters<typeof eventStore.append>[0]) =>
+          eventStore
+            .append(event)
+            .pipe(Effect.flatMap((savedEvent) => projectionPipeline.projectEvent(savedEvent)));
+        const createdAt = "2026-03-02T13:00:00.000Z";
+        const threadId = ThreadId.make("thread-terminal-precedence");
+        const turnId = TurnId.make("turn-terminal-precedence");
+        const inferredAt = "2026-03-02T13:00:30.000Z";
+        const authoritativeAt = "2026-03-02T13:01:00.000Z";
+
+        yield* appendAndProject({
+          type: "thread.created",
+          eventId: EventId.make("evt-terminal-precedence-1"),
+          aggregateKind: "thread",
+          aggregateId: threadId,
+          occurredAt: createdAt,
+          commandId: CommandId.make("cmd-terminal-precedence-1"),
+          causationEventId: null,
+          correlationId: CorrelationId.make("cmd-terminal-precedence-1"),
+          metadata: {},
+          payload: {
+            threadId,
+            projectId: ProjectId.make("project-terminal-precedence"),
+            title: "Terminal precedence",
+            modelSelection: {
+              instanceId: ProviderInstanceId.make("codex"),
+              model: "gpt-5-codex",
+            },
+            runtimeMode: "full-access",
+            branch: null,
+            worktreePath: null,
+            createdAt,
+            updatedAt: createdAt,
+          },
+        });
+
+        const appendSessionSet = (
+          eventId: string,
+          occurredAt: string,
+          session: {
+            readonly status: "running" | "ready" | "starting";
+            readonly activeTurnId: TurnId | null;
+          },
+          extras?: {
+            readonly interruptedTurnId?: TurnId;
+            readonly latestTurnOutcome?: "completed" | "interrupted" | "error";
+          },
+        ) =>
+          appendAndProject({
+            type: "thread.session-set",
+            eventId: EventId.make(eventId),
+            aggregateKind: "thread",
+            aggregateId: threadId,
+            occurredAt,
+            commandId: CommandId.make(`cmd-${eventId}`),
+            causationEventId: null,
+            correlationId: CorrelationId.make(`cmd-${eventId}`),
+            metadata: {},
+            payload: {
+              threadId,
+              session: {
+                threadId,
+                status: session.status,
+                providerName: "codex",
+                runtimeMode: "full-access",
+                activeTurnId: session.activeTurnId,
+                lastError: null,
+                updatedAt: occurredAt,
+              },
+              ...(extras?.interruptedTurnId !== undefined
+                ? { interruptedTurnId: extras.interruptedTurnId }
+                : {}),
+              ...(extras?.latestTurnOutcome !== undefined
+                ? { latestTurnOutcome: extras.latestTurnOutcome }
+                : {}),
+            },
+          });
+
+        yield* appendSessionSet("evt-terminal-precedence-2", "2026-03-02T13:00:05.000Z", {
+          status: "running",
+          activeTurnId: turnId,
+        });
+        // The session leaves the running status without an authoritative turn
+        // outcome, so the final assistant message settles the turn first.
+        yield* appendSessionSet("evt-terminal-precedence-3", "2026-03-02T13:00:10.000Z", {
+          status: "starting",
+          activeTurnId: null,
+        });
+        yield* appendAndProject({
+          type: "thread.message-sent",
+          eventId: EventId.make("evt-terminal-precedence-inferred"),
+          aggregateKind: "thread",
+          aggregateId: threadId,
+          occurredAt: inferredAt,
+          commandId: CommandId.make("cmd-terminal-precedence-inferred"),
+          causationEventId: null,
+          correlationId: CorrelationId.make("cmd-terminal-precedence-inferred"),
+          metadata: {},
+          payload: {
+            threadId,
+            messageId: MessageId.make("message-terminal-precedence-inferred"),
+            role: "assistant",
+            text: "done",
+            turnId,
+            streaming: false,
+            createdAt: inferredAt,
+            updatedAt: inferredAt,
+          },
+        });
+
+        yield* appendSessionSet(
+          "evt-terminal-precedence-4",
+          authoritativeAt,
+          { status: "ready", activeTurnId: null },
+          { interruptedTurnId: turnId, latestTurnOutcome: "interrupted" },
+        );
+
+        yield* appendAndProject({
+          type: "thread.message-sent",
+          eventId: EventId.make("evt-terminal-precedence-5"),
+          aggregateKind: "thread",
+          aggregateId: threadId,
+          occurredAt: "2026-03-02T13:02:00.000Z",
+          commandId: CommandId.make("cmd-terminal-precedence-5"),
+          causationEventId: null,
+          correlationId: CorrelationId.make("cmd-terminal-precedence-5"),
+          metadata: {},
+          payload: {
+            threadId,
+            messageId: MessageId.make("message-terminal-precedence-final"),
+            role: "assistant",
+            text: "final",
+            turnId,
+            streaming: false,
+            createdAt: "2026-03-02T13:02:00.000Z",
+            updatedAt: "2026-03-02T13:02:00.000Z",
+          },
+        });
+
+        yield* appendAndProject({
+          type: "thread.turn-diff-completed",
+          eventId: EventId.make("evt-terminal-precedence-6"),
+          aggregateKind: "thread",
+          aggregateId: threadId,
+          occurredAt: "2026-03-02T13:03:00.000Z",
+          commandId: CommandId.make("cmd-terminal-precedence-6"),
+          causationEventId: null,
+          correlationId: CorrelationId.make("cmd-terminal-precedence-6"),
+          metadata: {},
+          payload: {
+            threadId,
+            turnId,
+            checkpointTurnCount: 1,
+            checkpointRef: CheckpointRef.make("refs/neokod/checkpoints/thread/1"),
+            status: "ready",
+            files: [],
+            assistantMessageId: MessageId.make("message-terminal-precedence-final"),
+            completedAt: "2026-03-02T13:03:00.000Z",
+          },
+        });
+
+        yield* appendSessionSet("evt-terminal-precedence-7", "2026-03-02T13:04:00.000Z", {
+          status: "running",
+          activeTurnId: turnId,
+        });
+
+        const turnRows = yield* sql<{
+          readonly state: string;
+          readonly completedAt: string | null;
+        }>`
+          SELECT state, completed_at AS "completedAt"
+          FROM projection_turns
+          WHERE thread_id = ${threadId} AND turn_id = ${turnId}
+        `;
+        assert.deepEqual(turnRows, [{ state: "interrupted", completedAt: authoritativeAt }]);
+
+        const settlements = yield* sql<{ readonly count: number }>`
+          SELECT COUNT(*) AS count
+          FROM projection_turn_settlements
+          WHERE thread_id = ${threadId} AND turn_id = ${turnId}
+        `;
+        assert.deepEqual(settlements, [{ count: 1 }]);
+      }),
+  );
+
   it.effect("keeps accumulated assistant text when completion payload text is empty", () =>
     Effect.gen(function* () {
       const projectionPipeline = yield* OrchestrationProjectionPipeline;

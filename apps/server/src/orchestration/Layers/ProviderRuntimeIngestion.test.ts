@@ -1808,10 +1808,130 @@ describe("ProviderRuntimeIngestion", () => {
       (entry) =>
         entry.session?.status === "error" &&
         entry.session?.activeTurnId === null &&
-        entry.session?.lastError === "turn failed",
+        entry.session?.lastError === "turn failed" &&
+        entry.latestTurn?.state === "error",
     );
     expect(thread.session?.status).toBe("error");
     expect(thread.session?.lastError).toBe("turn failed");
+    expect(thread.latestTurn?.state).toBe("error");
+
+    const sessionSetEvents = (await harness.readEvents()).filter(
+      (event): event is Extract<OrchestrationEvent, { type: "thread.session-set" }> =>
+        event.type === "thread.session-set" && event.payload.interruptedTurnId === "turn-1",
+    );
+    expect(sessionSetEvents.at(-1)?.payload.latestTurnOutcome).toBe("error");
+  });
+
+  it("settles interrupted and cancelled runtime turns while the session stays ready", async () => {
+    const harness = await createHarness();
+    const cases = [
+      {
+        state: "interrupted" as const,
+        turnId: asTurnId("turn-interrupted-outcome"),
+        startedAt: "2026-01-01T00:00:01.000Z",
+        endedAt: "2026-01-01T00:01:00.000Z",
+        suffix: "interrupted",
+      },
+      {
+        state: "cancelled" as const,
+        turnId: asTurnId("turn-cancelled-outcome"),
+        startedAt: "2026-01-01T00:02:00.000Z",
+        endedAt: "2026-01-01T00:03:00.000Z",
+        suffix: "cancelled",
+      },
+    ];
+
+    for (const testCase of cases) {
+      harness.emit({
+        type: "turn.started",
+        eventId: asEventId(`evt-turn-started-${testCase.suffix}-outcome`),
+        provider: ProviderDriverKind.make("codex"),
+        threadId: asThreadId("thread-1"),
+        createdAt: testCase.startedAt,
+        turnId: testCase.turnId,
+      });
+      await waitForThread(
+        harness.readModel,
+        (thread) =>
+          thread.session?.status === "running" && thread.session?.activeTurnId === testCase.turnId,
+      );
+
+      harness.emit({
+        type: "turn.completed",
+        eventId: asEventId(`evt-turn-completed-${testCase.suffix}-outcome`),
+        provider: ProviderDriverKind.make("codex"),
+        threadId: asThreadId("thread-1"),
+        createdAt: testCase.endedAt,
+        turnId: testCase.turnId,
+        payload: { state: testCase.state },
+      });
+
+      // A healthy provider session returns to ready. Interruption belongs to
+      // the turn outcome, not to session availability.
+      const thread = await waitForThread(
+        harness.readModel,
+        (entry) =>
+          entry.session?.status === "ready" &&
+          entry.session?.activeTurnId === null &&
+          entry.latestTurn?.state === "interrupted",
+      );
+      expect(thread.session?.status).toBe("ready");
+      expect(thread.latestTurn?.state).toBe("interrupted");
+      expect(thread.latestTurn?.completedAt).toBe(testCase.endedAt);
+
+      const sessionSetEvents = (await harness.readEvents()).filter(
+        (event): event is Extract<OrchestrationEvent, { type: "thread.session-set" }> =>
+          event.type === "thread.session-set" &&
+          event.payload.interruptedTurnId === testCase.turnId,
+      );
+      expect(sessionSetEvents.at(-1)?.payload.latestTurnOutcome).toBe("interrupted");
+    }
+  });
+
+  it("keeps a confirmed completed runtime turn completed while the session is ready", async () => {
+    const harness = await createHarness();
+    const startedAt = "2026-01-01T00:00:01.000Z";
+    const endedAt = "2026-01-01T00:01:00.000Z";
+    const turnId = asTurnId("turn-confirmed-completed");
+
+    harness.emit({
+      type: "turn.started",
+      eventId: asEventId("evt-turn-started-confirmed-completed"),
+      provider: ProviderDriverKind.make("codex"),
+      threadId: asThreadId("thread-1"),
+      createdAt: startedAt,
+      turnId,
+    });
+    await waitForThread(
+      harness.readModel,
+      (entry) => entry.session?.status === "running" && entry.session?.activeTurnId === turnId,
+    );
+
+    harness.emit({
+      type: "turn.completed",
+      eventId: asEventId("evt-turn-completed-confirmed-completed"),
+      provider: ProviderDriverKind.make("codex"),
+      threadId: asThreadId("thread-1"),
+      createdAt: endedAt,
+      turnId,
+      payload: { state: "completed" },
+    });
+
+    const thread = await waitForThread(
+      harness.readModel,
+      (entry) =>
+        entry.session?.status === "ready" &&
+        entry.session?.activeTurnId === null &&
+        entry.latestTurn?.state === "completed",
+    );
+    expect(thread.session?.status).toBe("ready");
+    expect(thread.latestTurn?.state).toBe("completed");
+
+    const sessionSetEvents = (await harness.readEvents()).filter(
+      (event): event is Extract<OrchestrationEvent, { type: "thread.session-set" }> =>
+        event.type === "thread.session-set" && event.payload.interruptedTurnId === turnId,
+    );
+    expect(sessionSetEvents.at(-1)?.payload.latestTurnOutcome).toBe("completed");
   });
 
   it("applies provider session.state.changed transitions directly", async () => {
