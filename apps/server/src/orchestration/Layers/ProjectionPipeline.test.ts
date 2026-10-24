@@ -2456,6 +2456,9 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
       const oldTurnId = TurnId.make("turn-bootstrap-old");
       const newTurnId = TurnId.make("turn-bootstrap-new");
       const pendingMessageId = MessageId.make("message-bootstrap-pending");
+      const laggingProjectId = ProjectId.make("project-bootstrap-lagging");
+      const laggingThreadId = ThreadId.make("thread-bootstrap-lagging");
+      const laggingTurnId = TurnId.make("turn-bootstrap-lagging");
 
       const events: ReadonlyArray<Parameters<typeof eventStore.append>[0]> = [
         {
@@ -2615,9 +2618,104 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
             },
           },
         },
+        {
+          type: "project.created",
+          eventId: EventId.make("evt-bootstrap-late-8"),
+          aggregateKind: "project",
+          aggregateId: laggingProjectId,
+          occurredAt: "2026-03-03T13:10:00.000Z",
+          commandId: CommandId.make("cmd-bootstrap-late-8"),
+          causationEventId: null,
+          correlationId: CorrelationId.make("cmd-bootstrap-late-8"),
+          metadata: {},
+          payload: {
+            projectId: laggingProjectId,
+            title: "Bootstrap lagging projector",
+            workspaceRoot: "/tmp/bootstrap-lagging",
+            defaultModelSelection: null,
+            scripts: [],
+            createdAt: "2026-03-03T13:10:00.000Z",
+            updatedAt: "2026-03-03T13:10:00.000Z",
+          },
+        },
+        {
+          type: "thread.created",
+          eventId: EventId.make("evt-bootstrap-late-9"),
+          aggregateKind: "thread",
+          aggregateId: laggingThreadId,
+          occurredAt: "2026-03-03T13:10:01.000Z",
+          commandId: CommandId.make("cmd-bootstrap-late-9"),
+          causationEventId: null,
+          correlationId: CorrelationId.make("cmd-bootstrap-late-9"),
+          metadata: {},
+          payload: {
+            threadId: laggingThreadId,
+            projectId: laggingProjectId,
+            title: "Bootstrap lagging projector",
+            modelSelection: {
+              instanceId: ProviderInstanceId.make("codex"),
+              model: "gpt-5-codex",
+            },
+            runtimeMode: "full-access",
+            branch: null,
+            worktreePath: null,
+            createdAt: "2026-03-03T13:10:01.000Z",
+            updatedAt: "2026-03-03T13:10:01.000Z",
+          },
+        },
+        {
+          type: "thread.session-set",
+          eventId: EventId.make("evt-bootstrap-late-10"),
+          aggregateKind: "thread",
+          aggregateId: laggingThreadId,
+          occurredAt: "2026-03-03T13:10:02.000Z",
+          commandId: CommandId.make("cmd-bootstrap-late-10"),
+          causationEventId: null,
+          correlationId: CorrelationId.make("cmd-bootstrap-late-10"),
+          metadata: {},
+          payload: {
+            threadId: laggingThreadId,
+            session: {
+              threadId: laggingThreadId,
+              status: "running",
+              providerName: "codex",
+              runtimeMode: "full-access",
+              activeTurnId: laggingTurnId,
+              lastError: null,
+              updatedAt: "2026-03-03T13:10:02.000Z",
+            },
+          },
+        },
+        {
+          type: "thread.session-set",
+          eventId: EventId.make("evt-bootstrap-late-11"),
+          aggregateKind: "thread",
+          aggregateId: laggingThreadId,
+          occurredAt: "2026-03-03T13:10:03.000Z",
+          commandId: CommandId.make("cmd-bootstrap-late-11"),
+          causationEventId: null,
+          correlationId: CorrelationId.make("cmd-bootstrap-late-11"),
+          metadata: {},
+          payload: {
+            threadId: laggingThreadId,
+            session: {
+              threadId: laggingThreadId,
+              status: "ready",
+              providerName: "codex",
+              runtimeMode: "full-access",
+              activeTurnId: null,
+              lastError: null,
+              updatedAt: "2026-03-03T13:10:03.000Z",
+            },
+            interruptedTurnId: laggingTurnId,
+            latestTurnOutcome: "interrupted",
+          },
+        },
       ];
 
-      yield* Effect.forEach(events, (event) => eventStore.append(event), { concurrency: 1 });
+      const savedEvents = yield* Effect.forEach(events, (event) => eventStore.append(event), {
+        concurrency: 1,
+      });
       yield* projectionPipeline.bootstrap;
 
       const turns = yield* sql<{ readonly turnId: string; readonly state: string }>`
@@ -2658,6 +2756,124 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
         ORDER BY turn_id
       `;
       assert.deepEqual(settlements, [{ turnId: oldTurnId }]);
+
+      // Full replay parity for the independently advanced lagging case.
+      const laggingPointerBefore = yield* sql<{ readonly latestTurnId: string | null }>`
+        SELECT latest_turn_id AS "latestTurnId"
+        FROM projection_threads
+        WHERE thread_id = ${laggingThreadId}
+      `;
+      assert.deepEqual(laggingPointerBefore, [{ latestTurnId: laggingTurnId }]);
+
+      // A supported partial interruption has sessions and turns at event 10
+      // and threads at event 9. Replaying the final terminal event is allowed.
+      yield* sql`
+        UPDATE projection_state
+        SET last_applied_sequence = ${savedEvents[9]!.sequence},
+            updated_at = ${savedEvents[9]!.occurredAt}
+        WHERE projector = ${ORCHESTRATION_PROJECTOR_NAMES.threads}
+      `;
+      yield* projectionPipeline.bootstrap;
+      const supportedPointer = yield* sql<{ readonly latestTurnId: string | null }>`
+        SELECT latest_turn_id AS "latestTurnId"
+        FROM projection_threads
+        WHERE thread_id = ${laggingThreadId}
+      `;
+      assert.deepEqual(supportedPointer, [{ latestTurnId: laggingTurnId }]);
+      const supportedCursors = yield* sql<{
+        readonly projector: string;
+        readonly lastAppliedSequence: number;
+      }>`
+        SELECT projector, last_applied_sequence AS "lastAppliedSequence"
+        FROM projection_state
+        WHERE projector IN (
+          ${ORCHESTRATION_PROJECTOR_NAMES.threadSessions},
+          ${ORCHESTRATION_PROJECTOR_NAMES.threadTurns},
+          ${ORCHESTRATION_PROJECTOR_NAMES.threads}
+        )
+        ORDER BY projector
+      `;
+      assert.deepEqual(supportedCursors, [
+        {
+          projector: ORCHESTRATION_PROJECTOR_NAMES.threadSessions,
+          lastAppliedSequence: savedEvents[10]!.sequence,
+        },
+        {
+          projector: ORCHESTRATION_PROJECTOR_NAMES.threadTurns,
+          lastAppliedSequence: savedEvents[10]!.sequence,
+        },
+        {
+          projector: ORCHESTRATION_PROJECTOR_NAMES.threads,
+          lastAppliedSequence: savedEvents[10]!.sequence,
+        },
+      ]);
+
+      // Unsupported skew: sessions/turns hold future terminal evidence while
+      // threads is two or more events behind. Bootstrap must refuse before any
+      // projection side effects and leave rows and cursors unchanged.
+      yield* sql`
+        UPDATE projection_state
+        SET last_applied_sequence = ${savedEvents[8]!.sequence},
+            updated_at = ${savedEvents[8]!.occurredAt}
+        WHERE projector = ${ORCHESTRATION_PROJECTOR_NAMES.threads}
+      `;
+      yield* sql`
+        UPDATE projection_threads
+        SET latest_turn_id = NULL
+        WHERE thread_id = ${laggingThreadId}
+      `;
+      const error = yield* Effect.flip(projectionPipeline.bootstrap);
+      assert.strictEqual(error._tag, "PersistenceSqlError");
+      assert.match(error.message, /coordinated recovery/);
+
+      const refusedPointer = yield* sql<{ readonly latestTurnId: string | null }>`
+        SELECT latest_turn_id AS "latestTurnId"
+        FROM projection_threads
+        WHERE thread_id = ${laggingThreadId}
+      `;
+      assert.deepEqual(refusedPointer, [{ latestTurnId: null }]);
+      const refusedCursors = yield* sql<{
+        readonly projector: string;
+        readonly lastAppliedSequence: number;
+      }>`
+        SELECT projector, last_applied_sequence AS "lastAppliedSequence"
+        FROM projection_state
+        WHERE projector IN (
+          ${ORCHESTRATION_PROJECTOR_NAMES.threadSessions},
+          ${ORCHESTRATION_PROJECTOR_NAMES.threadTurns},
+          ${ORCHESTRATION_PROJECTOR_NAMES.threads}
+        )
+        ORDER BY projector
+      `;
+      assert.deepEqual(refusedCursors, [
+        {
+          projector: ORCHESTRATION_PROJECTOR_NAMES.threadSessions,
+          lastAppliedSequence: savedEvents[10]!.sequence,
+        },
+        {
+          projector: ORCHESTRATION_PROJECTOR_NAMES.threadTurns,
+          lastAppliedSequence: savedEvents[10]!.sequence,
+        },
+        {
+          projector: ORCHESTRATION_PROJECTOR_NAMES.threads,
+          lastAppliedSequence: savedEvents[8]!.sequence,
+        },
+      ]);
+      const refusedSession = yield* sql<{
+        readonly status: string;
+        readonly activeTurnId: string | null;
+      }>`
+        SELECT status, active_turn_id AS "activeTurnId"
+        FROM projection_thread_sessions
+        WHERE thread_id = ${laggingThreadId}
+      `;
+      assert.deepEqual(refusedSession, [{ status: "ready", activeTurnId: null }]);
+      const refusedTurn = yield* sql<{ readonly state: string }>`
+        SELECT state
+        FROM projection_turns
+        WHERE thread_id = ${laggingThreadId} AND turn_id = ${laggingTurnId}
+      `;
+      assert.deepEqual(refusedTurn, [{ state: "interrupted" }]);
     }),
   );
 

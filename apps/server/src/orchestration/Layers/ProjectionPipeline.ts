@@ -20,7 +20,11 @@ import {
   shouldReplaceLatestTurnPointer,
 } from "@neokod/shared/orchestrationTurnOutcome";
 
-import { toPersistenceSqlError, type ProjectionRepositoryError } from "../../persistence/Errors.ts";
+import {
+  PersistenceSqlError,
+  toPersistenceSqlError,
+  type ProjectionRepositoryError,
+} from "../../persistence/Errors.ts";
 import { OrchestrationEventStore } from "../../persistence/Services/OrchestrationEventStore.ts";
 import { ProjectionPendingApprovalRepository } from "../../persistence/Services/ProjectionPendingApprovals.ts";
 import { ProjectionProjectRepository } from "../../persistence/Services/ProjectionProjects.ts";
@@ -1877,10 +1881,12 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
         ),
       );
 
-    // Replay events once in order, applying only projectors that have not seen
-    // each event. This keeps every projector's as-of state and evidence
-    // consistent during an independent catch-up, instead of relying on a
-    // previous projector having finished the whole history first.
+    // Replay events once in order only when persisted projector cursors match
+    // the single partial-interruption shape this pipeline creates: all equal,
+    // or a non-increasing prefix at N and suffix at N-1 in projector order.
+    // Any other skew is rejected before projection side effects because the
+    // coupled session, turn and thread projections cannot safely rebuild
+    // independently against each other's future rows.
     const bootstrap: OrchestrationProjectionPipelineShape["bootstrap"] = Effect.gen(function* () {
       const states = yield* Effect.forEach(
         projectors,
@@ -1893,24 +1899,41 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
           ),
         { concurrency: 1 },
       );
-      const replayFrom = states.reduce(
-        (minimum, state) => Math.min(minimum, state.lastAppliedSequence),
-        Number.POSITIVE_INFINITY,
+      const offsets = states.map((state) => state.lastAppliedSequence);
+      const maximumOffset = Math.max(...offsets);
+      const minimumOffset = Math.min(...offsets);
+      const offsetsAreOrdered = offsets.every(
+        (offset, index) => index === 0 || offsets[index - 1]! >= offset,
       );
-      yield* Stream.runForEach(
-        eventStore.readFromSequence(Number.isFinite(replayFrom) ? replayFrom : 0),
-        (event) =>
-          Effect.forEach(
-            states,
-            (state) => {
-              if (state.lastAppliedSequence >= event.sequence) {
-                return Effect.void;
-              }
-              state.lastAppliedSequence = event.sequence;
-              return runProjectorForEvent(state.projector, event);
-            },
-            { concurrency: 1 },
-          ),
+      if (!offsetsAreOrdered || maximumOffset - minimumOffset > 1) {
+        const cursorSummary = states
+          .map((state) => `${state.projector.name}=${state.lastAppliedSequence}`)
+          .join(", ");
+        const coordinatedProjectors = [
+          ORCHESTRATION_PROJECTOR_NAMES.threadSessions,
+          ORCHESTRATION_PROJECTOR_NAMES.threadTurns,
+          ORCHESTRATION_PROJECTOR_NAMES.threads,
+        ].join(", ");
+        return yield* new PersistenceSqlError({
+          operation: "ProjectionPipeline.bootstrap:projector-coordination",
+          detail:
+            `Dependent projections require coordinated recovery (${cursorSummary}). ` +
+            `Clear and reset the persisted projection rows and last_applied_sequence for the coupled ${coordinatedProjectors} group, and for any other projector outside the single allowed interruption prefix, then restart to rebuild from the event store. No automatic reset was performed.`,
+        });
+      }
+      const replayFrom = minimumOffset;
+      yield* Stream.runForEach(eventStore.readFromSequence(replayFrom), (event) =>
+        Effect.forEach(
+          states,
+          (state) => {
+            if (state.lastAppliedSequence >= event.sequence) {
+              return Effect.void;
+            }
+            state.lastAppliedSequence = event.sequence;
+            return runProjectorForEvent(state.projector, event);
+          },
+          { concurrency: 1 },
+        ),
       );
     }).pipe(
       Effect.provideService(FileSystem.FileSystem, fileSystem),
