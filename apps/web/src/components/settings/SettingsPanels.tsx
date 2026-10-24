@@ -22,7 +22,6 @@ import {
   squashAtomCommandFailure,
 } from "@neokod/client-runtime/state/runtime";
 import { DEFAULT_UNIFIED_SETTINGS } from "@neokod/contracts/settings";
-import { createModelSelection } from "@neokod/shared/model";
 import * as Arr from "effect/Array";
 import * as Duration from "effect/Duration";
 import * as Equal from "effect/Equal";
@@ -55,9 +54,9 @@ import {
   useUiStateStore,
 } from "../../uiStateStore";
 import {
+  createAuxiliaryTextGenerationSelection,
   getCustomModelOptionsByInstance,
   includeSavedAuxiliaryModelOption,
-  resolveAppModelSelectionState,
   resolveAuxiliaryTextGenerationSelection,
 } from "../../modelSelection";
 import {
@@ -1150,12 +1149,10 @@ export function GeneralSettingsPanel() {
                   : {})}
                 onInstanceModelChange={(instanceId, model) => {
                   updateSettings({
-                    textGenerationModelSelection: resolveAppModelSelectionState(
-                      {
-                        ...settings,
-                        textGenerationModelSelection: createModelSelection(instanceId, model),
-                      },
+                    textGenerationModelSelection: createAuxiliaryTextGenerationSelection(
                       serverProviders,
+                      instanceId,
+                      model,
                     ),
                   });
                 }}
@@ -1178,16 +1175,11 @@ export function GeneralSettingsPanel() {
                 triggerClassName="min-w-0 max-w-none shrink-0 text-foreground/90 hover:text-foreground"
                 onModelOptionsChange={(nextOptions) => {
                   updateSettings({
-                    textGenerationModelSelection: resolveAppModelSelectionState(
-                      {
-                        ...settings,
-                        textGenerationModelSelection: createModelSelection(
-                          textGenInstanceId,
-                          textGenModel,
-                          nextOptions,
-                        ),
-                      },
+                    textGenerationModelSelection: createAuxiliaryTextGenerationSelection(
                       serverProviders,
+                      textGenInstanceId,
+                      textGenModel,
+                      nextOptions,
                     ),
                   });
                 }}
@@ -1260,8 +1252,8 @@ export function ProviderSettingsPanel() {
           provider.instanceId === defaultInstanceIdForDriver(ProviderDriverKind.make("cursor")),
       ),
   );
-  const textGenerationModelSelection = resolveAppModelSelectionState(settings, serverProviders);
-  const textGenInstanceId = textGenerationModelSelection.instanceId;
+  const textGenInstanceId = resolveAuxiliaryTextGenerationSelection(settings, serverProviders)
+    .selection.instanceId;
   const lastCheckedAt =
     serverProviders.length > 0
       ? serverProviders.reduce(

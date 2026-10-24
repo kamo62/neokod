@@ -1143,6 +1143,47 @@ describe("ProviderCommandReactor", () => {
     NodeFS.rmSync(worktreePath, { recursive: true, force: true });
   });
 
+  it("suppresses interrupt-only auxiliary cancellation without an activity", async () => {
+    const harness = await createHarness();
+    const now = "2026-01-01T00:00:00.000Z";
+    const seededTitle = "Please investigate reconnect failures after restar...";
+    harness.generateThreadTitle.mockReturnValue(Effect.interrupt);
+
+    await harness.dispatch({
+      type: "thread.meta.update",
+      commandId: CommandId.make("cmd-thread-title-seed-aux-cancel"),
+      threadId: ThreadId.make("thread-1"),
+      title: seededTitle,
+    });
+    await harness.dispatch({
+      type: "thread.turn.start",
+      commandId: CommandId.make("cmd-turn-start-aux-cancel"),
+      threadId: ThreadId.make("thread-1"),
+      message: {
+        messageId: asMessageId("user-message-aux-cancel"),
+        role: "user",
+        text: "Please investigate reconnect failures after restarting the session.",
+        attachments: [],
+      },
+      titleSeed: seededTitle,
+      interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+      runtimeMode: "approval-required",
+      createdAt: now,
+    });
+
+    await waitFor(() => harness.sendTurn.mock.calls.length === 1);
+    await harness.drain();
+
+    const readModel = await harness.readModel();
+    const thread = readModel.threads.find((entry) => entry.id === ThreadId.make("thread-1"));
+    expect(thread?.title).toBe(seededTitle);
+    expect(
+      thread?.activities.some(
+        (activity) => activity.kind === "provider.auxiliary.text-generation.failed",
+      ),
+    ).toBe(false);
+  });
+
   it("does not rename a temporary branch on an ordinary project thread", async () => {
     const harness = await createHarness();
     const now = "2026-01-01T00:00:00.000Z";

@@ -5,10 +5,12 @@ import {
   type ModelSelection,
   ProviderDriverKind,
   ProviderInstanceId,
+  type ProviderOptionSelection,
   type ServerProvider,
 } from "@neokod/contracts";
 import {
   createModelSelection,
+  evaluateModelCatalogueEvidence,
   normalizeModelSlug,
   resolveSelectableModel,
 } from "@neokod/shared/model";
@@ -197,11 +199,10 @@ export function getAppModelOptions(
  * instances only. This keeps two instances of the same kind from leaking
  * custom slugs into each other.
  *
- * Picker preferences are not applied here, so callers that need catalogue
- * evidence (admission/availability) can distinguish "hidden in the picker"
- * from "not advertised by the provider".
+ * Picker preferences are not applied here; the app-facing wrapper below
+ * applies them so models hidden from the picker stay out of its option list.
  */
-function getAdvertisedModelOptionsForInstance(
+function getInstanceModelOptions(
   settings: UnifiedSettings,
   entry: ProviderInstanceEntry,
 ): AppModelOption[] {
@@ -232,7 +233,7 @@ export function getAppModelOptionsForInstance(
   entry: ProviderInstanceEntry,
 ): AppModelOption[] {
   return applyInstanceModelPreferences(
-    getAdvertisedModelOptionsForInstance(settings, entry),
+    getInstanceModelOptions(settings, entry),
     readInstanceModelPreferences(settings, entry.instanceId),
   );
 }
@@ -312,10 +313,38 @@ export interface AuxiliaryTextGenerationSelection {
 const TEXT_GENERATION_SETTINGS_ROW = "Settings → Text generation model";
 
 /**
+ * Catalogue/config entries used for auxiliary evidence. Configured custom
+ * models are configuration evidence (exact slugs, trimmed only) even when the
+ * provider has not reported a discovered catalogue. No alias normalisation or
+ * built-in filtering happens here: membership checks must match the slug that
+ * execution receives.
+ */
+function getCatalogueEvidenceModels(
+  settings: UnifiedSettings,
+  entry: ProviderInstanceEntry,
+): Array<{ readonly slug: string; readonly isCustom: boolean }> {
+  const models = entry.models.map((model) => ({
+    slug: model.slug,
+    isCustom: model.isCustom,
+  }));
+  const seen = new Set(models.map((model) => model.slug));
+  for (const raw of readInstanceCustomModels(settings, entry.instanceId, entry.driverKind)) {
+    const slug = raw.trim();
+    if (!slug || seen.has(slug)) {
+      continue;
+    }
+    seen.add(slug);
+    models.push({ slug, isCustom: true });
+  }
+  return models;
+}
+
+/**
  * Resolve the auxiliary text-generation choice for display. Unlike
  * {@link resolveAppModelSelectionState} this preserves the saved instance and
  * model even when they cannot be verified, so Settings never presents a
- * different model as if it were the saved choice.
+ * different model as if it were the saved choice. Membership and evidence
+ * validity come from the same shared projection the server uses.
  */
 export function resolveAuxiliaryTextGenerationSelection(
   settings: UnifiedSettings,
@@ -352,23 +381,69 @@ export function resolveAuxiliaryTextGenerationSelection(
     };
   }
 
-  const options = getAdvertisedModelOptionsForInstance(settings, entry);
-  const resolved = resolveSelectableModel(entry.driverKind, selection.model, options);
-  if (resolved !== null) {
+  const evidence = evaluateModelCatalogueEvidence(
+    {
+      enabled: entry.enabled,
+      installed: entry.installed,
+      status: entry.status,
+      ...(entry.snapshot.availability !== undefined
+        ? { availability: entry.snapshot.availability }
+        : {}),
+      auth: entry.snapshot.auth,
+      models: getCatalogueEvidenceModels(settings, entry),
+    },
+    selection.model,
+  );
+
+  if (evidence.status === "listed") {
     return { selection, status: "listed", reason: null };
   }
-  if (entry.models.length === 0) {
+  if (evidence.status === "not-listed") {
+    return {
+      selection,
+      status: "not-listed",
+      reason: `The saved model '${selection.model}' is not in the current catalogue for provider instance '${selection.instanceId}'. Refresh providers or choose a model in ${TEXT_GENERATION_SETTINGS_ROW}; auxiliary text generation is refused until the selection is listed or replaced.`,
+    };
+  }
+  if (evidence.reason === "invalid-evidence") {
     return {
       selection,
       status: "unverified",
-      reason: `Provider instance '${selection.instanceId}' has not reported a model catalogue, so the saved model '${selection.model}' could not be verified. Refresh providers or choose a model in ${TEXT_GENERATION_SETTINGS_ROW}.`,
+      reason: `Provider evidence for instance '${selection.instanceId}' is unavailable or invalid, so the saved model '${selection.model}' could not be verified. Retry, refresh providers, or choose a model in ${TEXT_GENERATION_SETTINGS_ROW}.`,
     };
   }
   return {
     selection,
-    status: "not-listed",
-    reason: `The saved model '${selection.model}' is not in the current catalogue for provider instance '${selection.instanceId}'. Refresh providers or choose a model in ${TEXT_GENERATION_SETTINGS_ROW}; auxiliary text generation is refused until the selection is listed or replaced.`,
+    status: "unverified",
+    reason: `Provider instance '${selection.instanceId}' has not reported a complete model catalogue, so the saved model '${selection.model}' could not be verified. Refresh providers or choose a model in ${TEXT_GENERATION_SETTINGS_ROW}.`,
   };
+}
+
+/**
+ * Build an exact auxiliary selection for an explicit pick or a traits change.
+ * The instance/model pair is always the caller's; only dispatch options are
+ * derived from the selected model's capabilities. No fallback resolver runs,
+ * so hidden or unlisted saved models keep their exact identity.
+ */
+export function createAuxiliaryTextGenerationSelection(
+  providers: ReadonlyArray<ServerProvider>,
+  instanceId: ProviderInstanceId,
+  model: string,
+  options?: ReadonlyArray<ProviderOptionSelection> | null,
+): ModelSelection {
+  const entry = deriveProviderInstanceEntries(providers).find(
+    (candidate) => candidate.instanceId === instanceId,
+  );
+  if (!entry) {
+    return createModelSelection(instanceId, model, options);
+  }
+  const { modelOptionsForDispatch } = getComposerProviderState({
+    provider: entry.driverKind,
+    model,
+    models: entry.models,
+    modelOptions: options,
+  });
+  return createModelSelection(instanceId, model, modelOptionsForDispatch);
 }
 
 /**

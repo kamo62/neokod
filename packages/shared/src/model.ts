@@ -8,6 +8,9 @@ import {
   ProviderInstanceId,
   type ProviderOptionDescriptor,
   type ProviderOptionSelection,
+  type ServerProviderAuthStatus,
+  type ServerProviderAvailability,
+  type ServerProviderState,
 } from "@neokod/contracts";
 
 const DEFAULT_PROVIDER_DRIVER_KIND = ProviderDriverKind.make("codex");
@@ -283,6 +286,68 @@ export function resolveSelectableModel(
 
   const resolved = options.find((option) => option.slug === normalized);
   return resolved ? resolved.slug : null;
+}
+
+/**
+ * One provider snapshot's catalogue/config evidence for auxiliary admission.
+ *
+ * This is discovery evidence only: a listing never proves account entitlement
+ * or that structured generation will succeed. `modelSlug` is matched exactly
+ * (case-sensitive) against `models`; aliases and display names are deliberately
+ * not consulted because execution forwards the original slug unchanged.
+ *
+ * Invalid evidence is `unverified` before membership is considered. `warning`
+ * with `installed: true` remains valid: version advisories and usage limits can
+ * coexist with a complete discovered catalogue. Unknown auth is not treated as
+ * unauthenticated.
+ */
+export type ModelCatalogueEvidence =
+  | { readonly status: "listed" }
+  | { readonly status: "not-listed" }
+  | {
+      readonly status: "unverified";
+      readonly reason: "invalid-evidence" | "insufficient-catalogue";
+    };
+
+export interface ModelCatalogueEvidenceInput {
+  readonly enabled: boolean;
+  readonly installed: boolean;
+  readonly status: ServerProviderState;
+  readonly availability?: ServerProviderAvailability | undefined;
+  readonly auth: { readonly status: ServerProviderAuthStatus };
+  readonly models: ReadonlyArray<{
+    readonly slug: string;
+    readonly isCustom: boolean;
+  }>;
+}
+
+export function evaluateModelCatalogueEvidence(
+  input: ModelCatalogueEvidenceInput,
+  modelSlug: string,
+): ModelCatalogueEvidence {
+  const validEvidence =
+    input.enabled &&
+    input.installed &&
+    input.availability !== "unavailable" &&
+    input.status !== "error" &&
+    input.status !== "disabled" &&
+    input.auth.status !== "unauthenticated";
+  if (!validEvidence) {
+    return { status: "unverified", reason: "invalid-evidence" };
+  }
+
+  if (input.models.some((model) => model.slug === modelSlug)) {
+    return { status: "listed" };
+  }
+
+  // Only a discovered non-custom model can establish that the catalogue was
+  // read successfully enough to rule a slug out. A custom-only or empty list
+  // is configuration/absence of evidence, not a negative catalogue result.
+  if (!input.models.some((model) => !model.isCustom)) {
+    return { status: "unverified", reason: "insufficient-catalogue" };
+  }
+
+  return { status: "not-listed" };
 }
 
 function resolveModelSlug(model: string | null | undefined, provider: ProviderDriverKind): string {

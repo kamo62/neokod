@@ -1,5 +1,7 @@
 import { it } from "@effect/vitest";
+import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as PubSub from "effect/PubSub";
 import * as Result from "effect/Result";
 import * as Stream from "effect/Stream";
@@ -43,17 +45,19 @@ const makeSnapshot = (input: {
   readonly driverKind: ProviderInstance["driverKind"];
   readonly models?: ReadonlyArray<ServerProviderModel>;
   readonly enabled?: boolean;
+  readonly installed?: boolean;
   readonly availability?: ServerProvider["availability"];
   readonly unavailableReason?: string;
   readonly status?: ServerProvider["status"];
+  readonly auth?: ServerProvider["auth"];
 }): ServerProvider => ({
   instanceId: input.instanceId,
   driver: input.driverKind,
   enabled: input.enabled ?? true,
-  installed: true,
+  installed: input.installed ?? true,
   version: null,
   status: input.status ?? "ready",
-  auth: { status: "authenticated" },
+  auth: input.auth ?? { status: "authenticated" },
   checkedAt: "2026-01-01T00:00:00.000Z",
   models: input.models ?? [],
   slashCommands: [],
@@ -668,6 +672,226 @@ describe("auxiliary text generation admission", () => {
         expect(result.failure.detail).toContain("Driver is not shipped in this build.");
       }
       expect(calls).toEqual([]);
+    }),
+  );
+
+  it.effect("requires exact slug membership and rejects aliases and display names", () =>
+    Effect.gen(function* () {
+      const selections = ["gpt-5-codex", "GPT-5.4", "GPT 5.4"] as const;
+      yield* Effect.forEach(selections, (selectedModel) =>
+        Effect.gen(function* () {
+          const calls: Array<RecordedCall> = [];
+          let refreshCount = 0;
+          const driverKind = INSTANCE_ID as unknown as ProviderInstance["driverKind"];
+          const snapshot = makeSnapshot({
+            instanceId: INSTANCE_ID,
+            driverKind,
+            models: [model("gpt-5.4")],
+          });
+          const instance = makeStubInstance(INSTANCE_ID, makeRecordingTextGeneration(calls), {
+            models: [model("gpt-5.4")],
+            refresh: Effect.sync(() => {
+              refreshCount += 1;
+              return snapshot;
+            }),
+          });
+          const tg = TextGeneration.makeTextGenerationFromRegistry(makeStubRegistry([instance]));
+
+          const result = yield* tg
+            .generateThreadTitle({
+              cwd: process.cwd(),
+              message: selectedModel,
+              modelSelection: createModelSelection(INSTANCE_ID, selectedModel),
+            })
+            .pipe(Effect.result);
+
+          expect(Result.isFailure(result), selectedModel).toBe(true);
+          if (Result.isFailure(result)) {
+            expect(result.failure.detail, selectedModel).toContain("not advertised");
+          }
+          expect(refreshCount, selectedModel).toBe(1);
+          expect(calls, selectedModel).toEqual([]);
+        }),
+      );
+    }),
+  );
+
+  it.effect("treats invalid evidence as unverified before membership and never probes", () =>
+    Effect.gen(function* () {
+      const invalidCases: ReadonlyArray<{
+        readonly name: string;
+        readonly options: Parameters<typeof makeStubInstance>[2];
+        readonly selection: string;
+      }> = [
+        {
+          name: "error snapshot with a custom-only catalogue",
+          options: {
+            models: [model("team-custom", true)],
+            snapshotExtras: { status: "error" },
+          },
+          selection: "team-custom",
+        },
+        {
+          name: "explicitly unauthenticated",
+          options: {
+            models: [model("gpt-5")],
+            snapshotExtras: { auth: { status: "unauthenticated" } },
+          },
+          selection: "gpt-5",
+        },
+        {
+          name: "not installed",
+          options: {
+            models: [model("gpt-5")],
+            snapshotExtras: { installed: false },
+          },
+          selection: "gpt-5",
+        },
+      ];
+
+      yield* Effect.forEach(invalidCases, (testCase) =>
+        Effect.gen(function* () {
+          const calls: Array<RecordedCall> = [];
+          let refreshCount = 0;
+          const instance = makeStubInstance(INSTANCE_ID, makeRecordingTextGeneration(calls), {
+            ...testCase.options,
+            refresh: Effect.sync(() => {
+              refreshCount += 1;
+              return makeSnapshot({
+                instanceId: INSTANCE_ID,
+                driverKind: INSTANCE_ID as unknown as ProviderInstance["driverKind"],
+                models: [],
+              });
+            }),
+          });
+          const tg = TextGeneration.makeTextGenerationFromRegistry(makeStubRegistry([instance]));
+
+          const result = yield* tg
+            .generateThreadTitle({
+              cwd: process.cwd(),
+              message: testCase.name,
+              modelSelection: createModelSelection(INSTANCE_ID, testCase.selection),
+            })
+            .pipe(Effect.result);
+
+          expect(Result.isFailure(result), testCase.name).toBe(true);
+          if (Result.isFailure(result)) {
+            expect(result.failure.detail, testCase.name).toContain("evidence");
+            expect(result.failure.detail, testCase.name).not.toContain("not advertised");
+          }
+          expect(refreshCount, testCase.name).toBe(0);
+          expect(calls, testCase.name).toEqual([]);
+        }),
+      );
+    }),
+  );
+
+  it.effect("admits warning snapshots with installed catalogue evidence", () =>
+    Effect.gen(function* () {
+      const calls: Array<RecordedCall> = [];
+      const instance = makeStubInstance(INSTANCE_ID, makeRecordingTextGeneration(calls), {
+        models: [model("gpt-5")],
+        snapshotExtras: { status: "warning", auth: { status: "unknown" } },
+      });
+      const tg = TextGeneration.makeTextGenerationFromRegistry(makeStubRegistry([instance]));
+      const selection = createModelSelection(INSTANCE_ID, "gpt-5");
+
+      const result = yield* tg.generateThreadTitle({
+        cwd: process.cwd(),
+        message: "warning evidence",
+        modelSelection: selection,
+      });
+
+      expect(result.title).toBe("Recorded title");
+      expect(calls).toEqual([{ operation: "generateThreadTitle", modelSelection: selection }]);
+    }),
+  );
+
+  it.effect("reports a valid custom-only catalogue as unverified, not not-listed", () =>
+    Effect.gen(function* () {
+      const calls: Array<RecordedCall> = [];
+      let refreshCount = 0;
+      const instance = makeStubInstance(INSTANCE_ID, makeRecordingTextGeneration(calls), {
+        models: [model("team-custom", true)],
+        refresh: Effect.sync(() => {
+          refreshCount += 1;
+          return makeSnapshot({
+            instanceId: INSTANCE_ID,
+            driverKind: INSTANCE_ID as unknown as ProviderInstance["driverKind"],
+            models: [model("team-custom", true)],
+          });
+        }),
+      });
+      const tg = TextGeneration.makeTextGenerationFromRegistry(makeStubRegistry([instance]));
+
+      const result = yield* tg
+        .generateThreadTitle({
+          cwd: process.cwd(),
+          message: "custom-only catalogue",
+          modelSelection: createModelSelection(INSTANCE_ID, "gpt-5"),
+        })
+        .pipe(Effect.result);
+
+      expect(Result.isFailure(result)).toBe(true);
+      if (Result.isFailure(result)) {
+        expect(result.failure.detail).toContain("empty or incomplete");
+        expect(result.failure.detail).not.toContain("not advertised");
+      }
+      expect(refreshCount).toBe(1);
+      expect(calls).toEqual([]);
+    }),
+  );
+
+  it.effect("preserves interruption-only probe causes instead of typed failures", () =>
+    Effect.gen(function* () {
+      const interruptionCases: ReadonlyArray<{
+        readonly name: string;
+        readonly options: Parameters<typeof makeStubInstance>[2];
+        readonly selection: string;
+      }> = [
+        {
+          name: "snapshot interrupted",
+          options: {
+            models: [model("gpt-5")],
+            getSnapshot: Effect.interrupt,
+          },
+          selection: "gpt-5",
+        },
+        {
+          name: "refresh interrupted",
+          options: {
+            models: [model("gpt-5")],
+            refresh: Effect.interrupt,
+          },
+          selection: "gpt-missing",
+        },
+      ];
+
+      yield* Effect.forEach(interruptionCases, (testCase) =>
+        Effect.gen(function* () {
+          const calls: Array<RecordedCall> = [];
+          const instance = makeStubInstance(
+            INSTANCE_ID,
+            makeRecordingTextGeneration(calls),
+            testCase.options,
+          );
+          const tg = TextGeneration.makeTextGenerationFromRegistry(makeStubRegistry([instance]));
+
+          const exit = yield* tg
+            .generateThreadTitle({
+              cwd: process.cwd(),
+              message: testCase.name,
+              modelSelection: createModelSelection(INSTANCE_ID, testCase.selection),
+            })
+            .pipe(Effect.exit);
+
+          expect(Exit.isFailure(exit), testCase.name).toBe(true);
+          if (Exit.isFailure(exit)) {
+            expect(Cause.hasInterruptsOnly(exit.cause), testCase.name).toBe(true);
+          }
+          expect(calls, testCase.name).toEqual([]);
+        }),
+      );
     }),
   );
 });

@@ -1,16 +1,18 @@
 import * as Context from "effect/Context";
+import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
-import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import type {
   ChatAttachment,
   ModelSelection,
   ProviderInstanceId,
   ServerProvider,
-  ServerProviderModel,
 } from "@neokod/contracts";
 import { TextGenerationError } from "@neokod/contracts";
-import { normalizeModelSlug } from "@neokod/shared/model";
+import {
+  evaluateModelCatalogueEvidence,
+  type ModelCatalogueEvidenceInput,
+} from "@neokod/shared/model";
 
 import * as ProviderInstanceRegistry from "../provider/Services/ProviderInstanceRegistry.ts";
 import type { ProviderInstance } from "../provider/ProviderDriver.ts";
@@ -165,30 +167,35 @@ const SETTINGS_RECOVERY_HINT = "Settings → Text generation model";
 const failAdmission = (operation: TextGenerationOp, detail: string) =>
   Effect.fail(new TextGenerationError({ operation, detail }));
 
+const catalogueEvidenceFor = (
+  instance: ProviderInstance,
+  snapshot: ServerProvider,
+): ModelCatalogueEvidenceInput => ({
+  enabled: instance.enabled,
+  installed: snapshot.installed,
+  status: snapshot.status,
+  ...(snapshot.availability !== undefined ? { availability: snapshot.availability } : {}),
+  auth: snapshot.auth,
+  models: snapshot.models,
+});
+
 /**
- * Catalogue membership, not a capability claim. The selected slug counts as
- * listed when it appears verbatim or matches an advertised slug after the
- * driver's alias normalisation (for example `gpt-5-codex` → `gpt-5.4`).
- * Custom models are ordinary catalogue entries once a driver appends them,
- * and a null `capabilities` field must not be treated as unsupported.
+ * Contain actual probe failures as typed generation errors, but keep an
+ * interruption-only cause intact so the reactor's auxiliary-activity
+ * suppression can still recognise cancellation.
  */
-const isModelAdvertised = (
-  driverKind: ProviderInstance["driverKind"],
-  models: ReadonlyArray<ServerProviderModel>,
-  model: string,
-): boolean => {
-  const normalizedSelection = normalizeModelSlug(model, driverKind);
-  if (!normalizedSelection) {
-    return false;
-  }
-  return models.some((candidate) => {
-    if (candidate.slug === model) {
-      return true;
-    }
-    const normalizedCandidate = normalizeModelSlug(candidate.slug, driverKind) ?? candidate.slug;
-    return normalizedCandidate === normalizedSelection;
-  });
-};
+const runAuxiliaryProbe = <A>(
+  operation: TextGenerationOp,
+  detail: string,
+  probe: Effect.Effect<A>,
+): Effect.Effect<A, TextGenerationError> =>
+  probe.pipe(
+    Effect.catchCause((cause) =>
+      Cause.hasInterruptsOnly(cause)
+        ? Effect.failCause(cause)
+        : Effect.fail(new TextGenerationError({ operation, detail })),
+    ),
+  );
 
 const instanceDisabledDetail = (instanceId: ProviderInstanceId, model: string): string =>
   `Provider instance '${instanceId}' is disabled, so model '${model}' cannot be used for auxiliary text generation. Enable the instance or choose another one in ${SETTINGS_RECOVERY_HINT}.`;
@@ -204,7 +211,7 @@ const instanceUnavailableDetail = (
 };
 
 const evidenceUnavailableDetail = (instanceId: ProviderInstanceId, model: string): string =>
-  `Provider evidence for instance '${instanceId}' is unavailable, so model '${model}' could not be verified. Retry, refresh providers, or choose a model in ${SETTINGS_RECOVERY_HINT}.`;
+  `Provider evidence for instance '${instanceId}' is unavailable or invalid, so model '${model}' could not be verified. Retry, refresh providers, or choose a model in ${SETTINGS_RECOVERY_HINT}.`;
 
 const catalogueIncompleteDetail = (instanceId: ProviderInstanceId, model: string): string =>
   `The provider catalogue for instance '${instanceId}' is empty or incomplete, so model '${model}' could not be verified. Refresh providers or choose a model in ${SETTINGS_RECOVERY_HINT}.`;
@@ -217,11 +224,13 @@ const modelNotAdvertisedDetail = (instanceId: ProviderInstanceId, model: string)
 
 /**
  * One admission gate in front of every registry-dispatched auxiliary
- * operation. It proves catalogue membership for the selected instance only,
- * preserving the caller's original model and options — it never substitutes
- * another instance, model, or options. A single refresh re-checks a missing
- * slug, so an old cached omission is not treated as final. Refresh defects are
- * contained as typed generation errors rather than becoming generation runs.
+ * operation. It proves exact catalogue/configuration membership for the
+ * selected instance only, preserving the caller's original model and options
+ * — it never substitutes another instance, model, or options. Snapshot
+ * validity is evaluated before membership, and the same shared projection is
+ * applied to the initial and refreshed evidence. A missing slug (or an
+ * insufficient but valid catalogue) gets at most one exact-instance refresh.
+ * Disabled, unavailable, or otherwise invalid evidence is never probed.
  */
 const resolveAdmittedTextGeneration = (
   registry: ProviderInstanceRegistry.ProviderInstanceRegistry["Service"],
@@ -243,47 +252,58 @@ const resolveAdmittedTextGeneration = (
       );
     }
 
-    const snapshotExit = yield* Effect.exit(instance.snapshot.getSnapshot);
-    if (Exit.isFailure(snapshotExit)) {
-      return yield* failAdmission(
-        operation,
-        evidenceUnavailableDetail(selection.instanceId, selection.model),
-      );
-    }
-    const snapshot = snapshotExit.value;
+    const snapshot = yield* runAuxiliaryProbe(
+      operation,
+      evidenceUnavailableDetail(selection.instanceId, selection.model),
+      instance.snapshot.getSnapshot,
+    );
     if (snapshot.availability === "unavailable") {
       return yield* failAdmission(
         operation,
         instanceUnavailableDetail(selection.instanceId, selection.model, snapshot),
       );
     }
-    if (isModelAdvertised(instance.driverKind, snapshot.models, selection.model)) {
+
+    const initialEvidence = evaluateModelCatalogueEvidence(
+      catalogueEvidenceFor(instance, snapshot),
+      selection.model,
+    );
+    if (initialEvidence.status === "listed") {
       return instance.textGeneration;
     }
-
-    // Exactly one refresh for an absent slug — including one the initial
-    // catalogue could not describe. The selected instance owns this probe;
-    // another instance of the same driver is never consulted.
-    const refreshedExit = yield* Effect.exit(instance.snapshot.refresh);
-    if (Exit.isFailure(refreshedExit)) {
+    if (initialEvidence.status === "unverified" && initialEvidence.reason === "invalid-evidence") {
       return yield* failAdmission(
         operation,
-        refreshFailedDetail(selection.instanceId, selection.model),
+        evidenceUnavailableDetail(selection.instanceId, selection.model),
       );
     }
-    const refreshed = refreshedExit.value;
-    if (isModelAdvertised(instance.driverKind, refreshed.models, selection.model)) {
+
+    // Exactly one refresh for a valid catalogue that cannot confirm the slug.
+    // The selected instance owns this probe; another instance of the same
+    // driver is never consulted.
+    const refreshed = yield* runAuxiliaryProbe(
+      operation,
+      refreshFailedDetail(selection.instanceId, selection.model),
+      instance.snapshot.refresh,
+    );
+    const refreshedEvidence = evaluateModelCatalogueEvidence(
+      catalogueEvidenceFor(instance, refreshed),
+      selection.model,
+    );
+    if (refreshedEvidence.status === "listed") {
       return instance.textGeneration;
     }
-    if (refreshed.models.length === 0) {
+    if (refreshedEvidence.status === "not-listed") {
       return yield* failAdmission(
         operation,
-        catalogueIncompleteDetail(selection.instanceId, selection.model),
+        modelNotAdvertisedDetail(selection.instanceId, selection.model),
       );
     }
     return yield* failAdmission(
       operation,
-      modelNotAdvertisedDetail(selection.instanceId, selection.model),
+      refreshedEvidence.reason === "invalid-evidence"
+        ? evidenceUnavailableDetail(selection.instanceId, selection.model)
+        : catalogueIncompleteDetail(selection.instanceId, selection.model),
     );
   });
 
