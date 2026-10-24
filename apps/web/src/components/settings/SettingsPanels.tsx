@@ -56,7 +56,9 @@ import {
 } from "../../uiStateStore";
 import {
   getCustomModelOptionsByInstance,
+  includeSavedAuxiliaryModelOption,
   resolveAppModelSelectionState,
+  resolveAuxiliaryTextGenerationSelection,
 } from "../../modelSelection";
 import {
   applyProviderInstanceSettings,
@@ -490,7 +492,13 @@ export function GeneralSettingsPanel() {
     otlpMetricsUrl: observability?.otlpMetricsUrl,
   });
 
-  const textGenerationModelSelection = resolveAppModelSelectionState(settings, serverProviders);
+  const textGenerationSelection = resolveAuxiliaryTextGenerationSelection(
+    settings,
+    serverProviders,
+  );
+  const textGenerationModelSelection = textGenerationSelection.selection;
+  const textGenSelectionReason =
+    textGenerationSelection.status === "listed" ? null : textGenerationSelection.reason;
   const textGenInstanceId = textGenerationModelSelection.instanceId;
   const textGenModel = textGenerationModelSelection.model;
   const textGenModelOptions = textGenerationModelSelection.options;
@@ -502,11 +510,9 @@ export function GeneralSettingsPanel() {
   );
   const textGenProvider: ProviderDriverKind =
     textGenInstanceEntry?.driverKind ?? DEFAULT_DRIVER_KIND;
-  const gitModelOptionsByInstance = getCustomModelOptionsByInstance(
-    settings,
-    serverProviders,
-    textGenInstanceId,
-    textGenModel,
+  const gitModelOptionsByInstance = includeSavedAuxiliaryModelOption(
+    getCustomModelOptionsByInstance(settings, serverProviders, textGenInstanceId, textGenModel),
+    textGenerationSelection,
   );
   const isGitWritingModelDirty = !Equal.equals(
     settings.textGenerationModelSelection ?? null,
@@ -1109,7 +1115,8 @@ export function GeneralSettingsPanel() {
 
         <SettingsRow
           title="Text generation model"
-          description="Configure the model used for generated commit messages, PR titles, and similar Git text."
+          description="Configure the model used for generated commit messages, PR titles, Git text, thread titles, and branch names."
+          {...(textGenSelectionReason ? { status: textGenSelectionReason } : {})}
           resetAction={
             isGitWritingModelDirty ? (
               <SettingResetButton
@@ -1133,6 +1140,14 @@ export function GeneralSettingsPanel() {
                 modelOptionsByInstance={gitModelOptionsByInstance}
                 triggerVariant="outline"
                 triggerClassName="min-w-0 max-w-none shrink-0 text-foreground/90 hover:text-foreground"
+                {...(textGenSelectionReason
+                  ? {
+                      getModelDisabledReason: (instanceId, model) =>
+                        instanceId === textGenInstanceId && model === textGenModel
+                          ? textGenSelectionReason
+                          : null,
+                    }
+                  : {})}
                 onInstanceModelChange={(instanceId, model) => {
                   updateSettings({
                     textGenerationModelSelection: resolveAppModelSelectionState(

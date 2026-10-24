@@ -164,6 +164,7 @@ describe("ProviderCommandReactor", () => {
   async function createHarness(input?: {
     readonly baseDir?: string;
     readonly threadModelSelection?: ModelSelection;
+    readonly textGenerationModelSelection?: ModelSelection;
     readonly sessionModelSwitch?: "unsupported" | "in-session";
     readonly requiresNewThreadForModelChange?: boolean;
     readonly providerSessionCwd?: (cwd: string | undefined) => string | undefined;
@@ -393,7 +394,13 @@ describe("ProviderCommandReactor", () => {
           generateThreadTitle,
         }),
       ),
-      Layer.provideMerge(ServerSettingsService.layerTest()),
+      Layer.provideMerge(
+        ServerSettingsService.layerTest(
+          input?.textGenerationModelSelection !== undefined
+            ? { textGenerationModelSelection: input.textGenerationModelSelection }
+            : {},
+        ),
+      ),
       Layer.provideMerge(ServerConfig.layerTest(process.cwd(), baseDir)),
       Layer.provideMerge(WorktreeRemovalLeaseLive),
       Layer.provideMerge(ProjectionTurnRepositoryLive.pipe(Layer.provide(SqlitePersistenceMemory))),
@@ -938,6 +945,201 @@ describe("ProviderCommandReactor", () => {
       message: "Add a safer reconnect backoff.",
     });
     expect(harness.refreshStatus.mock.calls[0]?.[0]).toBe(worktreePath);
+    NodeFS.rmSync(worktreePath, { recursive: true, force: true });
+  });
+
+  it("honours a distinct auxiliary model for title generation without changing the chat model", async () => {
+    const auxiliarySelection = createModelSelection(
+      ProviderInstanceId.make("codex"),
+      "gpt-5.4-mini",
+      [{ id: "reasoningEffort", value: "low" }],
+    );
+    const harness = await createHarness({
+      textGenerationModelSelection: auxiliarySelection,
+    });
+    const now = "2026-01-01T00:00:00.000Z";
+    const seededTitle = "Please investigate reconnect failures after restar...";
+    harness.generateThreadTitle.mockReturnValue(
+      Effect.succeed({ title: "Auxiliary generated title" }),
+    );
+
+    await harness.dispatch({
+      type: "thread.meta.update",
+      commandId: CommandId.make("cmd-thread-title-seed-auxiliary-model"),
+      threadId: ThreadId.make("thread-1"),
+      title: seededTitle,
+    });
+    await harness.dispatch({
+      type: "thread.turn.start",
+      commandId: CommandId.make("cmd-turn-start-auxiliary-model"),
+      threadId: ThreadId.make("thread-1"),
+      message: {
+        messageId: asMessageId("user-message-auxiliary-model"),
+        role: "user",
+        text: "Use a smaller model for the title.",
+        attachments: [],
+      },
+      titleSeed: seededTitle,
+      interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+      runtimeMode: "approval-required",
+      createdAt: now,
+    });
+
+    await waitFor(() => harness.generateThreadTitle.mock.calls.length === 1);
+    await waitFor(() => harness.sendTurn.mock.calls.length === 1);
+
+    expect(harness.generateThreadTitle.mock.calls[0]?.[0]).toMatchObject({
+      modelSelection: auxiliarySelection,
+    });
+    expect(harness.sendTurn.mock.calls[0]?.[0]).toMatchObject({
+      threadId: ThreadId.make("thread-1"),
+    });
+    expect(harness.startSession.mock.calls[0]?.[1]).toMatchObject({
+      modelSelection: {
+        instanceId: ProviderInstanceId.make("codex"),
+        model: "gpt-5-codex",
+      },
+    });
+
+    await waitFor(async () => {
+      const readModel = await harness.readModel();
+      return (
+        readModel.threads.find((entry) => entry.id === ThreadId.make("thread-1"))?.title ===
+        "Auxiliary generated title"
+      );
+    });
+  });
+
+  it("records one safe auxiliary activity and keeps the first-turn chat/title intact on title failure", async () => {
+    const auxiliarySelection = createModelSelection(
+      ProviderInstanceId.make("codex"),
+      "gpt-not-advertised",
+    );
+    const harness = await createHarness({
+      textGenerationModelSelection: auxiliarySelection,
+    });
+    const now = "2026-01-01T00:00:00.000Z";
+    const seededTitle = "Please investigate reconnect failures after restar...";
+
+    await harness.dispatch({
+      type: "thread.meta.update",
+      commandId: CommandId.make("cmd-thread-title-seed-aux-failure"),
+      threadId: ThreadId.make("thread-1"),
+      title: seededTitle,
+    });
+    await harness.dispatch({
+      type: "thread.turn.start",
+      commandId: CommandId.make("cmd-turn-start-aux-failure"),
+      threadId: ThreadId.make("thread-1"),
+      message: {
+        messageId: asMessageId("user-message-aux-failure"),
+        role: "user",
+        text: "Please investigate reconnect failures after restarting the session.",
+        attachments: [],
+      },
+      titleSeed: seededTitle,
+      interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+      runtimeMode: "approval-required",
+      createdAt: now,
+    });
+
+    await waitFor(() => harness.sendTurn.mock.calls.length === 1);
+    await waitFor(async () => {
+      const readModel = await harness.readModel();
+      return (
+        readModel.threads
+          .find((entry) => entry.id === ThreadId.make("thread-1"))
+          ?.activities.some(
+            (activity) => activity.kind === "provider.auxiliary.text-generation.failed",
+          ) ?? false
+      );
+    });
+
+    const firstRead = await harness.readModel();
+    const firstThread = firstRead.threads.find((entry) => entry.id === ThreadId.make("thread-1"));
+    const activities =
+      firstThread?.activities.filter(
+        (activity) => activity.kind === "provider.auxiliary.text-generation.failed",
+      ) ?? [];
+    expect(activities).toHaveLength(1);
+    expect(firstThread?.title).toBe(seededTitle);
+    expect(
+      firstThread?.activities.some((activity) => activity.kind === "provider.turn.start.failed"),
+    ).toBe(false);
+    expect(firstThread?.session?.status ?? null).not.toBe("error");
+    expect(harness.sendTurn).toHaveBeenCalledTimes(1);
+
+    const payload = activities[0]?.payload as { readonly detail?: string } | undefined;
+    const detail = payload?.detail ?? "";
+    expect(detail).toContain("provider instance 'codex'");
+    expect(detail).toContain("model 'gpt-not-advertised'");
+    expect(detail).toContain("Text generation model");
+    expect(detail).not.toContain("disabled in test harness");
+
+    const reloaded = await harness.readModel();
+    const reloadedThread = reloaded.threads.find((entry) => entry.id === ThreadId.make("thread-1"));
+    expect(
+      reloadedThread?.activities.filter(
+        (activity) => activity.kind === "provider.auxiliary.text-generation.failed",
+      ),
+    ).toHaveLength(1);
+    expect(reloadedThread?.title).toBe(seededTitle);
+  });
+
+  it("records a branch-name auxiliary failure without renaming the temporary branch", async () => {
+    const harness = await createHarness();
+    const now = "2026-01-01T00:00:00.000Z";
+    const worktreePath = NodeFS.mkdtempSync(
+      NodePath.join(NodeOS.tmpdir(), "neokod-provider-worktree-aux-"),
+    );
+
+    await harness.dispatch({
+      type: "thread.meta.update",
+      commandId: CommandId.make("cmd-thread-branch-aux-failure"),
+      threadId: ThreadId.make("thread-1"),
+      branch: "neokod/1234abcd",
+      worktreePath,
+    });
+    await harness.dispatch({
+      type: "thread.turn.start",
+      commandId: CommandId.make("cmd-turn-start-branch-aux-failure"),
+      threadId: ThreadId.make("thread-1"),
+      message: {
+        messageId: asMessageId("user-message-branch-aux-failure"),
+        role: "user",
+        text: "Add a safer reconnect backoff.",
+        attachments: [],
+      },
+      interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+      runtimeMode: "approval-required",
+      createdAt: now,
+    });
+
+    await waitFor(() => harness.sendTurn.mock.calls.length === 1);
+    await waitFor(() =>
+      harness
+        .readModel()
+        .then(
+          (readModel) =>
+            readModel.threads
+              .find((entry) => entry.id === ThreadId.make("thread-1"))
+              ?.activities.some(
+                (activity) => activity.kind === "provider.auxiliary.text-generation.failed",
+              ) ?? false,
+        ),
+    );
+
+    expect(harness.renameBranch).not.toHaveBeenCalled();
+    const readModel = await harness.readModel();
+    const thread = readModel.threads.find((entry) => entry.id === ThreadId.make("thread-1"));
+    expect(thread?.branch).toBe("neokod/1234abcd");
+    const activity = thread?.activities.find(
+      (entry) => entry.kind === "provider.auxiliary.text-generation.failed",
+    );
+    const detail = (activity?.payload as { readonly detail?: string } | undefined)?.detail ?? "";
+    expect(detail).toContain("Worktree branch name");
+    expect(detail).toContain("model 'gpt-5.4-mini'");
+    expect(detail).not.toContain("disabled in test harness");
     NodeFS.rmSync(worktreePath, { recursive: true, force: true });
   });
 
