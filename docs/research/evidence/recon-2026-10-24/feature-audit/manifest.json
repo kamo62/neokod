@@ -1,0 +1,122 @@
+{
+  "scope": "Public census/triage and selected feature comparison, not exhaustive semantic or runtime parity",
+  "censusRows": 3927,
+  "roster": 20,
+  "featureRows": 40,
+  "featureClusters": 12,
+  "normalisation": "Durable Markdown links are localised and JSON/Markdown formatted. Original receipt hashes refer original source bytes below; artifacts hashes attest actual durable bytes. Compressed JSON retains original bytes.",
+  "rawPublicCensus": {
+    "path": "all-closed-prs.json.gz",
+    "uncompressedSha256": "347f20cbbe3109001fece1d1d1c974dcda8c4b3477e4e65a4f6e564f7ea27516"
+  },
+  "ledgerUncompressedSha256": "b8e7b8b7c50ccb1fc21e95ef0e22adad1e2a27478b68952694c5a9f64b415ac3",
+  "rawSonnetSourceHashes": {
+    "all-pr-dispositions.json": "b8e7b8b7c50ccb1fc21e95ef0e22adad1e2a27478b68952694c5a9f64b415ac3",
+    "all-pr-dispositions.csv": "38f029199f4ec709472a787075f30e1bd17f24138552c39d2b9b7a54d59909a1",
+    "t3-feature-gap-report.md": "bc2f8488453d25455dd4af69e5e5e9737b8b6365038f1170c52aba58bae7f2dd",
+    "evidence/audit-correction-receipt-2026-10-24.json": "13911c078126fedb29f9184781d9308af7c004d56848c8e8677b574b99b32eb0",
+    "evidence/opus-extension-validation-2026-10-24.json": "e948d015518633f9eb653d8253add327b61bc4f7cb6ff670326e1ac41de2c4c0"
+  },
+  "artifacts": {
+    "all-closed-prs.json.gz": {
+      "bytes": 5084014,
+      "sha256": "800faede0e9de2c1745f8e928f86b93f8ccda0d4feee2314695e7e8e8b21bb4b"
+    },
+    "all-pr-dispositions.csv": {
+      "bytes": 5498734,
+      "sha256": "38f029199f4ec709472a787075f30e1bd17f24138552c39d2b9b7a54d59909a1"
+    },
+    "all-pr-dispositions.json.gz": {
+      "bytes": 875070,
+      "sha256": "79e4ede77f6aa2e951b8a4baf1f81c6c9cdaaa00c2a3f3679f878f6479780900"
+    },
+    "apply_opus_extensions.py": {
+      "bytes": 79693,
+      "sha256": "c5989fe48b8f24c08ededc177112cd9566c3bbe2e2f0deed41435f6ebbf9a613"
+    },
+    "audit-correction-receipt-2026-10-24.json": {
+      "bytes": 1372434,
+      "sha256": "8a07ca6f9d101b5641561f715beef074d5b2763ff649804bbea7d1faa814a453"
+    },
+    "build_ledger.py": {
+      "bytes": 31851,
+      "sha256": "1dbb764524667386a13b1b913972099b26316ece2268a03565f45bf4a47b70f1"
+    },
+    "census-receipt.json": {
+      "bytes": 2863,
+      "sha256": "3b7b29379f6c80fc742a1ce0d2b47a6dc3966ad2693f470fad7cc4ff1dc56b44"
+    },
+    "classify.py": {
+      "bytes": 15838,
+      "sha256": "adcc47496786b5502d9a53e1842d37910fb6e5a4c2fad3394666e74534700e61"
+    },
+    "collect-prs.py": {
+      "bytes": 2280,
+      "sha256": "50b44ac593605c87ad855eae86e57c88fabed11f6c2b2d2dae8137d71905ffe9"
+    },
+    "competitor-breadth-feature-gaps.md": {
+      "bytes": 97935,
+      "sha256": "9f1e6912a8a39ee80b953b02ec215390820d17ee967b2323b703e843858ed847"
+    },
+    "competitor-breadth-feature-matrix.csv": {
+      "bytes": 62960,
+      "sha256": "4aba2e5443e51d37f8a64c5169ab5b3c45a3ac4779beea5d33a2129c9aaf9196"
+    },
+    "competitor-breadth-feature-matrix.json": {
+      "bytes": 194287,
+      "sha256": "a1d3cff092c6d2ba7305942e4e7e74b9fc706c2dc9d3a6594f1d33302127dbb5"
+    },
+    "competitor-feature-inventory.csv": {
+      "bytes": 40318,
+      "sha256": "c656cceef697caf708ae7fbbdb58f4fdcc2c551d8ae89784e06234fe6d824f8c"
+    },
+    "competitor-feature-inventory.json": {
+      "bytes": 52208,
+      "sha256": "714e0007f8cbc9405bb35e5f75bf781f33a6aef22c85a308b75591ae77b8d3dc"
+    },
+    "competitor-feature-inventory.md": {
+      "bytes": 53756,
+      "sha256": "b06411501b9786c034682f82d4836bcd960cb6e7b1b601a8f202c7df32e9ad4c"
+    },
+    "curated.json": {
+      "bytes": 31762,
+      "sha256": "23a37b6d8e21230db65d84c5db79441d15f75906eab2a1b33325dc1176f3c628"
+    },
+    "ledger-before-truncation-correction-2026-10-24.json.gz": {
+      "bytes": 663381,
+      "sha256": "c2225df621861ecbce4c797ed87d31400b4ead4e617a15ea7eb45f2b82aea7dc"
+    },
+    "make_overrides.py": {
+      "bytes": 16629,
+      "sha256": "0c4463166806552ee848da7b0b5b1769486453456ed05ebc51889fb011288ac3"
+    },
+    "opus-extension-validation-2026-10-24.json": {
+      "bytes": 3539,
+      "sha256": "f914e748f0f0a17b6098bf372986c5856dc956d124cf3c0ccd485049dbe094ef"
+    },
+    "opus-review.md": {
+      "bytes": 52198,
+      "sha256": "8e4082cebafbf79df20e0eb7315f07d080b2bbd53e76fad6d9f64f3d091adb03"
+    },
+    "refine_opus_f5_cloud_mixed.py": {
+      "bytes": 22228,
+      "sha256": "e49ca2f3504b5d5f62557e5f58c4f2d63bad53d4a3be9bb5b37c85d5d6fa6438"
+    },
+    "sol-review.md": {
+      "bytes": 23959,
+      "sha256": "99e06c4fc50d69d872614f5e57dcb17608261368caf5ae0a74ee2d79ea4548b4"
+    },
+    "t3-feature-gap-report.md": {
+      "bytes": 70379,
+      "sha256": "14d9b3a2424494b077d6d01d96b7247a5bdbda1f525c6414725c8bdd94423ecb"
+    },
+    "truncation-audit.md": {
+      "bytes": 26274,
+      "sha256": "7187cb0ed32de62f9d0fb7b86e87f6eaae293f4cee0e82c1413132977725e909"
+    },
+    "truncation-corrections.json": {
+      "bytes": 134311,
+      "sha256": "62a781581ffde626568fbde21cca2193e9c1735ab1a99f487d6a6fbfbf38b107"
+    }
+  }
+}

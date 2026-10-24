@@ -1,0 +1,25 @@
+{
+  "head": "c8fef250e3b2ff6d4d8055d3ae9913d1b1ccba37",
+  "backendPid": 51337,
+  "cwd": "/Users/kamogelo/.codex/worktrees/neokod-core-execution/t3code",
+  "command": [
+    "node",
+    "apps/server/src/bin.ts",
+    "serve",
+    "--mode",
+    "web",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "24773",
+    "--base-dir",
+    "/tmp/neokod-implementation-2026-10-23/runtime",
+    "--dev-url",
+    "http://127.0.0.1:16733",
+    "--no-browser"
+  ],
+  "oldOwnedBackendPidStopped": 68774,
+  "rendererPid": 30545,
+  "backupPrivate": true,
+  "proof": "source backend restart; Chrome currently locked"
+}

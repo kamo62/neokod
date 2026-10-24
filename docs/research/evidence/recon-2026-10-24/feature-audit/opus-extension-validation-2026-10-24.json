@@ -1,0 +1,90 @@
+{
+  "date": "2026-10-24",
+  "scope": "artifact validation only; no app tests, builds, installs or provider/runtime actions",
+  "checks": {
+    "ledgerJSONValid": true,
+    "ledgerCSVValidAndSameRowIDs": true,
+    "all3927CensusIDsPreserved": true,
+    "statusCountsPreserved": {
+      "merged-main": 2774,
+      "closed-unmerged": 644,
+      "merged-stacked-branch": 509
+    },
+    "latestNightlyDirectReachabilityCountsPreserved": {
+      "reachable-in-date-bounded-inspected-history": 3106,
+      "not-applicable-unmerged": 644,
+      "not-observed-in-date-bounded-inspected-history": 177
+    },
+    "F1TruncatedRowsRemainMixedUnknownWithSamples": true,
+    "F3UnavailableMetricsRemainNull": true,
+    "F4UnmergedWordingRetained": true,
+    "F5CompleteCandidateCount": 304,
+    "F5MixedBackendUnassessedCount": 245,
+    "F5DefinitiveExclusionCount": 59,
+    "F5NoCandidateOrGapPromotion": true,
+    "F5SourceSampleFieldsPreserved": true,
+    "F2bParentAssociatedRows": 174,
+    "F2bUnresolvedRows": 3,
+    "F2bChildReachabilityNotOverwritten": true,
+    "F9_2829ReasonConsistent": true,
+    "F9_13433UIStillExcluded": true,
+    "LunaMatrixFilesNotTouched": true,
+    "RepositoryFilesNotTouched": true,
+    "F5HostedPredicateRowsAudited": 44,
+    "F5HostedOnlyExplicitEvidenceRows": 43,
+    "F5HostedOnlyUnsupportedRowsReclassified": [23282]
+  },
+  "finalCounts": {
+    "rows": 3927,
+    "dispositions": {
+      "feature-gap-proposal": 142,
+      "candidate-port-intent": 773,
+      "backend-backlog-unassessed": 593,
+      "reference-only-upstream-v2": 142,
+      "excluded-policy-ui": 1042,
+      "excluded-policy-mobile": 450,
+      "desktop-shell-review": 99,
+      "excluded-noise-build-ci-deps": 118,
+      "reference-only-unsupported-provider": 80,
+      "excluded-noise-test-only": 134,
+      "excluded-policy-cloud-connect": 81,
+      "excluded-noise-docs": 25,
+      "excluded-policy-marketing-brand": 13,
+      "excluded-policy-hosted-telemetry": 11,
+      "reference-only-credential-endpoint": 1,
+      "excluded-noise-governance": 3,
+      "reference-only-internal-refactor": 170,
+      "excluded-noise-sync-accidental": 7,
+      "needs-human-triage": 5,
+      "excluded-noise-revert": 18,
+      "excluded-noise-backport": 1,
+      "excluded-noise-bot": 2,
+      "excluded-third-party-fork": 16,
+      "not-applicable-current-product": 1
+    },
+    "sourceLayerAssessment": {
+      "mixed-or-unknown": 61,
+      "complete-file-list": 3861,
+      "unknown-unavailable": 5
+    },
+    "evidenceDepth": {
+      "bodyReadRows": 55,
+      "officialPRDescriptionReadRows": 10,
+      "patchReadRows": 17,
+      "olderNeokodSourceRows_0ab699566": 20,
+      "previousCurrentNeokodSourceRows_3b134e4": 12,
+      "uniqueRowsWithAnyNeokodSourcePin": 29,
+      "upstreamSourceRows_27e0c684": 2,
+      "ruleBasedConfidenceRows": 3890
+    },
+    "bareConnectTitleRowsReviewed": 15
+  },
+  "sha256": {
+    "all-pr-dispositions.json": "b8e7b8b7c50ccb1fc21e95ef0e22adad1e2a27478b68952694c5a9f64b415ac3",
+    "all-pr-dispositions.csv": "38f029199f4ec709472a787075f30e1bd17f24138552c39d2b9b7a54d59909a1",
+    "t3-feature-gap-report.md": "bc2f8488453d25455dd4af69e5e5e9737b8b6365038f1170c52aba58bae7f2dd",
+    "audit-correction-receipt-2026-10-24.json": "13911c078126fedb29f9184781d9308af7c004d56848c8e8677b574b99b32eb0",
+    "scripts/apply_opus_extensions.py": "c5989fe48b8f24c08ededc177112cd9566c3bbe2e2f0deed41435f6ebbf9a613",
+    "scripts/refine_opus_f5_cloud_mixed.py": "e49ca2f3504b5d5f62557e5f58c4f2d63bad53d4a3be9bb5b37c85d5d6fa6438"
+  }
+}

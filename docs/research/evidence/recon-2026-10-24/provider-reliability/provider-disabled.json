@@ -1,0 +1,70 @@
+{
+  "head": "1eee19299",
+  "proof": "source-runtime existing disposable settings",
+  "providers": [
+    {
+      "instanceId": "claudeAgent",
+      "driver": "claudeAgent",
+      "status": "ready",
+      "installed": true,
+      "version": "2.1.308",
+      "authStatus": "authenticated",
+      "modelCount": 13
+    },
+    {
+      "instanceId": "codex",
+      "driver": "codex",
+      "status": "disabled",
+      "installed": false,
+      "version": null,
+      "authStatus": "unknown",
+      "modelCount": 8
+    },
+    {
+      "instanceId": "cursor",
+      "driver": "cursor",
+      "status": "disabled",
+      "installed": false,
+      "version": null,
+      "authStatus": "unknown",
+      "modelCount": 0
+    },
+    {
+      "instanceId": "githubCopilot",
+      "driver": "githubCopilot",
+      "status": "ready",
+      "installed": true,
+      "version": "1.0.78",
+      "authStatus": "authenticated",
+      "modelCount": 1
+    },
+    {
+      "instanceId": "grok",
+      "driver": "grok",
+      "status": "disabled",
+      "installed": false,
+      "version": null,
+      "authStatus": "unknown",
+      "modelCount": 1
+    },
+    {
+      "instanceId": "kiro",
+      "driver": "kiro",
+      "status": "disabled",
+      "installed": false,
+      "version": null,
+      "authStatus": "unknown",
+      "modelCount": 1
+    },
+    {
+      "instanceId": "opencode",
+      "driver": "opencode",
+      "status": "error",
+      "installed": true,
+      "version": "2.0.32",
+      "authStatus": "unknown",
+      "modelCount": 0,
+      "issue": "OpenCode v2.0.32 is installed. OpenCode 2 is not supported yet; install OpenCode 1.x to use this provider."
+    }
+  ]
+}

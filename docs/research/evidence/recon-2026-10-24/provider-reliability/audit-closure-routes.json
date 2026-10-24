@@ -1,0 +1,30 @@
+{
+  "sol-audit-closure": {
+    "sessionId": "ses_e925de55cffefxDBjFEF3IWt3V",
+    "agentInfo": {
+      "name": "OpenCode",
+      "version": "2.0.32"
+    },
+    "selected": {
+      "model": "github-copilot/gpt-6.1-sol",
+      "effort": "high"
+    },
+    "messageId": "msg_16db8e214001aMYwZKmru7MTf2",
+    "verdict": "ACCEPT",
+    "manifestSha256": "ad365acfac1d685870c8216bfcef7fe8298fd1be52ff949caf13213b5443c7d9"
+  },
+  "opus-audit-closure": {
+    "sessionId": "ses_e92850e6dffeCQaw3kSpqOglM5",
+    "agentInfo": {
+      "name": "OpenCode",
+      "version": "2.0.32"
+    },
+    "selected": {
+      "model": "github-copilot/claude-opus-5.5",
+      "effort": "high"
+    },
+    "messageId": "msg_16db7fd7b001MMBD3msbRv2K0a",
+    "verdict": "ACCEPT",
+    "manifestSha256": "ad365acfac1d685870c8216bfcef7fe8298fd1be52ff949caf13213b5443c7d9"
+  }
+}
