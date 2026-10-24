@@ -228,7 +228,7 @@ interface PendingUserInput {
   readonly answers: Deferred.Deferred<ProviderUserInputAnswers>;
 }
 
-type CodexServerNotification = {
+export type CodexServerNotification = {
   readonly [M in CodexRpc.ServerNotificationMethod]: {
     readonly method: M;
     readonly params: CodexRpc.ServerNotificationParamsByMethod[M];
@@ -598,8 +598,8 @@ function readRouteFields(notification: CodexServerNotification): {
   }
 }
 
-function rememberCollabReceiverTurns(
-  collabReceiverTurns: Map<string, TurnId>,
+export function rememberChildThreadTurns(
+  childThreadTurns: Map<string, TurnId>,
   notification: CodexServerNotification,
   parentTurnId: TurnId | undefined,
 ): void {
@@ -611,16 +611,24 @@ function rememberCollabReceiverTurns(
     return;
   }
 
-  if (notification.params.item.type !== "collabAgentToolCall") {
+  const item = notification.params.item;
+  if (item.type === "collabAgentToolCall") {
+    for (const receiverThreadId of item.receiverThreadIds) {
+      childThreadTurns.set(receiverThreadId, parentTurnId);
+    }
     return;
   }
 
-  for (const receiverThreadId of notification.params.item.receiverThreadIds) {
-    collabReceiverTurns.set(receiverThreadId, parentTurnId);
+  // Codex 0.163 describes a spawned native child with a `subAgentActivity`
+  // start item instead of a `collabAgentToolCall`. Remember its thread id so
+  // that later child-thread notifications are tagged and diverted to the
+  // Subagents pane rather than leaking into the parent conversation.
+  if (item.type === "subAgentActivity" && item.kind === "started" && item.agentThreadId) {
+    childThreadTurns.set(item.agentThreadId, parentTurnId);
   }
 }
 
-function shouldSuppressChildConversationNotification(
+export function shouldSuppressChildConversationNotification(
   method: CodexRpc.ServerNotificationMethod,
 ): boolean {
   return (
@@ -633,7 +641,6 @@ function shouldSuppressChildConversationNotification(
     method === "thread/name/updated" ||
     method === "thread/tokenUsage/updated" ||
     method === "turn/started" ||
-    method === "turn/completed" ||
     method === "item/plan/delta"
   );
 }
@@ -676,6 +683,15 @@ function toCodexUserInputAnswers(
 
 function currentProviderThreadId(session: ProviderSession): string | undefined {
   return readResumeCursorThreadId(session.resumeCursor);
+}
+
+export function shouldApplyParentTurnCompletion(input: {
+  readonly providerThreadId: string | undefined;
+  readonly completedThreadId: string;
+  readonly childThreadTurns: ReadonlyMap<string, TurnId>;
+}): boolean {
+  if (input.childThreadTurns.has(input.completedThreadId)) return false;
+  return input.providerThreadId !== undefined && input.completedThreadId === input.providerThreadId;
 }
 
 function updateSession(
@@ -722,7 +738,7 @@ export const makeCodexSessionRuntime = (
     const pendingApprovalsRef = yield* Ref.make(new Map<ApprovalRequestId, PendingApproval>());
     const approvalCorrelationsRef = yield* Ref.make(new Map<string, ApprovalCorrelation>());
     const pendingUserInputsRef = yield* Ref.make(new Map<ApprovalRequestId, PendingUserInput>());
-    const collabReceiverTurnsRef = yield* Ref.make(new Map<string, TurnId>());
+    const childThreadTurnsRef = yield* Ref.make(new Map<string, TurnId>());
     const closedRef = yield* Ref.make(false);
 
     // `~` is not shell-expanded when env vars are set via
@@ -843,17 +859,15 @@ export const makeCodexSessionRuntime = (
       Effect.gen(function* () {
         const payload = notification.params;
         const route = readRouteFields(notification);
-        const collabReceiverTurns = yield* Ref.get(collabReceiverTurnsRef);
-        const childParentTurnId = (() => {
-          const providerConversationId = readNotificationThreadId(notification);
-          return providerConversationId
-            ? collabReceiverTurns.get(providerConversationId)
-            : undefined;
-        })();
+        const childThreadTurns = yield* Ref.get(childThreadTurnsRef);
+        const notificationThreadId = readNotificationThreadId(notification);
+        const childParentTurnId = notificationThreadId
+          ? childThreadTurns.get(notificationThreadId)
+          : undefined;
 
-        rememberCollabReceiverTurns(collabReceiverTurns, notification, route.turnId);
+        rememberChildThreadTurns(childThreadTurns, notification, childParentTurnId ?? route.turnId);
         if (childParentTurnId && shouldSuppressChildConversationNotification(notification.method)) {
-          yield* Ref.set(collabReceiverTurnsRef, collabReceiverTurns);
+          yield* Ref.set(childThreadTurnsRef, childThreadTurns);
           return;
         }
 
@@ -883,7 +897,7 @@ export const makeCodexSessionRuntime = (
           }
         }
 
-        yield* Ref.set(collabReceiverTurnsRef, collabReceiverTurns);
+        yield* Ref.set(childThreadTurnsRef, childThreadTurns);
         yield* emitEvent({
           kind: "notification",
           threadId: options.threadId,
@@ -892,8 +906,8 @@ export const makeCodexSessionRuntime = (
           ...(itemId ? { itemId } : {}),
           ...(requestId ? { requestId } : {}),
           ...(requestKind ? { requestKind } : {}),
-          ...(childParentTurnId && readNotificationThreadId(notification)
-            ? { childThreadId: readNotificationThreadId(notification) }
+          ...(childParentTurnId && notificationThreadId
+            ? { childThreadId: notificationThreadId }
             : {}),
           ...(notification.method === "item/agentMessage/delta"
             ? { textDelta: notification.params.delta }
@@ -932,22 +946,31 @@ export const makeCodexSessionRuntime = (
     );
 
     yield* client.handleServerNotification("turn/completed", (payload) =>
-      currentSessionProviderThreadId.pipe(
-        Effect.flatMap((providerThreadId) => {
-          if (providerThreadId && payload.threadId !== providerThreadId) {
-            return Effect.void;
-          }
-          const lastError =
-            payload.turn.status === "failed" && "error" in payload.turn && payload.turn.error
-              ? payload.turn.error.message
-              : undefined;
-          return updateSession(sessionRef, {
-            status: payload.turn.status === "failed" ? "error" : "ready",
-            activeTurnId: undefined,
-            ...(lastError ? { lastError } : {}),
-          });
-        }),
-      ),
+      Effect.gen(function* () {
+        const providerThreadId = yield* currentSessionProviderThreadId;
+        const childThreadTurns = yield* Ref.get(childThreadTurnsRef);
+        // A child thread can finish before the parent provider thread id is
+        // recorded. Never settle the parent session for a registered child, and
+        // never default an unknown parent identity to ready.
+        if (
+          !shouldApplyParentTurnCompletion({
+            providerThreadId,
+            completedThreadId: payload.threadId,
+            childThreadTurns,
+          })
+        ) {
+          return;
+        }
+        const lastError =
+          payload.turn.status === "failed" && "error" in payload.turn && payload.turn.error
+            ? payload.turn.error.message
+            : undefined;
+        yield* updateSession(sessionRef, {
+          status: payload.turn.status === "failed" ? "error" : "ready",
+          activeTurnId: undefined,
+          ...(lastError ? { lastError } : {}),
+        });
+      }),
     );
 
     yield* client.handleServerNotification("error", (payload) =>
