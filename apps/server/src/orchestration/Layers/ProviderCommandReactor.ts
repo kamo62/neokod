@@ -248,7 +248,8 @@ const make = Effect.gen(function* () {
       | "provider.turn.interrupt.failed"
       | "provider.approval.respond.failed"
       | "provider.user-input.respond.failed"
-      | "provider.session.stop.failed";
+      | "provider.session.stop.failed"
+      | "provider.auxiliary.text-generation.failed";
     readonly summary: string;
     readonly detail: string;
     readonly turnId: TurnId | null;
@@ -282,6 +283,61 @@ const make = Effect.gen(function* () {
         }),
       ),
     );
+
+  /**
+   * Durable, user-visible receipt for a failed auxiliary call. Built only from
+   * server-owned identity plus the configured instance/model; the underlying
+   * cause (CLI stderr, prompt text, attachments, workspace paths) is logged but
+   * never persisted into activity. Interrupt-only teardown stays silent.
+   */
+  const reportAuxiliaryTextGenerationFailure = (input: {
+    readonly threadId: ThreadId;
+    readonly auxiliaryOperation: "thread title" | "worktree branch name";
+    readonly modelSelection: ModelSelection;
+    readonly cause: Cause.Cause<unknown>;
+  }) => {
+    if (Cause.hasInterruptsOnly(input.cause)) {
+      return Effect.void;
+    }
+    const summary = `${input.auxiliaryOperation === "thread title" ? "Thread title" : "Worktree branch name"} generation failed`;
+    const detail =
+      input.auxiliaryOperation === "thread title"
+        ? `Thread title generation with provider instance '${input.modelSelection.instanceId}' and model '${input.modelSelection.model}' failed. The thread keeps its current title and the main reply is unaffected. Review the provider instance and choose a model in Settings → Text generation model, then retry.`
+        : `Worktree branch name generation with provider instance '${input.modelSelection.instanceId}' and model '${input.modelSelection.model}' failed. The temporary branch is kept and the main reply is unaffected. Review the provider instance and choose a model in Settings → Text generation model, then retry.`;
+
+    return DateTime.now.pipe(
+      Effect.flatMap((now) =>
+        appendProviderFailureActivity({
+          threadId: input.threadId,
+          kind: "provider.auxiliary.text-generation.failed",
+          summary,
+          detail,
+          turnId: null,
+          createdAt: DateTime.formatIso(now),
+        }),
+      ),
+      Effect.andThen(
+        Effect.logWarning("provider command reactor auxiliary text generation failed", {
+          threadId: input.threadId,
+          operation: input.auxiliaryOperation,
+          providerInstanceId: input.modelSelection.instanceId,
+          model: input.modelSelection.model,
+          cause: Cause.pretty(input.cause),
+        }),
+      ),
+      Effect.catchCause((reportingCause) =>
+        Effect.logWarning(
+          "provider command reactor failed to record auxiliary text generation failure",
+          {
+            threadId: input.threadId,
+            operation: input.auxiliaryOperation,
+            cause: Cause.pretty(reportingCause),
+            originalCause: Cause.pretty(input.cause),
+          },
+        ),
+      ),
+    );
+  };
 
   const describeFailure = (input: {
     readonly operation: string;
@@ -867,12 +923,23 @@ const make = Effect.gen(function* () {
       const { textGenerationModelSelection: modelSelection } =
         yield* serverSettingsService.getSettings;
 
-      const generated = yield* textGeneration.generateBranchName({
-        cwd,
-        message: input.messageText,
-        ...(attachments.length > 0 ? { attachments } : {}),
-        modelSelection,
-      });
+      const generated = yield* textGeneration
+        .generateBranchName({
+          cwd,
+          message: input.messageText,
+          ...(attachments.length > 0 ? { attachments } : {}),
+          modelSelection,
+        })
+        .pipe(
+          Effect.catchCause((cause) =>
+            reportAuxiliaryTextGenerationFailure({
+              threadId: input.threadId,
+              auxiliaryOperation: "worktree branch name",
+              modelSelection,
+              cause,
+            }).pipe(Effect.as(undefined)),
+          ),
+        );
       if (!generated) return;
 
       const targetBranch = buildGeneratedWorktreeBranchName(generated.branch);
@@ -888,14 +955,17 @@ const make = Effect.gen(function* () {
       });
       yield* vcsStatusBroadcaster.refreshStatus(cwd).pipe(Effect.ignoreCause({ log: true }));
     }).pipe(
-      Effect.catchCause((cause) =>
-        Effect.logWarning("provider command reactor failed to generate or rename worktree branch", {
+      Effect.catchCause((cause) => {
+        if (Cause.hasInterruptsOnly(cause)) {
+          return Effect.void;
+        }
+        return Effect.logWarning("provider command reactor failed to apply worktree branch name", {
           threadId: input.threadId,
           cwd,
           oldBranch,
           cause: Cause.pretty(cause),
-        }),
-      ),
+        });
+      }),
     );
   });
 
@@ -912,12 +982,23 @@ const make = Effect.gen(function* () {
         const { textGenerationModelSelection: modelSelection } =
           yield* serverSettingsService.getSettings;
 
-        const generated = yield* textGeneration.generateThreadTitle({
-          cwd: input.cwd,
-          message: input.messageText,
-          ...(attachments.length > 0 ? { attachments } : {}),
-          modelSelection,
-        });
+        const generated = yield* textGeneration
+          .generateThreadTitle({
+            cwd: input.cwd,
+            message: input.messageText,
+            ...(attachments.length > 0 ? { attachments } : {}),
+            modelSelection,
+          })
+          .pipe(
+            Effect.catchCause((cause) =>
+              reportAuxiliaryTextGenerationFailure({
+                threadId: input.threadId,
+                auxiliaryOperation: "thread title",
+                modelSelection,
+                cause,
+              }).pipe(Effect.as(undefined)),
+            ),
+          );
         if (!generated) return;
 
         const thread = yield* resolveThread(input.threadId);
@@ -933,13 +1014,19 @@ const make = Effect.gen(function* () {
           title: generated.title,
         });
       }).pipe(
-        Effect.catchCause((cause) =>
-          Effect.logWarning("provider command reactor failed to generate or rename thread title", {
-            threadId: input.threadId,
-            cwd: input.cwd,
-            cause: Cause.pretty(cause),
-          }),
-        ),
+        Effect.catchCause((cause) => {
+          if (Cause.hasInterruptsOnly(cause)) {
+            return Effect.void;
+          }
+          return Effect.logWarning(
+            "provider command reactor failed to apply generated thread title",
+            {
+              threadId: input.threadId,
+              cwd: input.cwd,
+              cause: Cause.pretty(cause),
+            },
+          );
+        }),
       );
     },
   );

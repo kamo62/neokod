@@ -2,6 +2,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
   DEFAULT_SERVER_SETTINGS,
   ProviderDriverKind,
+  type ProviderInstanceConfig,
   ProviderInstanceId,
   ServerSettings,
   ServerSettingsMutationId,
@@ -184,6 +185,134 @@ it.layer(NodeServices.layer)("server settings", (it) => {
         settings.textGenerationModelSelection,
         DEFAULT_SERVER_SETTINGS.textGenerationModelSelection,
       );
+    }).pipe(Effect.provide(makeServerSettingsLayer())),
+  );
+
+  it.effect("preserves legacy enabled text-generation selections", () =>
+    Effect.gen(function* () {
+      const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+      const selection = createModelSelection(
+        ProviderInstanceId.make("codex"),
+        "gpt-legacy-selection",
+        [{ id: "reasoningEffort", value: "high" }],
+      );
+
+      const next = yield* serverSettings.updateSettings({
+        providers: {
+          codex: { enabled: true },
+        },
+        textGenerationModelSelection: selection,
+      });
+
+      assert.deepEqual(next.textGenerationModelSelection, selection);
+      assert.deepEqual((yield* serverSettings.getSettings).textGenerationModelSelection, selection);
+    }).pipe(Effect.provide(makeServerSettingsLayer())),
+  );
+
+  it.effect(
+    "preserves a disabled legacy selection instead of substituting an enabled provider",
+    () =>
+      Effect.gen(function* () {
+        const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+        const selection = createModelSelection(
+          ProviderInstanceId.make("codex"),
+          "gpt-disabled-legacy",
+          [{ id: "reasoningEffort", value: "low" }],
+        );
+
+        const next = yield* serverSettings.updateSettings({
+          providers: {
+            codex: { enabled: false },
+            claudeAgent: { enabled: true },
+          },
+          textGenerationModelSelection: selection,
+        });
+
+        assert.deepEqual(next.textGenerationModelSelection, selection);
+        assert.deepEqual(
+          (yield* serverSettings.getSettings).textGenerationModelSelection,
+          selection,
+        );
+      }).pipe(Effect.provide(makeServerSettingsLayer())),
+  );
+
+  it.effect("keeps the default selection when its provider is disabled", () =>
+    Effect.gen(function* () {
+      const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+
+      yield* serverSettings.updateSettings({
+        providers: {
+          codex: { enabled: false },
+          claudeAgent: { enabled: true },
+        },
+      });
+
+      const settings = yield* serverSettings.getSettings;
+      assert.deepEqual(
+        settings.textGenerationModelSelection,
+        DEFAULT_SERVER_SETTINGS.textGenerationModelSelection,
+      );
+    }).pipe(Effect.provide(makeServerSettingsLayer())),
+  );
+
+  it.effect("preserves a missing provider-instance selection through acknowledgements", () =>
+    Effect.gen(function* () {
+      const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+      const missingInstanceId = ProviderInstanceId.make("missing_textgen_instance");
+      const selection = createModelSelection(missingInstanceId, "missing-model", [
+        { id: "reasoningEffort", value: "high" },
+      ]);
+
+      const updated = yield* serverSettings.updateSettings({
+        providers: {
+          claudeAgent: { enabled: true },
+        },
+        textGenerationModelSelection: selection,
+      });
+      assert.deepEqual(updated.textGenerationModelSelection, selection);
+
+      const acknowledgement = yield* serverSettings.updateSettingsMutation({
+        mutationId: ServerSettingsMutationId.make("settings:test:textgen-missing"),
+        expectedRevision: updated.revision,
+        patch: { enableAssistantStreaming: true },
+      });
+
+      assert.deepEqual(acknowledgement.settings.textGenerationModelSelection, selection);
+      assert.deepEqual((yield* serverSettings.getSettings).textGenerationModelSelection, selection);
+    }).pipe(Effect.provide(makeServerSettingsLayer())),
+  );
+
+  it.effect("preserves the auxiliary selection when its provider instance is disabled", () =>
+    Effect.gen(function* () {
+      const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+      const instanceId = ProviderInstanceId.make("codex_personal");
+      const selection = createModelSelection(instanceId, "custom-auxiliary-model", [
+        { id: "reasoningEffort", value: "high" },
+      ]);
+      const instanceConfig = (enabled: boolean): ProviderInstanceConfig => ({
+        driver: ProviderDriverKind.make("codex"),
+        enabled,
+        config: { customModels: ["custom-auxiliary-model"] },
+      });
+
+      const created = yield* serverSettings.updateSettings({
+        providerInstances: { [instanceId]: instanceConfig(true) },
+        textGenerationModelSelection: selection,
+      });
+      assert.deepEqual(created.textGenerationModelSelection, selection);
+
+      const disabled = yield* serverSettings.updateSettings({
+        providerInstances: { [instanceId]: instanceConfig(false) },
+      });
+      assert.deepEqual(disabled.textGenerationModelSelection, selection);
+      assert.deepEqual((yield* serverSettings.getSettings).textGenerationModelSelection, selection);
+
+      const acknowledgement = yield* serverSettings.updateSettingsMutation({
+        mutationId: ServerSettingsMutationId.make("settings:test:textgen-disable"),
+        expectedRevision: disabled.revision,
+        patch: { enableAssistantStreaming: true },
+      });
+      assert.deepEqual(acknowledgement.settings.textGenerationModelSelection, selection);
     }).pipe(Effect.provide(makeServerSettingsLayer())),
   );
 

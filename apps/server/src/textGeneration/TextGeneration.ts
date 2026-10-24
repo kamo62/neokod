@@ -1,11 +1,27 @@
 import * as Context from "effect/Context";
+import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
-import type { ChatAttachment, ModelSelection, ProviderInstanceId } from "@neokod/contracts";
+import type {
+  ChatAttachment,
+  ModelSelection,
+  ProviderInstanceId,
+  ServerProvider,
+  ServerSettings,
+  ServerSettingsError,
+} from "@neokod/contracts";
 import { TextGenerationError } from "@neokod/contracts";
+import {
+  evaluateModelCatalogueEvidence,
+  mergeConfiguredCustomModelEvidence,
+  type ModelCatalogueEvidenceInput,
+  readConfiguredCustomModels,
+} from "@neokod/shared/model";
 
 import * as ProviderInstanceRegistry from "../provider/Services/ProviderInstanceRegistry.ts";
 import type { ProviderInstance } from "../provider/ProviderDriver.ts";
+import { ServerSettingsService } from "../serverSettings.ts";
 
 export type TextGenerationProvider = "codex" | "claudeAgent" | "cursor" | "grok" | "opencode";
 
@@ -152,53 +168,215 @@ type TextGenerationOp =
   | "generateBranchName"
   | "generateThreadTitle";
 
-const resolveInstance = (
-  registry: ProviderInstanceRegistry.ProviderInstanceRegistry["Service"],
+const SETTINGS_RECOVERY_HINT = "Settings → Text generation model";
+
+type AuxiliarySettingsEvidence = Pick<ServerSettings, "providers" | "providerInstances">;
+
+const failAdmission = (operation: TextGenerationOp, detail: string) =>
+  Effect.fail(new TextGenerationError({ operation, detail }));
+
+const catalogueEvidenceFor = (
+  instance: ProviderInstance,
+  snapshot: ServerProvider,
+  configuredCustomModels: ReadonlyArray<string>,
+): ModelCatalogueEvidenceInput => ({
+  enabled: instance.enabled,
+  installed: snapshot.installed,
+  status: snapshot.status,
+  ...(snapshot.availability !== undefined ? { availability: snapshot.availability } : {}),
+  auth: snapshot.auth,
+  models: mergeConfiguredCustomModelEvidence(snapshot.models, configuredCustomModels),
+});
+
+/**
+ * Contain actual probe failures as typed generation errors, but keep an
+ * interruption-only cause intact so the reactor's auxiliary-activity
+ * suppression can still recognise cancellation.
+ */
+const runAuxiliaryProbe = <A, E>(
   operation: TextGenerationOp,
+  detail: string,
+  probe: Effect.Effect<A, E>,
+): Effect.Effect<A, TextGenerationError> =>
+  Effect.gen(function* () {
+    const exit = yield* Effect.exit(probe);
+    if (Exit.isSuccess(exit)) {
+      return exit.value;
+    }
+    if (Cause.hasInterruptsOnly(exit.cause)) {
+      return yield* Effect.failCause(exit.cause as Cause.Cause<never>);
+    }
+    return yield* failAdmission(operation, detail);
+  });
+
+const instanceDisabledDetail = (instanceId: ProviderInstanceId, model: string): string =>
+  `Provider instance '${instanceId}' is disabled, so model '${model}' cannot be used for auxiliary text generation. Enable the instance or choose another one in ${SETTINGS_RECOVERY_HINT}.`;
+
+const instanceUnavailableDetail = (
   instanceId: ProviderInstanceId,
+  model: string,
+  snapshot: ServerProvider,
+): string => {
+  const reason = snapshot.unavailableReason?.trim();
+  const suffix = reason ? ` (${reason})` : "";
+  return `Provider instance '${instanceId}' is unavailable${suffix}, so model '${model}' cannot be used for auxiliary text generation. Choose a provider instance in ${SETTINGS_RECOVERY_HINT}.`;
+};
+
+const evidenceUnavailableDetail = (instanceId: ProviderInstanceId, model: string): string =>
+  `Provider evidence for instance '${instanceId}' is unavailable or invalid, so model '${model}' could not be verified. Retry, refresh providers, or choose a model in ${SETTINGS_RECOVERY_HINT}.`;
+
+const catalogueIncompleteDetail = (instanceId: ProviderInstanceId, model: string): string =>
+  `The provider catalogue for instance '${instanceId}' is empty or incomplete, so model '${model}' could not be verified. Refresh providers or choose a model in ${SETTINGS_RECOVERY_HINT}.`;
+
+const refreshFailedDetail = (instanceId: ProviderInstanceId, model: string): string =>
+  `The provider catalogue for instance '${instanceId}' could not be refreshed, so model '${model}' could not be verified. Retry or choose a model in ${SETTINGS_RECOVERY_HINT}.`;
+
+const modelNotAdvertisedDetail = (instanceId: ProviderInstanceId, model: string): string =>
+  `Model '${model}' is not advertised by the current provider catalogue for instance '${instanceId}'. Refresh providers or choose a model in ${SETTINGS_RECOVERY_HINT}; auxiliary text generation will not run with an unlisted model.`;
+
+/**
+ * One admission gate in front of every registry-dispatched auxiliary
+ * operation. It proves exact catalogue/configuration membership for the
+ * selected instance only, preserving the caller's original model and options
+ * — it never substitutes another instance, model, or options. Snapshot
+ * validity is evaluated before membership, and the same shared projection is
+ * applied to the initial and refreshed evidence. A missing slug (or an
+ * insufficient but valid catalogue) gets at most one exact-instance refresh.
+ * Disabled, unavailable, or otherwise invalid evidence is never probed.
+ */
+const resolveAdmittedTextGeneration = (
+  registry: ProviderInstanceRegistry.ProviderInstanceRegistry["Service"],
+  readSettings: Effect.Effect<AuxiliarySettingsEvidence, ServerSettingsError>,
+  operation: TextGenerationOp,
+  selection: ModelSelection,
 ): Effect.Effect<ProviderInstance["textGeneration"], TextGenerationError> =>
-  registry.getInstance(instanceId).pipe(
-    Effect.flatMap((instance) =>
-      instance
-        ? Effect.succeed(instance.textGeneration)
-        : Effect.fail(
-            new TextGenerationError({
-              operation,
-              detail: `No provider instance registered for id '${instanceId}'.`,
-            }),
-          ),
-    ),
-  );
+  Effect.gen(function* () {
+    const instance = yield* registry.getInstance(selection.instanceId);
+    if (instance === undefined) {
+      return yield* failAdmission(
+        operation,
+        `No provider instance is registered for id '${selection.instanceId}'. Choose a provider instance in ${SETTINGS_RECOVERY_HINT}.`,
+      );
+    }
+    if (!instance.enabled) {
+      return yield* failAdmission(
+        operation,
+        instanceDisabledDetail(selection.instanceId, selection.model),
+      );
+    }
+
+    const settings = yield* runAuxiliaryProbe(
+      operation,
+      evidenceUnavailableDetail(selection.instanceId, selection.model),
+      readSettings,
+    );
+    const configuredCustomModels = readConfiguredCustomModels({
+      settings,
+      instanceId: selection.instanceId,
+      driverKind: instance.driverKind,
+    });
+
+    const snapshot = yield* runAuxiliaryProbe(
+      operation,
+      evidenceUnavailableDetail(selection.instanceId, selection.model),
+      instance.snapshot.getSnapshot,
+    );
+    if (snapshot.availability === "unavailable") {
+      return yield* failAdmission(
+        operation,
+        instanceUnavailableDetail(selection.instanceId, selection.model, snapshot),
+      );
+    }
+
+    const initialEvidence = evaluateModelCatalogueEvidence(
+      catalogueEvidenceFor(instance, snapshot, configuredCustomModels),
+      selection.model,
+    );
+    if (initialEvidence.status === "listed") {
+      return instance.textGeneration;
+    }
+    if (initialEvidence.status === "unverified" && initialEvidence.reason === "invalid-evidence") {
+      return yield* failAdmission(
+        operation,
+        evidenceUnavailableDetail(selection.instanceId, selection.model),
+      );
+    }
+
+    // Exactly one refresh for a valid catalogue that cannot confirm the slug.
+    // The selected instance owns this probe; another instance of the same
+    // driver is never consulted.
+    const refreshed = yield* runAuxiliaryProbe(
+      operation,
+      refreshFailedDetail(selection.instanceId, selection.model),
+      instance.snapshot.refresh,
+    );
+    const refreshedEvidence = evaluateModelCatalogueEvidence(
+      catalogueEvidenceFor(instance, refreshed, configuredCustomModels),
+      selection.model,
+    );
+    if (refreshedEvidence.status === "listed") {
+      return instance.textGeneration;
+    }
+    if (refreshedEvidence.status === "not-listed") {
+      return yield* failAdmission(
+        operation,
+        modelNotAdvertisedDetail(selection.instanceId, selection.model),
+      );
+    }
+    return yield* failAdmission(
+      operation,
+      refreshedEvidence.reason === "invalid-evidence"
+        ? evidenceUnavailableDetail(selection.instanceId, selection.model)
+        : catalogueIncompleteDetail(selection.instanceId, selection.model),
+    );
+  });
 
 export const makeTextGenerationFromRegistry = (
   registry: ProviderInstanceRegistry.ProviderInstanceRegistry["Service"],
+  readSettings: Effect.Effect<AuxiliarySettingsEvidence, ServerSettingsError>,
 ): TextGeneration["Service"] =>
   TextGeneration.of({
     generateCommitMessage: (input) =>
-      resolveInstance(registry, "generateCommitMessage", input.modelSelection.instanceId).pipe(
-        Effect.flatMap((textGeneration) => textGeneration.generateCommitMessage(input)),
-      ),
+      resolveAdmittedTextGeneration(
+        registry,
+        readSettings,
+        "generateCommitMessage",
+        input.modelSelection,
+      ).pipe(Effect.flatMap((textGeneration) => textGeneration.generateCommitMessage(input))),
     generatePrContent: (input) =>
-      resolveInstance(registry, "generatePrContent", input.modelSelection.instanceId).pipe(
-        Effect.flatMap((textGeneration) => textGeneration.generatePrContent(input)),
-      ),
+      resolveAdmittedTextGeneration(
+        registry,
+        readSettings,
+        "generatePrContent",
+        input.modelSelection,
+      ).pipe(Effect.flatMap((textGeneration) => textGeneration.generatePrContent(input))),
     generateCodeReview: (input) =>
-      resolveInstance(registry, "generateCodeReview", input.modelSelection.instanceId).pipe(
-        Effect.flatMap((textGeneration) => textGeneration.generateCodeReview(input)),
-      ),
+      resolveAdmittedTextGeneration(
+        registry,
+        readSettings,
+        "generateCodeReview",
+        input.modelSelection,
+      ).pipe(Effect.flatMap((textGeneration) => textGeneration.generateCodeReview(input))),
     generateBranchName: (input) =>
-      resolveInstance(registry, "generateBranchName", input.modelSelection.instanceId).pipe(
-        Effect.flatMap((textGeneration) => textGeneration.generateBranchName(input)),
-      ),
+      resolveAdmittedTextGeneration(
+        registry,
+        readSettings,
+        "generateBranchName",
+        input.modelSelection,
+      ).pipe(Effect.flatMap((textGeneration) => textGeneration.generateBranchName(input))),
     generateThreadTitle: (input) =>
-      resolveInstance(registry, "generateThreadTitle", input.modelSelection.instanceId).pipe(
-        Effect.flatMap((textGeneration) => textGeneration.generateThreadTitle(input)),
-      ),
+      resolveAdmittedTextGeneration(
+        registry,
+        readSettings,
+        "generateThreadTitle",
+        input.modelSelection,
+      ).pipe(Effect.flatMap((textGeneration) => textGeneration.generateThreadTitle(input))),
   });
 
 export const make = Effect.gen(function* () {
   const registry = yield* ProviderInstanceRegistry.ProviderInstanceRegistry;
-  return makeTextGenerationFromRegistry(registry);
+  const serverSettings = yield* ServerSettingsService;
+  return makeTextGenerationFromRegistry(registry, serverSettings.getSettings);
 });
 
 export const layer = Layer.effect(TextGeneration, make);

@@ -1,0 +1,76 @@
+{
+  "duration_api_ms": 64097,
+  "stop_reason": "end_turn",
+  "session_id": "06fd95cb-1e9e-4ecc-8904-c4c727db45bc",
+  "total_cost_usd": 0.24856759999999997,
+  "usage": {
+    "input_tokens": 14,
+    "cache_creation_input_tokens": 16449,
+    "cache_read_input_tokens": 101498,
+    "output_tokens": 4831,
+    "output_tokens_details": { "thinking_tokens": 2570 },
+    "server_tool_use": { "web_search_requests": 0, "web_fetch_requests": 0 },
+    "service_tier": "standard",
+    "cache_creation": { "ephemeral_1h_input_tokens": 16449, "ephemeral_5m_input_tokens": 0 },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 1681,
+        "cache_read_input_tokens": 19784,
+        "cache_creation_input_tokens": 1952,
+        "cache_creation": { "ephemeral_5m_input_tokens": 0, "ephemeral_1h_input_tokens": 1952 },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "modelUsage": {
+    "claude-opus-5-5": {
+      "inputTokens": 14,
+      "outputTokens": 4831,
+      "cacheReadInputTokens": 101498,
+      "cacheCreationInputTokens": 16449,
+      "webSearchRequests": 0,
+      "costUSD": 0.24856759999999997,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 2570,
+      "canonicalModel": "claude-opus-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": [],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "subagent_stats": {
+    "spawned": 0,
+    "requested": { "background": 0, "foreground": 0, "unset": 0 },
+    "started_in_background": 0,
+    "max_depth": 0,
+    "spawned_by_subagents": 0,
+    "completed": 0,
+    "failed": 0,
+    "killed": { "parent": 0, "user": 0, "system": 0 },
+    "refused": { "depth_limit": 0, "concurrency_limit": 0, "budget": 0 },
+    "by_type": {}
+  },
+  "safety_stops": 0,
+  "is_error": false,
+  "num_turns": 7,
+  "subtype": "success",
+  "api_error_status": null,
+  "result": "**AGREE, with one correction and one condition.** I only read files; nothing was edited or run.\n\n**Correction to (1): don't treat \"status not ready\" as invalid evidence.** `ServerProviderState` has four values: `ready | warning | error | disabled` (`packages/contracts/src/server.ts:44`). `warning` covers more than one situation, and some of those snapshots hold a full discovered catalogue:\n- Codex with a successful probe but a version below the minimum (`CodexProvider.ts:631-634`).\n- Claude when it hits a usage limit, which turns `ready` into `warning` (`ClaudeUsageLimit.ts:362`).\n\nUnder the proposed rule, both would become unverified and the auxiliary would be refused for no catalogue reason. The `warning` cases that really carry no evidence (not checked yet, disabled) already have `installed: false` (`CodexProvider.ts:480-500, 563-569`), so the installed check catches them.\n\nReplace the rule with this. Evidence is invalid, and the result is unverified, when any of these holds:\n- `enabled: false`\n- availability is `unavailable`\n- `installed: false`\n- `status` is `error` or `disabled`\n- `auth.status` is `unauthenticated`\n\n`warning` with `installed: true` counts as valid. This still covers both P1 reproductions: Sol's probe failure is `error` with unknown auth, and Opus's logged-out case is `error` with `unauthenticated`. Everything else in (1) stands: exact slug only, unknown auth isn't unauthenticated, a valid snapshot containing the exact custom model counts as listed, and an absent slug counts as not-listed only when there's at least one discovered non-custom model; otherwise it's unverified. \"Listed\" for a custom model means the user configured it, not that the provider advertised it.\n\n**Condition on (2):** the fallback (`serverSettings.ts:310-343`) is the only place a legacy driver-kind selection (`instanceId: \"codex\"` with no entry in `providerInstances`) gets checked against the legacy `enabled` flag. Once it's removed:\n- The dispatcher and Settings must still resolve legacy ids, and must refuse a missing instance with a typed error rather than a defect.\n- A default selection the user never picked, pointing at a disabled provider, will now be refused visibly instead of silently using another provider. That's the accepted end-to-end truth, but it changes behaviour, so a test should state it.\n- Add tests for: legacy id enabled or disabled, missing instance, and the default selection on a disabled provider. Each should be recorded as an auxiliary failure with the main turn untouched.\n\n(3), (4), (5) and the scope of 11 files with a single owner match both reviews, and no new framework is needed. Opus scoping (2) out was a judgment that the fallback predates this commit, not a disagreement on the facts; Sol's reactor-bypass reproduction justifies including it.\n\nEvidence status is unchanged: a catalogue listing is discovery, not entitlement or proof the model runs. The live 43d result shows unlisted-with-primary and a typed auxiliary failure; it doesn't prove listed-model execution.",
+  "ttft_ms": 3896,
+  "type": "result",
+  "duration_ms": 65624,
+  "uuid": "dc110e57-a4c2-4b03-9663-d338043aea52",
+  "ttft_stream_ms": 2112,
+  "time_to_request_ms": 349,
+  "first_content_frame_ms": 2113,
+  "queued_turn_count": 0,
+  "result_index": 0
+}

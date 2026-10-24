@@ -1,11 +1,16 @@
 import { ProviderDriverKind, ProviderInstanceId, type ServerProvider } from "@neokod/contracts";
 import { DEFAULT_UNIFIED_SETTINGS, type UnifiedSettings } from "@neokod/contracts/settings";
+import { createModelSelection } from "@neokod/shared/model";
 import { describe, expect, it } from "vite-plus/test";
 import { deriveProviderInstanceEntries } from "./providerInstances";
 import {
+  createAuxiliaryTextGenerationSelection,
   getAppModelOptionsForInstance,
+  getCustomModelOptionsByInstance,
+  includeSavedAuxiliaryModelOption,
   resolveAppModelSelectionForInstance,
   resolveAppModelSelectionState,
+  resolveAuxiliaryTextGenerationSelection,
 } from "./modelSelection";
 
 function provider(input: {
@@ -268,5 +273,331 @@ describe("instance-scoped model selection", () => {
       instanceId: ProviderInstanceId.make("claude_openrouter"),
       model: "openai/gpt-5.5",
     });
+  });
+});
+
+describe("auxiliary text generation selection display", () => {
+  it("keeps the saved unavailable slug instead of presenting a different model", () => {
+    const instanceId = ProviderInstanceId.make("claudeAgent");
+    const providers = [
+      provider({
+        instanceId: "claudeAgent",
+        models: ["claude-sonnet-4-6"],
+      }),
+    ];
+    const settings: UnifiedSettings = {
+      ...settingsWithProviderInstances(),
+      textGenerationModelSelection: {
+        instanceId,
+        model: "claude-retired-model",
+      },
+    };
+
+    const resolution = resolveAuxiliaryTextGenerationSelection(settings, providers);
+    expect(resolution.selection).toEqual({
+      instanceId,
+      model: "claude-retired-model",
+    });
+    expect(resolution.status).toBe("not-listed");
+    expect(resolution.reason).toContain("claude-retired-model");
+    expect(resolution.reason).toContain("Text generation model");
+
+    // The generic resolver still falls back for chat-style callers; the
+    // auxiliary row must not display that fallback as the saved choice.
+    expect(resolveAppModelSelectionState(settings, providers).model).toBe("claude-sonnet-4-6");
+
+    const optionsWithSaved = includeSavedAuxiliaryModelOption(
+      getCustomModelOptionsByInstance(settings, providers, instanceId, "claude-retired-model"),
+      resolution,
+    );
+    expect(optionsWithSaved.get(instanceId)?.map((option) => option.slug)).toContain(
+      "claude-retired-model",
+    );
+  });
+
+  it("preserves a custom-instance selection and its options when the catalogue lists it", () => {
+    const instanceId = ProviderInstanceId.make("claude_openrouter");
+    const providers = [
+      provider({ instanceId: "claudeAgent", models: ["claude-sonnet-4-6"] }),
+      provider({ instanceId: "claude_openrouter", models: ["claude-sonnet-4-6"] }),
+    ];
+    const selection = createModelSelection(instanceId, "openai/gpt-5.5", [
+      { id: "reasoningEffort", value: "high" },
+    ]);
+    const settings: UnifiedSettings = {
+      ...settingsWithProviderInstances(),
+      textGenerationModelSelection: selection,
+    };
+
+    const resolution = resolveAuxiliaryTextGenerationSelection(settings, providers);
+    expect(resolution.status).toBe("listed");
+    expect(resolution.reason).toBeNull();
+    expect(resolution.selection).toEqual(selection);
+
+    const options = getCustomModelOptionsByInstance(
+      settings,
+      providers,
+      instanceId,
+      selection.model,
+    );
+    expect(options.get(instanceId)?.map((option) => option.slug)).toContain("openai/gpt-5.5");
+    expect(includeSavedAuxiliaryModelOption(options, resolution)).toBe(options);
+  });
+
+  it("reports unverified evidence without claiming the model is unsupported", () => {
+    const instanceId = ProviderInstanceId.make("claudeAgent");
+    const providers = [provider({ instanceId: "claudeAgent", models: [] })];
+    const settings: UnifiedSettings = {
+      ...settingsWithProviderInstances(),
+      textGenerationModelSelection: {
+        instanceId,
+        model: "claude-haiku-4-5",
+      },
+    };
+
+    const resolution = resolveAuxiliaryTextGenerationSelection(settings, providers);
+    expect(resolution.status).toBe("unverified");
+    expect(resolution.selection.model).toBe("claude-haiku-4-5");
+    expect(resolution.reason).toContain("could not be verified");
+    expect(resolution.reason).toContain("Refresh providers");
+    expect(resolution.reason).not.toContain("unsupported");
+  });
+
+  it("reports a disabled saved instance explicitly", () => {
+    const instanceId = ProviderInstanceId.make("claudeAgent");
+    const providers = [provider({ instanceId: "claudeAgent", models: ["claude-sonnet-4-6"] })];
+    const settings: UnifiedSettings = {
+      ...settingsWithProviderInstances(),
+      providerInstances: {
+        ...settingsWithProviderInstances().providerInstances,
+        [instanceId]: {
+          driver: ProviderDriverKind.make("claudeAgent"),
+          enabled: false,
+          config: { customModels: [] },
+        },
+      },
+      textGenerationModelSelection: {
+        instanceId,
+        model: "claude-sonnet-4-6",
+      },
+    };
+
+    const resolution = resolveAuxiliaryTextGenerationSelection(settings, providers);
+    expect(resolution.status).toBe("unverified");
+    expect(resolution.reason).toContain("disabled");
+    expect(resolution.reason).toContain("Text generation model");
+  });
+
+  it("requires exact saved-slug membership, not aliases or display names", () => {
+    const instanceId = ProviderInstanceId.make("claudeAgent");
+    const providers = [provider({ instanceId: "claudeAgent", models: ["claude-sonnet-4-6"] })];
+    const settings: UnifiedSettings = {
+      ...settingsWithProviderInstances(),
+      textGenerationModelSelection: {
+        instanceId,
+        model: "sonnet-4.6",
+      },
+    };
+
+    const resolution = resolveAuxiliaryTextGenerationSelection(settings, providers);
+    expect(resolution.selection.model).toBe("sonnet-4.6");
+    expect(resolution.status).toBe("not-listed");
+    expect(resolution.reason).toContain("not in the current catalogue");
+
+    const displayNameProviders = [
+      {
+        ...provider({ instanceId: "claudeAgent", models: [] }),
+        models: [
+          {
+            slug: "claude-sonnet-4-6",
+            name: "Claude Sonnet 4.6",
+            isCustom: false,
+            capabilities: {},
+          },
+        ],
+      },
+    ];
+    expect(
+      resolveAuxiliaryTextGenerationSelection(
+        { ...settings, textGenerationModelSelection: { instanceId, model: "Claude Sonnet 4.6" } },
+        displayNameProviders,
+      ).status,
+    ).toBe("not-listed");
+  });
+
+  it("treats invalid provider evidence as unverified before membership", () => {
+    const instanceId = ProviderInstanceId.make("claudeAgent");
+    const providers = [
+      {
+        ...provider({ instanceId: "claudeAgent", models: [] }),
+        status: "error" as const,
+        auth: { status: "unknown" as const },
+      },
+    ];
+    const settings: UnifiedSettings = {
+      ...settingsWithProviderInstances(),
+      providerInstances: {
+        ...settingsWithProviderInstances().providerInstances,
+        [instanceId]: {
+          driver: ProviderDriverKind.make("claudeAgent"),
+          config: { customModels: ["claude-custom"] },
+        },
+      },
+      textGenerationModelSelection: {
+        instanceId,
+        model: "claude-custom",
+      },
+    };
+
+    const resolution = resolveAuxiliaryTextGenerationSelection(settings, providers);
+    expect(resolution.status).toBe("unverified");
+    expect(resolution.reason).toContain("unavailable or invalid");
+    expect(resolution.reason).not.toContain("not in the current catalogue");
+  });
+
+  it("accepts warning snapshots with an installed catalogue as discovery evidence", () => {
+    const instanceId = ProviderInstanceId.make("claudeAgent");
+    const providers = [
+      {
+        ...provider({ instanceId: "claudeAgent", models: ["claude-sonnet-4-6"] }),
+        status: "warning" as const,
+        auth: { status: "unknown" as const },
+      },
+    ];
+    const settings: UnifiedSettings = {
+      ...settingsWithProviderInstances(),
+      textGenerationModelSelection: {
+        instanceId,
+        model: "claude-sonnet-4-6",
+      },
+    };
+
+    expect(resolveAuxiliaryTextGenerationSelection(settings, providers).status).toBe("listed");
+  });
+
+  it("matches server custom-model evidence despite snapshot alias normalization", () => {
+    const instanceId = ProviderInstanceId.make("claudeAgent");
+    const providers = [
+      {
+        ...provider({ instanceId: "claudeAgent", models: [] }),
+        models: [
+          {
+            slug: "claude-opus-4-6",
+            name: "claude-opus-4-6",
+            isCustom: false,
+            capabilities: {},
+          },
+          {
+            slug: "claude-sonnet-4-6",
+            name: "claude-sonnet-4-6",
+            isCustom: true,
+            capabilities: {},
+          },
+        ],
+      },
+    ];
+    const settings: UnifiedSettings = {
+      ...settingsWithProviderInstances(),
+      providerInstances: {
+        [instanceId]: {
+          driver: ProviderDriverKind.make("claudeAgent"),
+          enabled: true,
+          config: { customModels: ["sonnet-4.6"] },
+        },
+      },
+      textGenerationModelSelection: {
+        instanceId,
+        model: "sonnet-4.6",
+      },
+    };
+
+    const resolution = resolveAuxiliaryTextGenerationSelection(settings, providers);
+    expect(resolution.selection.model).toBe("sonnet-4.6");
+    expect(resolution.status).toBe("listed");
+    expect(resolution.reason).toBeNull();
+  });
+
+  it("does not inherit stale legacy custom models for an explicit default instance", () => {
+    const instanceId = ProviderInstanceId.make("claudeAgent");
+    const providers = [
+      {
+        ...provider({ instanceId: "claudeAgent", models: [] }),
+        models: [
+          {
+            slug: "claude-opus-4-6",
+            name: "claude-opus-4-6",
+            isCustom: false,
+            capabilities: {},
+          },
+          {
+            slug: "claude-sonnet-4-6",
+            name: "claude-sonnet-4-6",
+            isCustom: true,
+            capabilities: {},
+          },
+        ],
+      },
+    ];
+    const settings: UnifiedSettings = {
+      ...settingsWithProviderInstances(),
+      providers: {
+        ...DEFAULT_UNIFIED_SETTINGS.providers,
+        claudeAgent: {
+          ...DEFAULT_UNIFIED_SETTINGS.providers.claudeAgent,
+          customModels: ["sonnet-4.6"],
+        },
+      },
+      providerInstances: {
+        [instanceId]: {
+          driver: ProviderDriverKind.make("claudeAgent"),
+          enabled: true,
+          config: {},
+        },
+      },
+      textGenerationModelSelection: {
+        instanceId,
+        model: "sonnet-4.6",
+      },
+    };
+
+    const resolution = resolveAuxiliaryTextGenerationSelection(settings, providers);
+    expect(resolution.status).toBe("not-listed");
+    expect(resolution.reason).toContain("not in the current catalogue");
+  });
+
+  it("preserves the exact instance/model for traits-only and explicit selections", () => {
+    const instanceId = ProviderInstanceId.make("claudeAgent");
+    const providers = [
+      provider({
+        instanceId: "claudeAgent",
+        models: ["claude-opus-4-6", "claude-sonnet-4-6"],
+      }),
+    ];
+
+    const hiddenModelEdit = createAuxiliaryTextGenerationSelection(
+      providers,
+      instanceId,
+      "claude-opus-4-6",
+      [{ id: "effort", value: "low" }],
+    );
+    expect(hiddenModelEdit.instanceId).toBe(instanceId);
+    expect(hiddenModelEdit.model).toBe("claude-opus-4-6");
+
+    const unlistedModelEdit = createAuxiliaryTextGenerationSelection(
+      providers,
+      instanceId,
+      "claude-retired-model",
+      [{ id: "effort", value: "high" }],
+    );
+    expect(unlistedModelEdit.instanceId).toBe(instanceId);
+    expect(unlistedModelEdit.model).toBe("claude-retired-model");
+
+    const explicitPick = createAuxiliaryTextGenerationSelection(
+      providers,
+      ProviderInstanceId.make("claude_openrouter"),
+      "openai/gpt-5.5",
+    );
+    expect(explicitPick.instanceId).toBe(ProviderInstanceId.make("claude_openrouter"));
+    expect(explicitPick.model).toBe("openai/gpt-5.5");
   });
 });

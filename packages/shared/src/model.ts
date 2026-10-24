@@ -1,6 +1,7 @@
 import {
   DEFAULT_MODEL,
   DEFAULT_MODEL_BY_PROVIDER,
+  defaultInstanceIdForDriver,
   MODEL_SLUG_ALIASES_BY_PROVIDER,
   type ModelCapabilities,
   type ModelSelection,
@@ -8,6 +9,10 @@ import {
   ProviderInstanceId,
   type ProviderOptionDescriptor,
   type ProviderOptionSelection,
+  type ServerProviderAuthStatus,
+  type ServerProviderAvailability,
+  type ServerProviderState,
+  type ServerSettings,
 } from "@neokod/contracts";
 
 const DEFAULT_PROVIDER_DRIVER_KIND = ProviderDriverKind.make("codex");
@@ -283,6 +288,135 @@ export function resolveSelectableModel(
 
   const resolved = options.find((option) => option.slug === normalized);
   return resolved ? resolved.slug : null;
+}
+
+/**
+ * One provider snapshot's catalogue/config evidence for auxiliary admission.
+ *
+ * This is discovery evidence only: a listing never proves account entitlement
+ * or that structured generation will succeed. `modelSlug` is matched exactly
+ * (case-sensitive) against `models`; aliases and display names are deliberately
+ * not consulted because execution forwards the original slug unchanged.
+ *
+ * Invalid evidence is `unverified` before membership is considered. `warning`
+ * with `installed: true` remains valid: version advisories and usage limits can
+ * coexist with a complete discovered catalogue. Unknown auth is not treated as
+ * unauthenticated.
+ */
+export type ModelCatalogueEvidence =
+  | { readonly status: "listed" }
+  | { readonly status: "not-listed" }
+  | {
+      readonly status: "unverified";
+      readonly reason: "invalid-evidence" | "insufficient-catalogue";
+    };
+
+export interface ModelCatalogueEvidenceInput {
+  readonly enabled: boolean;
+  readonly installed: boolean;
+  readonly status: ServerProviderState;
+  readonly availability?: ServerProviderAvailability | undefined;
+  readonly auth: { readonly status: ServerProviderAuthStatus };
+  readonly models: ReadonlyArray<{
+    readonly slug: string;
+    readonly isCustom: boolean;
+  }>;
+}
+
+export function evaluateModelCatalogueEvidence(
+  input: ModelCatalogueEvidenceInput,
+  modelSlug: string,
+): ModelCatalogueEvidence {
+  const validEvidence =
+    input.enabled &&
+    input.installed &&
+    input.availability !== "unavailable" &&
+    input.status !== "error" &&
+    input.status !== "disabled" &&
+    input.auth.status !== "unauthenticated";
+  if (!validEvidence) {
+    return { status: "unverified", reason: "invalid-evidence" };
+  }
+
+  if (input.models.some((model) => model.slug === modelSlug)) {
+    return { status: "listed" };
+  }
+
+  // Only a discovered non-custom model can establish that the catalogue was
+  // read successfully enough to rule a slug out. A custom-only or empty list
+  // is configuration/absence of evidence, not a negative catalogue result.
+  if (!input.models.some((model) => !model.isCustom)) {
+    return { status: "unverified", reason: "insufficient-catalogue" };
+  }
+
+  return { status: "not-listed" };
+}
+
+/**
+ * Read the configured custom-model slugs that belong to one exact provider
+ * instance. Precedence matches `deriveProviderInstanceConfigMap` hydration:
+ * an explicit `providerInstances[id]` entry is authoritative, so an explicit
+ * default-slot instance without `config.customModels` does NOT inherit the
+ * legacy `providers[driverKind].customModels` mirror. Only instances that are
+ * absent from the explicit map may fall back to that legacy mirror, and only
+ * when they are the driver's default slot.
+ *
+ * Slugs are returned exactly as authored (trailing whitespace trimmed). They
+ * are configuration evidence, not a discovered catalogue, and no alias
+ * normalization happens here.
+ */
+export function readConfiguredCustomModels(input: {
+  readonly settings: Pick<ServerSettings, "providers" | "providerInstances">;
+  readonly instanceId: ProviderInstanceId;
+  readonly driverKind: ProviderDriverKind;
+}): ReadonlyArray<string> {
+  const instance = input.settings.providerInstances[input.instanceId];
+  if (instance !== undefined) {
+    const config = instance.config;
+    if (config !== null && typeof config === "object") {
+      const value = (config as Record<string, unknown>).customModels;
+      if (Array.isArray(value)) {
+        return value.filter((entry): entry is string => typeof entry === "string");
+      }
+    }
+    // Explicit instance config wins over the legacy mirror even when it does
+    // not carry a custom-model list.
+    return [];
+  }
+
+  if (input.instanceId !== defaultInstanceIdForDriver(input.driverKind)) {
+    return [];
+  }
+
+  const legacyProviders = input.settings.providers as Record<
+    string,
+    { readonly customModels?: ReadonlyArray<string> } | undefined
+  >;
+  return legacyProviders[input.driverKind]?.customModels ?? [];
+}
+
+/**
+ * Append configured custom models to snapshot catalogue entries as
+ * configuration evidence without normalizing or reordering them. The snapshot
+ * may already contain an alias-normalized form of the same configured slug;
+ * the raw configured slug is preserved so admission and Settings evaluate the
+ * exact slug that execution receives.
+ */
+export function mergeConfiguredCustomModelEvidence(
+  models: ReadonlyArray<{ readonly slug: string; readonly isCustom: boolean }>,
+  configuredCustomModels: ReadonlyArray<string>,
+): ReadonlyArray<{ readonly slug: string; readonly isCustom: boolean }> {
+  const merged = [...models];
+  const seen = new Set(merged.map((model) => model.slug));
+  for (const raw of configuredCustomModels) {
+    const slug = raw.trim();
+    if (!slug || seen.has(slug)) {
+      continue;
+    }
+    seen.add(slug);
+    merged.push({ slug, isCustom: true });
+  }
+  return merged;
 }
 
 function resolveModelSlug(model: string | null | undefined, provider: ProviderDriverKind): string {

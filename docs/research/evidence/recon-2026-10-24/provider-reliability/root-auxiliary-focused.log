@@ -1,0 +1,9 @@
+
+ RUN  v4.1.9 /Users/kamogelo/.codex/worktrees/neokod-core-execution/t3code
+
+
+ Test Files  6 passed (6)
+      Tests  139 passed (139)
+   Start at  18:38:45
+   Duration  10.71s (transform 6.09s, setup 0ms, import 13.42s, tests 6.47s, environment 25ms)
+

@@ -1,0 +1,27 @@
+{
+  "checkedAt": "2026-10-24T15:51:54.117Z",
+  "kind": "actual HTTP ticket endpoint, no browser-origin execution or commands",
+  "checks": [
+    {
+      "name": "no credential",
+      "status": 401,
+      "expected": 401,
+      "allowOrigin": null,
+      "passed": true
+    },
+    {
+      "name": "foreign Origin with no credential",
+      "status": 401,
+      "expected": 403,
+      "allowOrigin": null,
+      "passed": false
+    },
+    {
+      "name": "foreign Origin with valid bearer",
+      "status": 200,
+      "expected": 403,
+      "allowOrigin": null,
+      "passed": false
+    }
+  ]
+}

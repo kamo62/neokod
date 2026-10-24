@@ -1,0 +1,42 @@
+{
+  "source": "fe55c42a746b8aae89ed309b934e2a1c7bb33d1d",
+  "node": "24.22.1",
+  "checks": [
+    {
+      "command": "vp test packages/shared/src/model.test.ts apps/server/src/textGeneration/TextGeneration.test.ts apps/server/src/serverSettings.test.ts apps/web/src/modelSelection.test.ts apps/web/src/components/settings/SettingsPanels.logic.test.ts apps/server/src/orchestration/Layers/ProviderCommandReactor.test.ts",
+      "exitCode": 0,
+      "files": 6,
+      "tests": 139
+    },
+    {
+      "command": "vp check",
+      "exitCode": 0,
+      "errors": 0,
+      "warnings": 54
+    },
+    {
+      "command": "vp run typecheck",
+      "exitCode": 0,
+      "packages": 10,
+      "mode": "recursive tsgo --noEmit; scripts inspected, no build dependency"
+    }
+  ],
+  "reviews": {
+    "Sol 6.1 high": "ACCEPT",
+    "onboard Claude Opus 5.5 high": "ACCEPT"
+  },
+  "network": "Two real final-source primary/auxiliary cases PASS; original settings restored with revision acknowledgements",
+  "restart": "Actual owned backend restart preserves exact replies, completed turns, titles and safe activities",
+  "ui": "Final Settings interaction unavailable while Computer Use reports Mac locked; merge held",
+  "notRun": [
+    "compiler builds",
+    "dependency installation",
+    "packaging",
+    "deployment",
+    "Playwright",
+    "installed Neokod validation",
+    "live Symphony tracker-to-PR",
+    "identity-bound Symphony crash/Stop/restart"
+  ],
+  "countReconciliation": "Actual root runner result is 139. Coordinator initial 141 typo and Opus manual 132 declaration count do not supersede the measured result."
+}

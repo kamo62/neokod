@@ -1,0 +1,76 @@
+{
+  "duration_api_ms": 182422,
+  "stop_reason": "end_turn",
+  "session_id": "3a80bbc1-10a5-4c7b-a688-28d0616c265a",
+  "total_cost_usd": 0.8460841999999998,
+  "usage": {
+    "input_tokens": 40,
+    "cache_creation_input_tokens": 51401,
+    "cache_read_input_tokens": 705881,
+    "output_tokens": 14677,
+    "output_tokens_details": { "thinking_tokens": 7844 },
+    "server_tool_use": { "web_search_requests": 0, "web_fetch_requests": 0 },
+    "service_tier": "standard",
+    "cache_creation": { "ephemeral_1h_input_tokens": 51401, "ephemeral_5m_input_tokens": 0 },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3574,
+        "cache_read_input_tokens": 56026,
+        "cache_creation_input_tokens": 662,
+        "cache_creation": { "ephemeral_5m_input_tokens": 0, "ephemeral_1h_input_tokens": 662 },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "modelUsage": {
+    "claude-opus-5-5": {
+      "inputTokens": 40,
+      "outputTokens": 14677,
+      "cacheReadInputTokens": 705881,
+      "cacheCreationInputTokens": 51401,
+      "webSearchRequests": 0,
+      "costUSD": 0.8460841999999998,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 7844,
+      "canonicalModel": "claude-opus-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": [],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "subagent_stats": {
+    "spawned": 0,
+    "requested": { "background": 0, "foreground": 0, "unset": 0 },
+    "started_in_background": 0,
+    "max_depth": 0,
+    "spawned_by_subagents": 0,
+    "completed": 0,
+    "failed": 0,
+    "killed": { "parent": 0, "user": 0, "system": 0 },
+    "refused": { "depth_limit": 0, "concurrency_limit": 0, "budget": 0 },
+    "by_type": {}
+  },
+  "safety_stops": 0,
+  "is_error": false,
+  "num_turns": 21,
+  "subtype": "success",
+  "api_error_status": null,
+  "result": "## Verdict: **FIX**\n\nI reviewed only the seven files that changed between `032a7ceab` and `43d538e14`, plus the code that calls them. I did not edit, build, test, install anything or contact any provider. The overall design is sound, but one bug blocks acceptance and two others should be fixed in the same pass.\n\n### P1: an incomplete catalogue is reported as \"model not advertised\"\n\n`TextGeneration.ts:254–287` never checks the snapshot's `status` or `auth`. It decides whether evidence is missing only with `refreshed.models.length === 0` (line 278). Codex snapshots that carry no real evidence still contain the configured custom models:\n- **Unauthenticated:** `CodexProvider.ts:422–429` returns `appendCustomCodexModels([], customModels)` with status `error`.\n- **Probe failure or timeout:** `CodexProvider.ts:563/594/617` return `emptyModels`, which is the list of custom models from settings.\n- These paths return normally, so `refresh` succeeds rather than failing. The refresh-failure branch never sees them.\n\n**Reproduction:** set up a Codex instance with `customModels: [\"proxy-model\"]` and the auxiliary model `gpt-5.4-mini`, with Codex logged out (or the probe timing out). Generating a title refreshes once and gets back status `error` with `models=[proxy-model]`. The user then sees \"Model 'gpt-5.4-mini' is not advertised…\". The scope says this case must be reported as \"verification unavailable\", not as an unsupported model. The availability of the refreshed snapshot is also never checked.\n\nThe web side has the same flaw: `modelSelection.ts:360` uses the same `entry.models.length === 0` heuristic and ignores `entry.snapshot.status`/`auth`. In that state Settings says the model is \"refused until the selection is listed\".\n\n**Fix:** treat a snapshot as catalogue evidence only when all of these hold:\n- it is available;\n- its status is not `error`/`disabled`;\n- auth is not `unauthenticated`;\n- it contains at least one model that is not custom.\n\nOtherwise return the \"evidence unavailable\" message. Apply this to both the initial and the refreshed snapshot. Put the rule in one shared function so the server and web don't each keep their own copy. Add table rows for an `error` snapshot with only custom models and an `unauthenticated` one with only custom models. The current tests (`TextGeneration.test.ts` around line 477) use only `ready`/`authenticated` snapshots.\n\n### P2: an alias is admitted, but a different slug runs\n\n`isModelAdvertised` (`TextGeneration.ts:175–191`) admits `gpt-5-codex` because the alias table maps it to `gpt-5.4`, which is listed. The original model is then forwarded unchanged, so `CodexTextGeneration.ts:193–194` runs `codex exec --model gpt-5-codex`. The catalogue evidence is about `gpt-5.4`, not about the slug that actually runs. Two options:\n- **Recommended:** admit only an exact slug match.\n- Or keep alias matching and state plainly that admission covers the alias target only.\n\nNo test covers aliases, even though the docstring describes alias behaviour.\n\n### P2: Settings and the server use different matching rules\n\nSettings uses `resolveSelectableModel` (`modelSelection.ts:356`), which also matches display names case-insensitively (`shared/model.ts:275`). The server does not. So Settings can show \"listed\" for a value the server will refuse. The shared function from P1 should replace both.\n\n### P3: notes (not blocking)\n\n- **Disabled instance:** `serverSettings.ts:310–343` swaps in a fallback selection when the saved instance is disabled, and `ws.ts` sends that resolved selection to the client. Settings therefore shows the fallback with no explanation. The web test \"reports a disabled saved instance explicitly\" covers a state the real client usually never receives. This behaviour predates the commit and the scope says to leave `serverSettings` alone, so record it as a known limitation rather than fixing it here.\n- **Missing instance:** `includeSavedAuxiliaryModelOption` (`modelSelection.ts:386`) does nothing when that instance has no options, so the picker may not show the saved slug. The status row does still explain it.\n- **Test claims are weaker than they sound:**\n  - \"Survives read-model reload\" just re-reads the same in-memory snapshot; nothing is replayed from events.\n  - The reactor tests fail through a stub, not through the real admission gate.\n  - No test checks that an interrupted title or branch generation leaves no activity.\n- **Refresh volume:** on a worktree's first turn, title and branch generation can each trigger a refresh, and every GitManager call with an unlisted model also probes once. That stays bounded, so it's fine.\n\n### Confirmed correct\n\n- **Exact instance only:** no other instance or the aggregate cache is consulted. The \"only advertised by another instance\" test covers this.\n- **Original model and options forwarded** for all five operations (table test at line 412).\n- **Exactly one refresh.** Failures and crashes in `getSnapshot`/`refresh` are caught with `Effect.exit` and become typed errors; the `orDie` in `makeManagedServerProvider.ts:156` is contained.\n- **Disabled and unavailable instances** are refused without probing.\n- **Failures don't touch the main turn.** The reactor writes one `provider.auxiliary.text-generation.failed` activity with `tone:error` and `turnId:null`, using server-generated IDs and timestamps. It never calls the turn-start or session-error path. The activity contains only fixed text plus the instance and model names; stderr, the cause and `unavailableReason` go only to logs. Generic rendering in `session-logic` handles it, and none of the code that reacts to specific activity kinds matches this one.\n- **Interrupts:** `Cause.hasInterruptsOnly` keeps both the report helper and the outer catch silent on interrupts.\n- **Titles:** the seeded or custom title is kept (the `canReplaceThreadTitle` path is unchanged and tested). The main `sendTurn` still runs once. The distinct-auxiliary-model test confirms the chat and auxiliary selections are independent.\n- **Settings:** shows the saved selection verbatim, and only an explicit pick changes it. The description now covers thread titles and branch names.\n- **Gates unchanged:** contracts, `serverSettings`, `ModelReviewer`, the OpenCode version guard and the W6/W5/Symphony files are untouched. Only the seven files changed.\n\nA catalogue listing remains discovery evidence only, not entitlement. Neither this review nor the claimed test and check results count as runtime acceptance.",
+  "ttft_ms": 3794,
+  "type": "result",
+  "duration_ms": 185065,
+  "uuid": "4ffb3a5a-69a0-4bca-ae76-ff0b2441d584",
+  "ttft_stream_ms": 2199,
+  "time_to_request_ms": 355,
+  "first_content_frame_ms": 2200,
+  "queued_turn_count": 0,
+  "result_index": 0
+}

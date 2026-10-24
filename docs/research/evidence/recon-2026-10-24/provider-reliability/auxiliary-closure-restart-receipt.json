@@ -1,0 +1,43 @@
+{
+  "source": "fe55c42a746b8aae89ed309b934e2a1c7bb33d1d",
+  "proof": "Actual task-owned backend process restart plus read-only SQLite verification, not Symphony crash recovery or Chrome",
+  "oldPid": 48986,
+  "newPid": 51912,
+  "zeroActiveTurnsBeforeStop": true,
+  "stopObservation": "Prior invocation verified identity and zero active turns, sent SIGTERM; listener closed before process fully exited, so immediate absence assertion failed. This invocation verifies PID absent before restart.",
+  "statesUnchanged": true,
+  "checks": [
+    {
+      "threadId": "8816441a-8467-4451-a13e-a06b767cf5ae",
+      "turn": {
+        "turn_id": "e3cfcf75-8ed1-45f2-8305-8fa782698715",
+        "state": "completed",
+        "completed_at": "2026-10-24T16:35:12.036Z"
+      },
+      "exactReplyRetained": true,
+      "titleHash": "a9a460dad76046caf11626b778c91f172d075f2a7101ee0b5c6e41594febf216",
+      "activityCount": 0,
+      "activityHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "primarySelection": {
+        "instanceId": "githubCopilot",
+        "model": "auto"
+      }
+    },
+    {
+      "threadId": "e4629969-097b-4300-9e0f-69c8ee26d574",
+      "turn": {
+        "turn_id": "df2ba7a5-ad54-4555-9cc1-012aec973adc",
+        "state": "completed",
+        "completed_at": "2026-10-24T16:35:19.610Z"
+      },
+      "exactReplyRetained": true,
+      "titleHash": "7b61f1cc164699b929cc538bdbdc76e8c9ed92d3f11aa28880171c7374f86a6f",
+      "activityCount": 1,
+      "activityHash": "ec380e2b00d67d2fc9579d40c187721ac7c2f00905a7c5390ab942c7920fd7aa",
+      "primarySelection": {
+        "instanceId": "githubCopilot",
+        "model": "auto"
+      }
+    }
+  ]
+}

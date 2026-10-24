@@ -1,0 +1,59 @@
+{
+  "checkedAt": "2026-10-24T16:37:15.149Z",
+  "proof": "Authenticated configuration read after actual owned backend restart; no provider turn",
+  "auxiliarySelection": {
+    "instanceId": "codex",
+    "model": "gpt-5.4-mini"
+  },
+  "providers": [
+    {
+      "instanceId": "claudeAgent",
+      "installed": true,
+      "status": "ready",
+      "authStatus": "authenticated",
+      "modelCount": 13
+    },
+    {
+      "instanceId": "codex",
+      "installed": true,
+      "status": "ready",
+      "authStatus": "authenticated",
+      "modelCount": 8
+    },
+    {
+      "instanceId": "cursor",
+      "installed": false,
+      "status": "disabled",
+      "authStatus": "unknown",
+      "modelCount": 0
+    },
+    {
+      "instanceId": "githubCopilot",
+      "installed": true,
+      "status": "ready",
+      "authStatus": "authenticated",
+      "modelCount": 1
+    },
+    {
+      "instanceId": "grok",
+      "installed": false,
+      "status": "disabled",
+      "authStatus": "unknown",
+      "modelCount": 1
+    },
+    {
+      "instanceId": "kiro",
+      "installed": false,
+      "status": "disabled",
+      "authStatus": "unknown",
+      "modelCount": 1
+    },
+    {
+      "instanceId": "opencode",
+      "installed": true,
+      "status": "error",
+      "authStatus": "unknown",
+      "modelCount": 0
+    }
+  ]
+}

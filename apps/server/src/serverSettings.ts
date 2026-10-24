@@ -12,16 +12,9 @@
  */
 import {
   type CopilotManagedClientEvidenceSettings,
-  DEFAULT_GIT_TEXT_GENERATION_MODEL,
-  DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER,
-  DEFAULT_MODEL_BY_PROVIDER,
   DEFAULT_SERVER_SETTINGS,
-  isProviderDriverKind,
-  type ModelSelection,
   type ProviderInstanceConfig,
   type ProviderInstanceEnvironmentVariable,
-  ProviderDriverKind,
-  ProviderInstanceId,
   ServerSettings,
   ServerSettingsError,
   type ServerSettingsMutation,
@@ -292,56 +285,6 @@ export const layerTest = (overrides: DeepPartial<ServerSettings> = {}) =>
 
 const ServerSettingsJson = fromLenientJson(ServerSettings);
 const decodeServerSettingsJsonExit = Schema.decodeUnknownExit(ServerSettingsJson);
-
-type LegacyProviderSettings = ServerSettings["providers"][keyof ServerSettings["providers"]];
-
-const getLegacyProviderSettings = (
-  settings: ServerSettings,
-  provider: ProviderDriverKind,
-): LegacyProviderSettings | undefined =>
-  (settings.providers as Record<string, LegacyProviderSettings | undefined>)[provider];
-
-/**
- * Ensure the `textGenerationModelSelection` points to an enabled provider.
- * If the selected provider is disabled, fall back to the first enabled
- * provider with its default model.  This is applied at read-time so the
- * persisted preference is preserved for when a provider is re-enabled.
- */
-function resolveTextGenerationProvider(settings: ServerSettings): ServerSettings {
-  const selection = settings.textGenerationModelSelection;
-  const instanceConfig = settings.providerInstances[selection.instanceId];
-  if (instanceConfig !== undefined) {
-    return (instanceConfig.enabled ?? true) ? settings : fallbackTextGenerationProvider(settings);
-  }
-
-  if (
-    isProviderDriverKind(selection.instanceId) &&
-    getLegacyProviderSettings(settings, selection.instanceId)?.enabled
-  ) {
-    return settings;
-  }
-
-  return fallbackTextGenerationProvider(settings);
-}
-
-function fallbackTextGenerationProvider(settings: ServerSettings): ServerSettings {
-  const fallbackEntry = Object.entries(settings.providers).find(([, provider]) => provider.enabled);
-  const fallback = fallbackEntry ? ProviderDriverKind.make(fallbackEntry[0]) : undefined;
-  if (!fallback) {
-    return settings;
-  }
-
-  return {
-    ...settings,
-    textGenerationModelSelection: {
-      instanceId: ProviderInstanceId.make(fallback),
-      model:
-        DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER[fallback] ??
-        DEFAULT_MODEL_BY_PROVIDER[fallback] ??
-        DEFAULT_GIT_TEXT_GENERATION_MODEL,
-    } satisfies ModelSelection,
-  };
-}
 
 // Values under these keys are compared as a whole — never stripped field-by-field.
 const ATOMIC_SETTINGS_KEYS: ReadonlySet<string> = new Set([
@@ -1079,7 +1022,7 @@ const make = Effect.gen(function* () {
         Effect.flatMap(materializeManagedClientEvidenceSecretFields),
         Effect.flatMap(materializeTrackerCredentials),
       );
-      return resolveTextGenerationProvider(materialized);
+      return materialized;
     });
 
   const materializeSettingsChange = (settings: ServerSettings): Effect.Effect<ServerSettings> =>
@@ -1095,7 +1038,6 @@ const make = Effect.gen(function* () {
           cause: error.cause,
         }).pipe(Effect.as(settings)),
       ),
-      Effect.map(resolveTextGenerationProvider),
     );
 
   return {
@@ -1106,7 +1048,6 @@ const make = Effect.gen(function* () {
       Effect.flatMap(materializeManagedClientEvidenceCredential),
       Effect.flatMap(materializeManagedClientEvidenceSecretFields),
       Effect.flatMap(materializeTrackerCredentials),
-      Effect.map(resolveTextGenerationProvider),
     ),
     updateSettings: (patch) => writeSemaphore.withPermits(1)(updateSettingsUnderLock(patch)),
     updateSettingsMutation: (mutation) =>
