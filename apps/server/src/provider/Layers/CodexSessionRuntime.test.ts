@@ -1,13 +1,18 @@
 import * as NodeAssert from "node:assert/strict";
 
 import { it } from "@effect/vitest";
+import { type ProviderEvent, ThreadId, TurnId } from "@neokod/contracts";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Effect from "effect/Effect";
+import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
+import * as Stream from "effect/Stream";
+import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
 import { describe } from "vite-plus/test";
-import { ThreadId, TurnId } from "@neokod/contracts";
 import * as CodexErrors from "effect-codex-app-server/errors";
 import * as CodexRpc from "effect-codex-app-server/rpc";
 
+import { makeFakeCodexPeer } from "../../symphony/Runner/testkit/FakeCodexPeer.ts";
 import {
   CODEX_DEFAULT_MODE_DEVELOPER_INSTRUCTIONS,
   CODEX_PLAN_MODE_DEVELOPER_INSTRUCTIONS,
@@ -18,6 +23,7 @@ import {
   type CodexServerNotification,
   hasConfiguredMcpServer,
   isRecoverableThreadResumeError,
+  makeCodexSessionRuntime,
   openCodexThread,
   rememberChildThreadTurns,
   shouldApplyParentTurnCompletion,
@@ -131,14 +137,34 @@ describe("rememberChildThreadTurns", () => {
     );
   });
 
-  it("does not invent child identity from a non-start subAgentActivity", () => {
+  it("records lineage for every subAgentActivity kind and lets the latest observation win", () => {
     const childThreadTurns = new Map<string, TurnId>();
 
     rememberChildThreadTurns(
       childThreadTurns,
-      subAgentActivityNotification({ method: "item/completed", kind: "interacted" }),
-      TurnId.make("parent-turn"),
+      subAgentActivityNotification({ method: "item/started", kind: "started" }),
+      TurnId.make("parent-turn-1"),
     );
+    rememberChildThreadTurns(
+      childThreadTurns,
+      subAgentActivityNotification({ method: "item/completed", kind: "interacted" }),
+      TurnId.make("parent-turn-2"),
+    );
+    rememberChildThreadTurns(
+      childThreadTurns,
+      subAgentActivityNotification({ method: "item/completed", kind: "interrupted" }),
+      TurnId.make("parent-turn-3"),
+    );
+
+    NodeAssert.deepStrictEqual(
+      [...childThreadTurns],
+      [["child-thread-fixture-a", TurnId.make("parent-turn-3")]],
+    );
+  });
+
+  it("records no lineage without a parent turn", () => {
+    const childThreadTurns = new Map<string, TurnId>();
+
     rememberChildThreadTurns(
       childThreadTurns,
       subAgentActivityNotification({ method: "item/started", kind: "started" }),
@@ -205,6 +231,136 @@ describe("shouldApplyParentTurnCompletion", () => {
       true,
     );
   });
+});
+
+describe("CodexSessionRuntime child notification routing", () => {
+  it.live("tags and remaps child notifications without settling the parent session", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const peer = yield* makeFakeCodexPeer({
+          threadId: "parent-thread",
+          turnIds: ["parent-turn"],
+        });
+        const runtime = yield* makeCodexSessionRuntime({
+          threadId: ThreadId.make("thread-1"),
+          binaryPath: "fake-codex",
+          cwd: "/tmp/fake-ws",
+          runtimeMode: "full-access",
+        }).pipe(Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, peer.spawner));
+
+        const notifications = yield* Queue.unbounded<ProviderEvent>();
+        yield* Stream.filter(runtime.events, (event) => event.kind === "notification").pipe(
+          Stream.runForEach((event) => Queue.offer(notifications, event).pipe(Effect.asVoid)),
+          Effect.forkScoped,
+        );
+        const takeNotification = Queue.take(notifications);
+
+        yield* runtime.start();
+        const startedTurn = yield* runtime.sendTurn({ input: "run the child" });
+        NodeAssert.equal(startedTurn.turnId, "parent-turn");
+        NodeAssert.equal((yield* runtime.getSession).activeTurnId, "parent-turn");
+
+        // Parent observes a new-shape started child.
+        yield* peer.sendNotification("item/started", {
+          startedAtMs: 1_778_000_000_000,
+          threadId: "parent-thread",
+          turnId: "parent-turn",
+          item: {
+            agentPath: "/root/fixture_child_a",
+            agentThreadId: "child-thread-a",
+            id: "call_fixture_a",
+            kind: "started",
+            type: "subAgentActivity",
+          },
+        });
+        const startEvent = yield* takeNotification;
+        NodeAssert.equal(startEvent.method, "item/started");
+        NodeAssert.equal(startEvent.turnId, "parent-turn");
+        NodeAssert.equal(startEvent.childThreadId, undefined);
+
+        // Child content is remapped to the parent turn and tagged as child.
+        yield* peer.sendNotification("item/completed", {
+          completedAtMs: 1_778_000_000_001,
+          threadId: "child-thread-a",
+          turnId: "child-turn-a",
+          item: { type: "agentMessage", id: "msg_child_a", text: "child result" },
+        });
+        const childItem = yield* takeNotification;
+        NodeAssert.equal(childItem.method, "item/completed");
+        NodeAssert.equal(childItem.turnId, "parent-turn");
+        NodeAssert.equal(childItem.childThreadId, "child-thread-a");
+
+        // The child turn/started is suppressed; the next event is its completion.
+        yield* peer.sendNotification("turn/started", {
+          threadId: "child-thread-a",
+          turn: { id: "child-turn-a", items: [], status: "inProgress" },
+        });
+        yield* peer.completeTurn("completed", {
+          threadId: "child-thread-a",
+          turnId: "child-turn-a",
+        });
+        const childCompleted = yield* takeNotification;
+        NodeAssert.equal(childCompleted.method, "turn/completed");
+        NodeAssert.equal(childCompleted.turnId, "parent-turn");
+        NodeAssert.equal(childCompleted.childThreadId, "child-thread-a");
+        const sessionAfterChild = yield* runtime.getSession;
+        NodeAssert.equal(sessionAfterChild.status, "running");
+        NodeAssert.equal(sessionAfterChild.activeTurnId, "parent-turn");
+
+        // An interacted child with no prior started observation still registers.
+        yield* peer.sendNotification("item/started", {
+          startedAtMs: 1_778_000_000_002,
+          threadId: "parent-thread",
+          turnId: "parent-turn",
+          item: {
+            agentPath: "/root/fixture_child_b",
+            agentThreadId: "child-thread-b",
+            id: "call_fixture_b",
+            kind: "interacted",
+            type: "subAgentActivity",
+          },
+        });
+        const interactedEvent = yield* takeNotification;
+        NodeAssert.equal(interactedEvent.method, "item/started");
+        NodeAssert.equal(interactedEvent.turnId, "parent-turn");
+        NodeAssert.equal(interactedEvent.childThreadId, undefined);
+
+        yield* peer.sendNotification("item/completed", {
+          completedAtMs: 1_778_000_000_003,
+          threadId: "child-thread-b",
+          turnId: "child-turn-b",
+          item: { type: "agentMessage", id: "msg_child_b", text: "interacted child result" },
+        });
+        const interactedChildItem = yield* takeNotification;
+        NodeAssert.equal(interactedChildItem.method, "item/completed");
+        NodeAssert.equal(interactedChildItem.turnId, "parent-turn");
+        NodeAssert.equal(interactedChildItem.childThreadId, "child-thread-b");
+
+        yield* peer.completeTurn("completed", {
+          threadId: "child-thread-b",
+          turnId: "child-turn-b",
+        });
+        const interactedChildCompleted = yield* takeNotification;
+        NodeAssert.equal(interactedChildCompleted.method, "turn/completed");
+        NodeAssert.equal(interactedChildCompleted.turnId, "parent-turn");
+        NodeAssert.equal(interactedChildCompleted.childThreadId, "child-thread-b");
+        NodeAssert.equal((yield* runtime.getSession).status, "running");
+
+        // Only the parent's own completion settles the parent session.
+        yield* peer.completeTurn("completed", {
+          threadId: "parent-thread",
+          turnId: "parent-turn",
+        });
+        const parentCompleted = yield* takeNotification;
+        NodeAssert.equal(parentCompleted.method, "turn/completed");
+        NodeAssert.equal(parentCompleted.turnId, "parent-turn");
+        NodeAssert.equal(parentCompleted.childThreadId, undefined);
+        const session = yield* runtime.getSession;
+        NodeAssert.equal(session.status, "ready");
+        NodeAssert.equal(session.activeTurnId, undefined);
+      }).pipe(Effect.provide(NodeServices.layer)),
+    ),
+  );
 });
 
 function makeThreadOpenResponse(
