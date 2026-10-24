@@ -437,6 +437,17 @@ const OrchestrationLatestTurnState = Schema.Literals([
 ]);
 export type OrchestrationLatestTurnState = typeof OrchestrationLatestTurnState.Type;
 
+/**
+ * Provider-confirmed outcome of a settled turn. `interrupted` covers a
+ * cancelled or interrupted turn; `error` covers a failed turn.
+ */
+export const OrchestrationLatestTurnOutcome = Schema.Literals([
+  "completed",
+  "interrupted",
+  "error",
+]);
+export type OrchestrationLatestTurnOutcome = typeof OrchestrationLatestTurnOutcome.Type;
+
 export const OrchestrationLatestTurn = Schema.Struct({
   turnId: TurnId,
   state: OrchestrationLatestTurnState,
@@ -857,6 +868,13 @@ const ThreadSessionSetCommand = Schema.Struct({
    */
   interruptedTurnId: Schema.optional(TurnId),
   /**
+   * Authoritative provider outcome of the turn named by `interruptedTurnId`.
+   * Known turns require the identity; omitted keeps legacy session-status
+   * inference. An explicit value takes precedence over that inference, so a
+   * ready session never upgrades an interrupted or failed turn to completed.
+   */
+  latestTurnOutcome: Schema.optional(OrchestrationLatestTurnOutcome),
+  /**
    * Completion time for the running turn this session update settles. Recovery
    * uses it to freeze a turn at its last observation while `session.updatedAt`
    * and event ordering stay on the server clock.
@@ -1166,6 +1184,9 @@ export const ThreadSessionSetPayload = Schema.Struct({
   session: OrchestrationSession,
   // Pins recovery message closure to the interrupted turn.
   interruptedTurnId: Schema.optional(TurnId),
+  // Explicit provider outcome for the named turn; omitted keeps session-status
+  // inference.
+  latestTurnOutcome: Schema.optional(OrchestrationLatestTurnOutcome),
   // Omitted keeps the legacy session-time default; explicit null is unknown.
   latestTurnCompletedAt: Schema.optional(Schema.NullOr(IsoDateTime)),
 });

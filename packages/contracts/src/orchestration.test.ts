@@ -1,5 +1,6 @@
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Schema from "effect/Schema";
 
 import {
@@ -22,6 +23,7 @@ import {
   ThreadMetaUpdatedPayload,
   ThreadTurnStartCommand,
   ThreadCreatedPayload,
+  ThreadSessionSetPayload,
   ThreadTurnDiff,
   ThreadTurnStartRequestedPayload,
 } from "./orchestration.ts";
@@ -37,6 +39,7 @@ const decodeThreadTurnStartCommand = Schema.decodeUnknownEffect(ThreadTurnStartC
 const decodeThreadTurnStartRequestedPayload = Schema.decodeUnknownEffect(
   ThreadTurnStartRequestedPayload,
 );
+const decodeThreadSessionSetPayload = Schema.decodeUnknownEffect(ThreadSessionSetPayload);
 const decodeOrchestrationLatestTurn = Schema.decodeUnknownEffect(OrchestrationLatestTurn);
 const decodeOrchestrationProposedPlan = Schema.decodeUnknownEffect(OrchestrationProposedPlan);
 const decodeOrchestrationSession = Schema.decodeUnknownEffect(OrchestrationSession);
@@ -623,6 +626,70 @@ it.effect("decodes orchestration session runtime mode defaults", () =>
       updatedAt: "2026-01-01T00:00:00.000Z",
     });
     assert.strictEqual(parsed.runtimeMode, DEFAULT_RUNTIME_MODE);
+  }),
+);
+
+it.effect("preserves explicit and omitted latest turn outcomes and rejects null", () =>
+  Effect.gen(function* () {
+    const session = {
+      threadId: "thread-1",
+      status: "ready",
+      providerName: "codex",
+      runtimeMode: "full-access",
+      activeTurnId: null,
+      lastError: null,
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    } as const;
+    const commandBase = {
+      type: "thread.session.set",
+      commandId: "cmd-session-set-outcome",
+      threadId: "thread-1",
+      session,
+      createdAt: "2026-01-01T00:00:00.000Z",
+    } as const;
+
+    const interruptedCommand = yield* decodeOrchestrationCommand({
+      ...commandBase,
+      interruptedTurnId: "turn-1",
+      latestTurnOutcome: "interrupted",
+    });
+    assert.strictEqual(interruptedCommand.type, "thread.session.set");
+    if (interruptedCommand.type !== "thread.session.set") return;
+    assert.strictEqual(interruptedCommand.latestTurnOutcome, "interrupted");
+
+    const omittedCommand = yield* decodeOrchestrationCommand(commandBase);
+    assert.strictEqual(omittedCommand.type, "thread.session.set");
+    if (omittedCommand.type !== "thread.session.set") return;
+    assert.isFalse("latestTurnOutcome" in omittedCommand);
+
+    const payload = yield* decodeThreadSessionSetPayload({
+      threadId: "thread-1",
+      session,
+      interruptedTurnId: "turn-1",
+      latestTurnOutcome: "error",
+    });
+    assert.strictEqual(payload.latestTurnOutcome, "error");
+
+    for (const latestTurnOutcome of [null, "running", "unknown"]) {
+      const rejected = yield* Effect.exit(
+        decodeOrchestrationCommand({
+          ...commandBase,
+          interruptedTurnId: "turn-1",
+          latestTurnOutcome,
+        }),
+      );
+      assert.isTrue(Exit.isFailure(rejected));
+
+      const rejectedPayload = yield* Effect.exit(
+        decodeThreadSessionSetPayload({
+          threadId: "thread-1",
+          session,
+          interruptedTurnId: "turn-1",
+          latestTurnOutcome,
+        }),
+      );
+      assert.isTrue(Exit.isFailure(rejectedPayload));
+    }
   }),
 );
 
