@@ -727,13 +727,13 @@ lifecycleLayer("CodexAdapterLive lifecycle", (it) => {
     }),
   );
 
-  it.effect("leaves the card open when the parent reports subAgentActivity interrupted", () =>
+  it.effect("does not create a card for interacted or interrupted subAgentActivity", () =>
     Effect.gen(function* () {
       const { adapter, runtime } = yield* startLifecycleRuntime();
       const firstEventFiber = yield* Stream.runHead(adapter.streamEvents).pipe(Effect.forkChild);
 
       yield* runtime.emit({
-        id: asEventId("evt-subagent-activity-interrupted"),
+        id: asEventId("evt-subagent-activity-interacted"),
         kind: "notification",
         provider: ProviderDriverKind.make("codex"),
         createdAt: "2026-01-01T00:00:00.000Z",
@@ -743,6 +743,28 @@ lifecycleLayer("CodexAdapterLive lifecycle", (it) => {
         itemId: asItemId("call_fixture_a"),
         payload: {
           completedAtMs: 1_778_000_000_000,
+          threadId: "thread-1",
+          turnId: "turn-1",
+          item: {
+            agentPath: "/root/fixture_child_a",
+            agentThreadId: "child-thread-fixture-a",
+            id: "call_fixture_a",
+            kind: "interacted",
+            type: "subAgentActivity",
+          },
+        },
+      });
+      yield* runtime.emit({
+        id: asEventId("evt-subagent-activity-interrupted"),
+        kind: "notification",
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: "2026-01-01T00:00:00.500Z",
+        method: "item/completed",
+        threadId: asThreadId("thread-1"),
+        turnId: asTurnId("turn-1"),
+        itemId: asItemId("call_fixture_a"),
+        payload: {
+          completedAtMs: 1_778_000_000_500,
           threadId: "thread-1",
           turnId: "turn-1",
           item: {

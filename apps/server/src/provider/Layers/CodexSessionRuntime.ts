@@ -619,11 +619,11 @@ export function rememberChildThreadTurns(
     return;
   }
 
-  // Codex 0.163 describes a spawned native child with a `subAgentActivity`
-  // start item instead of a `collabAgentToolCall`. Remember its thread id so
-  // that later child-thread notifications are tagged and diverted to the
-  // Subagents pane rather than leaking into the parent conversation.
-  if (item.type === "subAgentActivity" && item.kind === "started" && item.agentThreadId) {
+  // Codex 0.163 describes a native child with a `subAgentActivity` item instead
+  // of a `collabAgentToolCall`. Every kind observes the same child, so record
+  // the most recent parent turn for all of them. Card creation stays limited
+  // to `kind: "started"` in the adapter.
+  if (item.type === "subAgentActivity" && item.agentThreadId) {
     childThreadTurns.set(item.agentThreadId, parentTurnId);
   }
 }
