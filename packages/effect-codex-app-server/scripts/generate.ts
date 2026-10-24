@@ -282,6 +282,36 @@ function stripNullDefaults(value: Schema.Json): Schema.Json {
   ) as Schema.Json;
 }
 
+const SUB_AGENT_ACTIVITY_KINDS = ["started", "interacted", "interrupted"] as const;
+const OBSERVED_SUB_AGENT_ACTIVITY_KIND = "completed";
+
+/**
+ * Codex 0.163.0 returns historical `subAgentActivity` items with
+ * `kind: "completed"`, which the pinned upstream protocol schema does not list.
+ * Extend only that exact enum, in every schema context that defines it, so the
+ * generator stays reproducible without widening the kind to arbitrary strings.
+ */
+function extendObservedSubAgentActivityKind(definitionSchema: Schema.Json): Schema.Json {
+  if (
+    definitionSchema === null ||
+    typeof definitionSchema !== "object" ||
+    Array.isArray(definitionSchema) ||
+    !("enum" in definitionSchema) ||
+    !Array.isArray(definitionSchema.enum)
+  ) {
+    return definitionSchema;
+  }
+  const enumValues = definitionSchema.enum;
+  const matchesPinnedKinds = SUB_AGENT_ACTIVITY_KINDS.every((kind) => enumValues.includes(kind));
+  if (!matchesPinnedKinds || enumValues.includes(OBSERVED_SUB_AGENT_ACTIVITY_KIND)) {
+    return definitionSchema;
+  }
+  return {
+    ...definitionSchema,
+    enum: [...enumValues, OBSERVED_SUB_AGENT_ACTIVITY_KIND],
+  };
+}
+
 function toPascalCaseMethod(method: string) {
   return method
     .split("/")
@@ -557,10 +587,14 @@ const generateFiles = Effect.fn("generateFiles")(function* () {
     );
 
     for (const [definitionName, definitionSchema] of Object.entries(parsed.definitions ?? {})) {
+      const schemaForGeneration =
+        definitionName === "SubAgentActivityKind"
+          ? extendObservedSubAgentActivityKind(definitionSchema)
+          : definitionSchema;
       aggregateSchemas[localDefinitionNames.get(definitionName)!] = stripNullDefaults(
         normalizeNullableTypes(
           rewriteExternalRefs(
-            definitionSchema,
+            schemaForGeneration,
             localDefinitionNames,
             file.namespace,
             exportNameByQualifiedName,
