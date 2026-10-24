@@ -1,0 +1,67 @@
+{
+  "baseRefName": "dev",
+  "headRefOid": "1016a650b6889019fc6383e4f9aee89cf71dcff0",
+  "mergeCommit": { "oid": "c375d32842492c0b7d488fb65d872a4d4cb430ec" },
+  "mergedAt": "2026-10-24T13:54:44Z",
+  "state": "MERGED",
+  "statusCheckRollup": [
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-24T11:58:11Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/kamo62/neokod/actions/runs/40091990967/job/120866392412",
+      "name": "Prepare PR size config",
+      "startedAt": "2026-10-24T11:58:06Z",
+      "status": "COMPLETED",
+      "workflowName": "PR Size"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-24T11:58:11Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/kamo62/neokod/actions/runs/40091990962/job/120866392726",
+      "name": "Collect PR targets",
+      "startedAt": "2026-10-24T11:58:06Z",
+      "status": "COMPLETED",
+      "workflowName": "PR Vouch"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-24T11:58:11Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/kamo62/neokod/actions/runs/40091990967/job/120866415898",
+      "name": "Sync PR size label definitions",
+      "startedAt": "2026-10-24T11:58:11Z",
+      "status": "COMPLETED",
+      "workflowName": "PR Size"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-24T11:58:21Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/kamo62/neokod/actions/runs/40091990962/job/120866415625",
+      "name": "Label PR 154",
+      "startedAt": "2026-10-24T11:58:14Z",
+      "status": "COMPLETED",
+      "workflowName": "PR Vouch"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-24T11:58:23Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/kamo62/neokod/actions/runs/40091990967/job/120866415302",
+      "name": "Label PR size",
+      "startedAt": "2026-10-24T11:58:13Z",
+      "status": "COMPLETED",
+      "workflowName": "PR Size"
+    },
+    {
+      "__typename": "StatusContext",
+      "context": "CodeRabbit",
+      "startedAt": "2026-10-24T11:58:09Z",
+      "state": "SUCCESS",
+      "targetUrl": ""
+    }
+  ],
+  "url": "https://github.com/kamo62/neokod/pull/154"
+}
