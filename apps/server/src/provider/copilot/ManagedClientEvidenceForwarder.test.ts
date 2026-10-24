@@ -182,6 +182,7 @@ const makeReactiveSettingsLayer = (
         }).pipe(Effect.tap((settings) => PubSub.publish(changes, settings))),
       updateSettingsMutation: () => dieUnused(),
       streamChanges: Stream.fromPubSub(changes),
+      subscribeChanges: Effect.succeed(Stream.empty),
     } satisfies ServerSettingsService["Service"]),
     publishCurrent,
   };

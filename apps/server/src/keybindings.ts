@@ -265,8 +265,23 @@ export class Keybindings extends Context.Service<
 
     /**
      * Stream of keybindings config change events.
+     *
+     * `Stream.fromPubSub` defers subscription until the stream starts. Use
+     * `subscribeChanges` instead when the subscription must exist before
+     * refresh or snapshot work begins.
      */
     readonly streamChanges: Stream.Stream<KeybindingsChangeEvent>;
+
+    /**
+     * Acquire the change subscription synchronously in the caller's fiber,
+     * before returning a stream backed by that subscription. The subscription
+     * is released when the caller's scope closes.
+     */
+    readonly subscribeChanges: Effect.Effect<
+      Stream.Stream<KeybindingsChangeEvent>,
+      never,
+      Scope.Scope
+    >;
 
     /**
      * Upsert a keybinding rule and persist the resulting configuration.
@@ -634,6 +649,11 @@ const make = Effect.gen(function* () {
     getSnapshot: loadConfigStateFromCacheOrDisk,
     get streamChanges() {
       return Stream.fromPubSub(changesPubSub);
+    },
+    get subscribeChanges() {
+      return PubSub.subscribe(changesPubSub).pipe(
+        Effect.map((subscription) => Stream.fromSubscription(subscription)),
+      );
     },
     upsertKeybindingRule: (input) =>
       upsertSemaphore.withPermits(1)(

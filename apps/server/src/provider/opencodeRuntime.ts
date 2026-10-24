@@ -272,13 +272,33 @@ function encodeJsonStringForDiagnostics(input: unknown): string | undefined {
   return Exit.isSuccess(result) ? result.value : undefined;
 }
 
+function readHttpStatus(value: unknown, depth = 0): number | undefined {
+  if (value === null || typeof value !== "object" || depth > 2) return undefined;
+  const record = value as Record<string, unknown>;
+  if (typeof record.status === "number") return record.status;
+  const response = record.response;
+  if (response !== null && typeof response === "object") {
+    const responseStatus = (response as Record<string, unknown>).status;
+    if (typeof responseStatus === "number") return responseStatus;
+  }
+  return readHttpStatus(record.cause, depth + 1);
+}
+
 export function openCodeRuntimeErrorDetail(cause: unknown): string {
   if (OpenCodeRuntimeError.is(cause)) return cause.detail;
-  if (cause instanceof Error && cause.message.trim().length > 0) return cause.message.trim();
+  if (cause instanceof Error && cause.message.trim().length > 0) {
+    const message = cause.message.trim();
+    // The OpenCode SDK wraps HTTP failures as `Error(message, { cause })`.
+    // Keep the message but carry the status through, because the provider
+    // probe classifies authentication rejection from the detail text. Only
+    // the status is read: the nested body/cause may echo request credentials.
+    const status = readHttpStatus(cause);
+    return status === undefined ? message : `${message} (status=${status})`;
+  }
   if (cause && typeof cause === "object") {
     // SDK v2 throws { response, request, error? } shapes — extract what's useful
     const anyCause = cause as Record<string, unknown>;
-    const status = (anyCause.response as { status?: number } | undefined)?.status;
+    const status = readHttpStatus(anyCause);
     const body = anyCause.error ?? anyCause.data ?? anyCause.body;
     const encodedBody = encodeJsonStringForDiagnostics(body ?? cause);
     if (encodedBody) {
