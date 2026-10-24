@@ -1881,12 +1881,12 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
         ),
       );
 
-    // Replay events once in order only when persisted projector cursors match
-    // the single partial-interruption shape this pipeline creates: all equal,
-    // or a non-increasing prefix at N and suffix at N-1 in projector order.
-    // Any other skew is rejected before projection side effects because the
-    // coupled session, turn and thread projections cannot safely rebuild
-    // independently against each other's future rows.
+    // Replay events once in order. The coupled session, turn and thread
+    // projections must share one as-of boundary: their cursors may be equal or
+    // form the single partial-interruption shape this pipeline creates, a
+    // non-increasing prefix at N and suffix at N-1. Other projectors may catch
+    // up independently, including a newly introduced projector at cursor zero.
+    // Unsupported skew inside the coupled group is rejected before side effects.
     const bootstrap: OrchestrationProjectionPipelineShape["bootstrap"] = Effect.gen(function* () {
       const states = yield* Effect.forEach(
         projectors,
@@ -1899,14 +1899,22 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
           ),
         { concurrency: 1 },
       );
-      const offsets = states.map((state) => state.lastAppliedSequence);
-      const maximumOffset = Math.max(...offsets);
-      const minimumOffset = Math.min(...offsets);
-      const offsetsAreOrdered = offsets.every(
-        (offset, index) => index === 0 || offsets[index - 1]! >= offset,
+      const coupledProjectorNames = new Set<ProjectorName>([
+        ORCHESTRATION_PROJECTOR_NAMES.threadSessions,
+        ORCHESTRATION_PROJECTOR_NAMES.threadTurns,
+        ORCHESTRATION_PROJECTOR_NAMES.threads,
+      ]);
+      const coupledStates = states.filter((state) =>
+        coupledProjectorNames.has(state.projector.name),
+      );
+      const coupledOffsets = coupledStates.map((state) => state.lastAppliedSequence);
+      const maximumOffset = Math.max(...coupledOffsets);
+      const minimumOffset = Math.min(...coupledOffsets);
+      const offsetsAreOrdered = coupledOffsets.every(
+        (offset, index) => index === 0 || coupledOffsets[index - 1]! >= offset,
       );
       if (!offsetsAreOrdered || maximumOffset - minimumOffset > 1) {
-        const cursorSummary = states
+        const cursorSummary = coupledStates
           .map((state) => `${state.projector.name}=${state.lastAppliedSequence}`)
           .join(", ");
         return yield* new PersistenceSqlError({
@@ -1916,7 +1924,7 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             "Unsupported projection cursor skew requires investigation. This version provides no automated or verified repair. Stop the application and back up the database, event store and attachments before any manual action. Recovery requires a separately validated procedure that rebuilds all projections together from the event store; row deletion or cursor resets must not be assumed safe. No automatic reset was performed.",
         });
       }
-      const replayFrom = minimumOffset;
+      const replayFrom = Math.min(...states.map((state) => state.lastAppliedSequence));
       yield* Stream.runForEach(eventStore.readFromSequence(replayFrom), (event) =>
         Effect.forEach(
           states,
