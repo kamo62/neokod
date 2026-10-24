@@ -1909,16 +1909,11 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
         const cursorSummary = states
           .map((state) => `${state.projector.name}=${state.lastAppliedSequence}`)
           .join(", ");
-        const coordinatedProjectors = [
-          ORCHESTRATION_PROJECTOR_NAMES.threadSessions,
-          ORCHESTRATION_PROJECTOR_NAMES.threadTurns,
-          ORCHESTRATION_PROJECTOR_NAMES.threads,
-        ].join(", ");
         return yield* new PersistenceSqlError({
           operation: "ProjectionPipeline.bootstrap:projector-coordination",
           detail:
             `Dependent projections require coordinated recovery (${cursorSummary}). ` +
-            `Clear and reset the persisted projection rows and last_applied_sequence for the coupled ${coordinatedProjectors} group, and for any other projector outside the single allowed interruption prefix, then restart to rebuild from the event store. No automatic reset was performed.`,
+            "Unsupported projection cursor skew requires investigation. This version provides no automated or verified repair. Stop the application and back up the database, event store and attachments before any manual action. Recovery requires a separately validated procedure that rebuilds all projections together from the event store; row deletion or cursor resets must not be assumed safe. No automatic reset was performed.",
         });
       }
       const replayFrom = minimumOffset;
