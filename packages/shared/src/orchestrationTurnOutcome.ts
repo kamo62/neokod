@@ -94,10 +94,21 @@ export function resolveSettledTurnState(input: {
       });
 }
 
+function sessionRunsTurnIdentity(
+  session: {
+    readonly status: OrchestrationSessionStatus;
+    readonly activeTurnId: string | null;
+  } | null,
+  turnId: string,
+): boolean {
+  return session !== null && session.status === "running" && session.activeTurnId === turnId;
+}
+
 /**
  * A delayed outcome for an older turn must not replace a newer running session
  * binding or clear its active turn. Legacy session updates without an explicit
- * outcome keep their existing behaviour.
+ * outcome keep their existing behaviour, except that a running update for an
+ * already terminal turn cannot reopen a session that has left that turn.
  */
 export function shouldApplySessionUpdate(input: {
   readonly currentSession: {
@@ -110,13 +121,39 @@ export function shouldApplySessionUpdate(input: {
   };
   readonly outcome: OrchestrationLatestTurnOutcome | undefined;
   readonly targetTurnId: string | undefined;
+  readonly currentTurn: TurnProjectionIdentity | null;
 }): boolean {
-  if (input.outcome === undefined) {
+  if (input.outcome !== undefined) {
+    const currentActiveTurnId = input.currentSession?.activeTurnId ?? null;
+    if (currentActiveTurnId === null || input.targetTurnId === currentActiveTurnId) {
+      return true;
+    }
+    return input.incomingSession.activeTurnId === currentActiveTurnId;
+  }
+
+  const incomingActiveTurnId = input.incomingSession.activeTurnId;
+  if (input.incomingSession.status !== "running" || incomingActiveTurnId === null) {
     return true;
   }
-  const currentActiveTurnId = input.currentSession?.activeTurnId ?? null;
-  if (currentActiveTurnId === null || input.targetTurnId === currentActiveTurnId) {
+  const currentTurn = input.currentTurn;
+  if (
+    currentTurn === null ||
+    currentTurn.turnId !== incomingActiveTurnId ||
+    !isTerminalTurnState(currentTurn.state)
+  ) {
     return true;
   }
-  return input.incomingSession.activeTurnId === currentActiveTurnId;
+  return sessionRunsTurnIdentity(input.currentSession, incomingActiveTurnId);
+}
+
+/**
+ * A late checkpoint may update historical metadata only while pointing the
+ * latest-turn pointer at its own turn. It must not replace a different known
+ * latest turn, whether that turn is running or settled.
+ */
+export function shouldReplaceLatestTurnPointer(input: {
+  readonly turnId: string;
+  readonly currentLatestTurnId: string | null;
+}): boolean {
+  return input.currentLatestTurnId === null || input.currentLatestTurnId === input.turnId;
 }

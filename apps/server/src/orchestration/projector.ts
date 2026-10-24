@@ -3,6 +3,7 @@ import {
   isTerminalTurnState,
   resolveSettledTurnState,
   shouldApplySessionUpdate,
+  shouldReplaceLatestTurnPointer,
 } from "@neokod/shared/orchestrationTurnOutcome";
 import {
   OrchestrationCheckpointSummary,
@@ -449,16 +450,20 @@ export function projectEvent(
         // a still-running latest turn so its duration reflects the whole turn.
         // An explicit provider outcome takes precedence for the turn it pins;
         // otherwise the session status remains the legacy inference.
+        const currentLatestTurn = thread.latestTurn;
         const appliesSession = shouldApplySessionUpdate({
           currentSession: thread.session,
           incomingSession: session,
           outcome: payload.latestTurnOutcome,
           targetTurnId: payload.interruptedTurnId,
+          currentTurn:
+            currentLatestTurn === null
+              ? null
+              : { turnId: currentLatestTurn.turnId, state: currentLatestTurn.state },
         });
         const nextSession = appliesSession ? session : thread.session;
         const runningTurnId =
           appliesSession && session.status === "running" ? session.activeTurnId : null;
-        const currentLatestTurn = thread.latestTurn;
         const settledTurnState = resolveSettledTurnState({
           sessionStatus: session.status,
           outcome: payload.latestTurnOutcome,
@@ -503,13 +508,12 @@ export function projectEvent(
                   ? {
                       ...currentLatestTurn,
                       state: settledTurnState,
-                      // A running turn's completedAt can only hold a mid-turn
-                      // placeholder checkpoint timestamp. Recovery can freeze
-                      // it at the last observation instead of the event time.
-                      // An explicit null means no observation exists; only an
-                      // omitted field keeps the legacy session-time default.
-                      completedAt:
-                        payload.latestTurnCompletedAt === undefined
+                      // An already settled turn keeps the completion its
+                      // settlement published. Only a running turn installs
+                      // the authoritative event time.
+                      completedAt: isTerminalTurnState(currentLatestTurn.state)
+                        ? currentLatestTurn.completedAt
+                        : payload.latestTurnCompletedAt === undefined
                           ? session.updatedAt
                           : payload.latestTurnCompletedAt,
                     }
@@ -605,17 +609,17 @@ export function projectEvent(
           previousTurn !== null &&
           previousTurn.turnId === payload.turnId &&
           isTerminalTurnState(previousTurn.state);
-        const preserveNewerRunningTurn =
-          previousTurn !== null &&
-          previousTurn.turnId !== payload.turnId &&
-          previousTurn.state === "running";
+        const appliesToLatestTurn = shouldReplaceLatestTurnPointer({
+          turnId: payload.turnId,
+          currentLatestTurnId: previousTurn?.turnId ?? null,
+        });
 
         return {
           ...nextBase,
           threads: updateThread(nextBase.threads, payload.threadId, {
             checkpoints,
             latestTurn:
-              turnStillRunning || preserveTerminalTurn || preserveNewerRunningTurn
+              turnStillRunning || preserveTerminalTurn || !appliesToLatestTurn
                 ? previousTurn
                 : {
                     turnId: payload.turnId,

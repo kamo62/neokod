@@ -2249,6 +2249,109 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
         WHERE thread_id = ${threadId}
       `;
       assert.deepEqual(threadRows, [{ latestTurnId: newerTurnId }]);
+
+      const appendOldCheckpoint = (
+        eventId: string,
+        occurredAt: string,
+        checkpointTurnCount: number,
+      ) =>
+        appendAndProject({
+          type: "thread.turn-diff-completed",
+          eventId: EventId.make(eventId),
+          aggregateKind: "thread",
+          aggregateId: threadId,
+          occurredAt,
+          commandId: CommandId.make(`cmd-${eventId}`),
+          causationEventId: null,
+          correlationId: CorrelationId.make(`cmd-${eventId}`),
+          metadata: {},
+          payload: {
+            threadId,
+            turnId: staleTurnId,
+            checkpointTurnCount,
+            checkpointRef: CheckpointRef.make(
+              `refs/neokod/checkpoints/thread-explicit-outcome/turn/${checkpointTurnCount}`,
+            ),
+            status: "ready",
+            files: [],
+            assistantMessageId: null,
+            completedAt: occurredAt,
+          },
+        });
+
+      // A late checkpoint for the historical turn must not replace the newer
+      // latest-turn pointer or its running session.
+      yield* appendOldCheckpoint("evt-explicit-outcome-4", "2026-03-01T13:02:00.000Z", 1);
+      const runningPointer = yield* sql<{ readonly latestTurnId: string | null }>`
+        SELECT latest_turn_id AS "latestTurnId"
+        FROM projection_threads
+        WHERE thread_id = ${threadId}
+      `;
+      assert.deepEqual(runningPointer, [{ latestTurnId: newerTurnId }]);
+      const runningSession = yield* sql<{
+        readonly status: string;
+        readonly activeTurnId: string | null;
+      }>`
+        SELECT status, active_turn_id AS "activeTurnId"
+        FROM projection_thread_sessions
+        WHERE thread_id = ${threadId}
+      `;
+      assert.deepEqual(runningSession, [{ status: "running", activeTurnId: newerTurnId }]);
+
+      yield* appendAndProject({
+        type: "thread.session-set",
+        eventId: EventId.make("evt-explicit-outcome-5"),
+        aggregateKind: "thread",
+        aggregateId: threadId,
+        occurredAt: "2026-03-01T13:03:00.000Z",
+        commandId: CommandId.make("cmd-explicit-outcome-5"),
+        causationEventId: null,
+        correlationId: CorrelationId.make("cmd-explicit-outcome-5"),
+        metadata: {},
+        payload: {
+          threadId,
+          session: {
+            threadId,
+            status: "ready",
+            providerName: "codex",
+            runtimeMode: "full-access",
+            activeTurnId: null,
+            lastError: null,
+            updatedAt: "2026-03-01T13:03:00.000Z",
+          },
+        },
+      });
+
+      // Repeat the late checkpoint after the newer turn settles. The pointer
+      // must remain on the newer turn while the old turn keeps its metadata.
+      yield* appendOldCheckpoint("evt-explicit-outcome-6", "2026-03-01T13:04:00.000Z", 2);
+      const settledPointer = yield* sql<{ readonly latestTurnId: string | null }>`
+        SELECT latest_turn_id AS "latestTurnId"
+        FROM projection_threads
+        WHERE thread_id = ${threadId}
+      `;
+      assert.deepEqual(settledPointer, [{ latestTurnId: newerTurnId }]);
+      const settledSession = yield* sql<{ readonly status: string }>`
+        SELECT status
+        FROM projection_thread_sessions
+        WHERE thread_id = ${threadId}
+      `;
+      assert.deepEqual(settledSession, [{ status: "ready" }]);
+      const oldTurnRows = yield* sql<{
+        readonly state: string;
+        readonly checkpointTurnCount: number | null;
+      }>`
+        SELECT state, checkpoint_turn_count AS "checkpointTurnCount"
+        FROM projection_turns
+        WHERE thread_id = ${threadId} AND turn_id = ${staleTurnId}
+      `;
+      assert.deepEqual(oldTurnRows, [{ state: "interrupted", checkpointTurnCount: 2 }]);
+      const newerTurnRows = yield* sql<{ readonly state: string }>`
+        SELECT state
+        FROM projection_turns
+        WHERE thread_id = ${threadId} AND turn_id = ${newerTurnId}
+      `;
+      assert.deepEqual(newerTurnRows, [{ state: "completed" }]);
     }),
   );
 
@@ -2375,6 +2478,14 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
           { status: "ready", activeTurnId: null },
           { interruptedTurnId: turnId, latestTurnOutcome: "interrupted" },
         );
+        // A repeated terminal outcome must not rewrite the first settlement
+        // time.
+        yield* appendSessionSet(
+          "evt-terminal-precedence-repeat",
+          "2026-03-02T13:01:15.000Z",
+          { status: "ready", activeTurnId: null },
+          { interruptedTurnId: turnId, latestTurnOutcome: "interrupted" },
+        );
 
         yield* appendAndProject({
           type: "thread.message-sent",
@@ -2425,6 +2536,48 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
           activeTurnId: turnId,
         });
 
+        // The late running update for the settled turn cannot reopen the
+        // session that has left it.
+        const lateRunningSession = yield* sql<{
+          readonly status: string;
+          readonly activeTurnId: string | null;
+        }>`
+          SELECT status, active_turn_id AS "activeTurnId"
+          FROM projection_thread_sessions
+          WHERE thread_id = ${threadId}
+        `;
+        assert.deepEqual(lateRunningSession, [{ status: "ready", activeTurnId: null }]);
+
+        for (const streaming of [true, false]) {
+          yield* appendAndProject({
+            type: "thread.message-sent",
+            eventId: EventId.make(`evt-terminal-precedence-late-${streaming ? "stream" : "final"}`),
+            aggregateKind: "thread",
+            aggregateId: threadId,
+            occurredAt: streaming ? "2026-03-02T13:05:00.000Z" : "2026-03-02T13:06:00.000Z",
+            commandId: CommandId.make(
+              `cmd-terminal-precedence-late-${streaming ? "stream" : "final"}`,
+            ),
+            causationEventId: null,
+            correlationId: CorrelationId.make(
+              `cmd-terminal-precedence-late-${streaming ? "stream" : "final"}`,
+            ),
+            metadata: {},
+            payload: {
+              threadId,
+              messageId: MessageId.make(
+                `message-terminal-precedence-late-${streaming ? "stream" : "final"}`,
+              ),
+              role: "assistant",
+              text: streaming ? "late stream" : "late final",
+              turnId,
+              streaming,
+              createdAt: streaming ? "2026-03-02T13:05:00.000Z" : "2026-03-02T13:06:00.000Z",
+              updatedAt: streaming ? "2026-03-02T13:05:00.000Z" : "2026-03-02T13:06:00.000Z",
+            },
+          });
+        }
+
         const turnRows = yield* sql<{
           readonly state: string;
           readonly completedAt: string | null;
@@ -2433,14 +2586,35 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
           FROM projection_turns
           WHERE thread_id = ${threadId} AND turn_id = ${turnId}
         `;
-        assert.deepEqual(turnRows, [{ state: "interrupted", completedAt: authoritativeAt }]);
+        assert.deepEqual(turnRows, [{ state: "interrupted", completedAt: inferredAt }]);
 
-        const settlements = yield* sql<{ readonly count: number }>`
-          SELECT COUNT(*) AS count
+        const settlements = yield* sql<{
+          readonly completedAt: string | null;
+        }>`
+          SELECT completed_at AS "completedAt"
           FROM projection_turn_settlements
           WHERE thread_id = ${threadId} AND turn_id = ${turnId}
         `;
-        assert.deepEqual(settlements, [{ count: 1 }]);
+        assert.deepEqual(settlements, [{ completedAt: inferredAt }]);
+        assert.strictEqual(settlements[0]?.completedAt, turnRows[0]?.completedAt);
+
+        // Reload must project the same turn and settlement evidence.
+        yield* projectionPipeline.bootstrap;
+        const reloadedTurnRows = yield* sql<{
+          readonly state: string;
+          readonly completedAt: string | null;
+        }>`
+          SELECT state, completed_at AS "completedAt"
+          FROM projection_turns
+          WHERE thread_id = ${threadId} AND turn_id = ${turnId}
+        `;
+        assert.deepEqual(reloadedTurnRows, [{ state: "interrupted", completedAt: inferredAt }]);
+        const reloadedSettlements = yield* sql<{ readonly completedAt: string | null }>`
+          SELECT completed_at AS "completedAt"
+          FROM projection_turn_settlements
+          WHERE thread_id = ${threadId} AND turn_id = ${turnId}
+        `;
+        assert.deepEqual(reloadedSettlements, [{ completedAt: inferredAt }]);
       }),
   );
 
