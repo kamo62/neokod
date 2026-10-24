@@ -1,2 +1,5 @@
 # git autocrlf=true converts LF to CRLF on Windows, causing issues with oxfmt
 * text=auto eol=lf
+
+# Preserve reviewed evidence bytes and manifest hashes across platforms.
+docs/research/evidence/recon-2026-10-24/feature-audit/*.csv -text
