@@ -14,8 +14,6 @@ import {
   cleanSubagentProgressLabel,
   deriveSubagentTabs,
   formatSubagentUsage,
-  isDismissableEmptyWorker,
-  isFinishedWorker,
   resolveSelectedSubagent,
   resolveSubagentCard,
   subagentSecondaryLabel,
@@ -252,21 +250,8 @@ describe("resolveSubagentCard", () => {
   });
 });
 
-describe("isFinishedWorker", () => {
-  it("is true for completed, failed, stopped, and orphaned workers", () => {
-    expect(isFinishedWorker(makeCard({ taskId: "a", status: "completed" }))).toBe(true);
-    expect(isFinishedWorker(makeCard({ taskId: "a", status: "failed" }))).toBe(true);
-    expect(isFinishedWorker(makeCard({ taskId: "a", status: "stopped" }))).toBe(true);
-    expect(isFinishedWorker(makeCard({ taskId: "a", status: "orphaned" }))).toBe(true);
-  });
-
-  it("is false while in progress", () => {
-    expect(isFinishedWorker(makeCard({ taskId: "a", status: "inProgress" }))).toBe(false);
-  });
-});
-
 describe("visibleSubagentCards", () => {
-  it("keeps finished workers with content until they are hidden", () => {
+  it("keeps every real task card regardless of content or terminal status", () => {
     const cards = [
       makeCard({ taskId: "running", status: "inProgress" }),
       makeCard({ taskId: "done", status: "completed", summary: "ok" }),
@@ -275,42 +260,56 @@ describe("visibleSubagentCards", () => {
         status: "failed",
         progress: [{ at: "now", description: null, summary: "Done", lastToolName: null }],
       }),
-      makeCard({ taskId: "empty", status: "stopped" }),
-      makeCard({ taskId: "dismissed", status: "inProgress" }),
+      makeCard({ taskId: "stopped-empty", status: "stopped" }),
+      makeCard({ taskId: "orphaned-empty", status: "orphaned" }),
+      makeCard({
+        taskId: "usage-only",
+        status: "completed",
+        usage: { totalTokens: 0, totalNanoAiu: null },
+      }),
     ];
-    const visible = visibleSubagentCards(cards, new Set(["dismissed"]));
-    expect(visible.map((card) => card.taskId)).toEqual(["running", "done", "failed"]);
+    expect(visibleSubagentCards(cards, new Set()).map((card) => card.taskId)).toEqual([
+      "running",
+      "done",
+      "failed",
+      "stopped-empty",
+      "orphaned-empty",
+      "usage-only",
+    ]);
   });
 
-  it("keeps in-progress workers available for orphan projection after settlement", () => {
-    const cards = [makeCard({ taskId: "orphan", status: "inProgress" })];
-    expect(visibleSubagentCards(cards, new Set()).map((card) => card.taskId)).toEqual(["orphan"]);
-  });
-});
+  it("keeps a real completed task whose completion repeats its name", () => {
+    // Copilot starts a native worker and completes it with the agent display
+    // name as the summary. With no progress events that summary is deduped to
+    // null, but the task itself is real evidence and must stay visible.
+    const copilotTask = makeCard({
+      taskId: "call_copilot_task",
+      name: "Task Agent",
+      model: "mai-code-1.1-flash",
+      kind: "task",
+      agentId: "call_copilot_task",
+      status: "completed",
+      completedAt: "2026-07-04T00:00:02.000Z",
+      usage: { totalTokens: 0, totalNanoAiu: null },
+    });
 
-describe("isDismissableEmptyWorker", () => {
-  it("is true only for finished workers with no progress or summary", () => {
-    expect(isDismissableEmptyWorker(makeCard({ taskId: "a", status: "completed" }))).toBe(true);
+    expect(visibleSubagentCards([copilotTask], new Set()).map((card) => card.taskId)).toEqual([
+      "call_copilot_task",
+    ]);
+  });
+
+  it("removes only explicitly dismissed cards", () => {
+    const cards = [
+      makeCard({ taskId: "running", status: "inProgress" }),
+      makeCard({ taskId: "dismissed-empty", status: "stopped" }),
+      makeCard({ taskId: "dismissed-completed", status: "completed", summary: "ok" }),
+    ];
+
     expect(
-      isDismissableEmptyWorker(makeCard({ taskId: "a", status: "failed", summary: "Boom" })),
-    ).toBe(false);
-    expect(
-      isDismissableEmptyWorker(
-        makeCard({
-          taskId: "a",
-          status: "stopped",
-          progress: [
-            {
-              at: "now",
-              description: null,
-              summary: "Stopped",
-              lastToolName: null,
-            },
-          ],
-        }),
+      visibleSubagentCards(cards, new Set(["dismissed-empty", "dismissed-completed"])).map(
+        (card) => card.taskId,
       ),
-    ).toBe(false);
-    expect(isDismissableEmptyWorker(makeCard({ taskId: "a", status: "inProgress" }))).toBe(false);
+    ).toEqual(["running"]);
   });
 });
 

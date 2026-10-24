@@ -15,9 +15,13 @@ import {
 import {
   activeTurnIdAfterStart,
   buildTurnStartParams,
+  type CodexServerNotification,
   hasConfiguredMcpServer,
   isRecoverableThreadResumeError,
   openCodexThread,
+  rememberChildThreadTurns,
+  shouldApplyParentTurnCompletion,
+  shouldSuppressChildConversationNotification,
 } from "./CodexSessionRuntime.ts";
 const isCodexAppServerRequestError = Schema.is(CodexErrors.CodexAppServerRequestError);
 
@@ -45,6 +49,161 @@ describe("activeTurnIdAfterStart", () => {
 
     NodeAssert.equal(activeTurnIdAfterStart(active, queued), active);
     NodeAssert.equal(activeTurnIdAfterStart(undefined, queued), queued);
+  });
+});
+
+function subAgentActivityNotification(input: {
+  readonly method: "item/started" | "item/completed";
+  readonly kind: "started" | "interacted" | "interrupted";
+}): CodexServerNotification {
+  const item = {
+    agentPath: "/root/fixture_child_a",
+    agentThreadId: "child-thread-fixture-a",
+    id: "call_fixture_a",
+    kind: input.kind,
+    type: "subAgentActivity",
+  } as const;
+  return input.method === "item/started"
+    ? {
+        method: "item/started",
+        params: {
+          item,
+          startedAtMs: 1_778_000_000_000,
+          threadId: "parent-thread",
+          turnId: "parent-turn",
+        },
+      }
+    : {
+        method: "item/completed",
+        params: {
+          completedAtMs: 1_778_000_000_000,
+          item,
+          threadId: "parent-thread",
+          turnId: "parent-turn",
+        },
+      };
+}
+
+describe("rememberChildThreadTurns", () => {
+  it("retains the child thread of a new-shape subAgentActivity start", () => {
+    const childThreadTurns = new Map<string, TurnId>();
+
+    rememberChildThreadTurns(
+      childThreadTurns,
+      subAgentActivityNotification({ method: "item/started", kind: "started" }),
+      TurnId.make("parent-turn"),
+    );
+
+    NodeAssert.deepStrictEqual(
+      [...childThreadTurns],
+      [["child-thread-fixture-a", TurnId.make("parent-turn")]],
+    );
+  });
+
+  it("retains every receiver of the older collabAgentToolCall shape", () => {
+    const childThreadTurns = new Map<string, TurnId>();
+    const notification: CodexServerNotification = {
+      method: "item/started",
+      params: {
+        item: {
+          agentsStates: {},
+          id: "call_collab_fixture",
+          receiverThreadIds: ["old-child-a", "old-child-b"],
+          senderThreadId: "parent-thread",
+          status: "inProgress",
+          tool: "spawnAgent",
+          type: "collabAgentToolCall",
+        },
+        startedAtMs: 1_778_000_000_000,
+        threadId: "parent-thread",
+        turnId: "parent-turn",
+      },
+    };
+
+    rememberChildThreadTurns(childThreadTurns, notification, TurnId.make("parent-turn"));
+
+    NodeAssert.deepStrictEqual(
+      [...childThreadTurns],
+      [
+        ["old-child-a", TurnId.make("parent-turn")],
+        ["old-child-b", TurnId.make("parent-turn")],
+      ],
+    );
+  });
+
+  it("does not invent child identity from a non-start subAgentActivity", () => {
+    const childThreadTurns = new Map<string, TurnId>();
+
+    rememberChildThreadTurns(
+      childThreadTurns,
+      subAgentActivityNotification({ method: "item/completed", kind: "interacted" }),
+      TurnId.make("parent-turn"),
+    );
+    rememberChildThreadTurns(
+      childThreadTurns,
+      subAgentActivityNotification({ method: "item/started", kind: "started" }),
+      undefined,
+    );
+
+    NodeAssert.deepStrictEqual([...childThreadTurns], []);
+  });
+});
+
+describe("shouldSuppressChildConversationNotification", () => {
+  it("forwards a child terminal so the adapter can close its task", () => {
+    NodeAssert.equal(shouldSuppressChildConversationNotification("turn/completed"), false);
+    NodeAssert.equal(shouldSuppressChildConversationNotification("item/completed"), false);
+  });
+
+  it("still suppresses child lifecycle and thread-level notifications", () => {
+    NodeAssert.equal(shouldSuppressChildConversationNotification("turn/started"), true);
+    NodeAssert.equal(shouldSuppressChildConversationNotification("thread/status/changed"), true);
+    NodeAssert.equal(shouldSuppressChildConversationNotification("thread/started"), true);
+  });
+});
+
+describe("shouldApplyParentTurnCompletion", () => {
+  const childThreadTurns = new Map([["child-thread-fixture-a", TurnId.make("parent-turn")]]);
+
+  it("rejects a registered child completion before the parent thread id is known", () => {
+    NodeAssert.equal(
+      shouldApplyParentTurnCompletion({
+        providerThreadId: undefined,
+        completedThreadId: "child-thread-fixture-a",
+        childThreadTurns,
+      }),
+      false,
+    );
+  });
+
+  it("rejects a child or unrelated thread completion when the parent is known", () => {
+    NodeAssert.equal(
+      shouldApplyParentTurnCompletion({
+        providerThreadId: "parent-thread",
+        completedThreadId: "child-thread-fixture-a",
+        childThreadTurns,
+      }),
+      false,
+    );
+    NodeAssert.equal(
+      shouldApplyParentTurnCompletion({
+        providerThreadId: "parent-thread",
+        completedThreadId: "unrelated-thread",
+        childThreadTurns: new Map(),
+      }),
+      false,
+    );
+  });
+
+  it("accepts only the exact parent thread completion", () => {
+    NodeAssert.equal(
+      shouldApplyParentTurnCompletion({
+        providerThreadId: "parent-thread",
+        completedThreadId: "parent-thread",
+        childThreadTurns: new Map(),
+      }),
+      true,
+    );
   });
 });
 

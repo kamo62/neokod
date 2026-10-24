@@ -101,19 +101,14 @@ export function resolveSelectedSubagent<T extends { readonly taskId: string }>(
   return cards.find((card) => card.taskId === selectedTaskId) ?? null;
 }
 
-export function isFinishedWorker(card: SubagentCard): boolean {
-  return card.status !== "inProgress";
-}
-
-export function isDismissableEmptyWorker(card: SubagentCard): boolean {
-  return isFinishedWorker(card) && card.progress.length === 0 && card.summary === null;
-}
-
 export function visibleSubagentCards(
   cards: readonly SubagentCard[],
   dismissed: ReadonlySet<string>,
 ): SubagentCard[] {
-  return cards.filter((card) => !dismissed.has(card.taskId) && !isDismissableEmptyWorker(card));
+  // Every card here comes from provider `task.started` evidence, so an empty
+  // body, a terminal status, or zero usage never justifies automatic hiding.
+  // Only an explicit user dismissal removes a real task card.
+  return cards.filter((card) => !dismissed.has(card.taskId));
 }
 
 function elapsedTo(card: SubagentCard, endIso: string): string | null {
