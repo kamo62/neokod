@@ -662,8 +662,10 @@ const collectOutput = Effect.fnUntraced(function* (
 
     const decoded = decoder.decode(chunkToDecode, { stream: !truncated });
     text += decoded;
-    lineBuffer += decoded;
-    yield* emitCompleteLines(false);
+    if (onLine) {
+      lineBuffer += decoded;
+      yield* emitCompleteLines(false);
+    }
   });
 
   yield* Stream.runForEach(stream, processChunk).pipe(
@@ -679,8 +681,10 @@ const collectOutput = Effect.fnUntraced(function* (
 
   const remainder = truncated ? "" : decoder.decode();
   text += remainder;
-  lineBuffer += remainder;
-  yield* emitCompleteLines(true);
+  if (onLine) {
+    lineBuffer += remainder;
+    yield* emitCompleteLines(true);
+  }
   return {
     text,
     truncated,
