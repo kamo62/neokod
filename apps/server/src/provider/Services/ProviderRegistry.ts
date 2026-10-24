@@ -14,6 +14,7 @@ import type {
 } from "@neokod/contracts";
 import * as Context from "effect/Context";
 import type * as Effect from "effect/Effect";
+import type * as Scope from "effect/Scope";
 import type * as Stream from "effect/Stream";
 import type { ProviderMaintenanceCapabilities } from "../providerMaintenance.ts";
 
@@ -72,8 +73,25 @@ export interface ProviderRegistryShape {
   /**
    * Stream of provider snapshot updates — one emission per aggregated
    * change. The array contains the full current state.
+   *
+   * `Stream.fromPubSub` defers `PubSub.subscribe` until the stream starts, so
+   * consumers that fork a consumer loop can miss a publish in the scheduling
+   * gap. Use `subscribeChanges` instead when the subscription must exist before
+   * refresh or snapshot work begins.
    */
   readonly streamChanges: Stream.Stream<ReadonlyArray<ServerProvider>>;
+
+  /**
+   * Acquire the aggregated change subscription synchronously in the caller's
+   * fiber, before returning a stream backed by that subscription. The
+   * subscription is released when the caller's scope closes, so every publish
+   * after this effect resolves is retained for the returned stream.
+   */
+  readonly subscribeChanges: Effect.Effect<
+    Stream.Stream<ReadonlyArray<ServerProvider>>,
+    never,
+    Scope.Scope
+  >;
 }
 
 export class ProviderRegistry extends Context.Service<ProviderRegistry, ProviderRegistryShape>()(

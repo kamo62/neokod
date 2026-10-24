@@ -488,6 +488,7 @@ it.layer(NodeServices.layer)("AnalyticsService test", (it) => {
         updateSettings: () => Effect.fail(settingsError),
         updateSettingsMutation: () => Effect.fail(settingsError),
         streamChanges: Stream.empty,
+        subscribeChanges: Effect.succeed(Stream.empty),
       } satisfies ServerSettings.ServerSettingsService["Service"]);
       const runtimeLayer = AnalyticsService.layer.pipe(
         Layer.provideMerge(
@@ -533,6 +534,7 @@ it.layer(NodeServices.layer)("AnalyticsService test", (it) => {
             settings: initialSettings,
           }),
         streamChanges: Stream.fromPubSub(changes),
+        subscribeChanges: Effect.succeed(Stream.empty),
       } satisfies ServerSettings.ServerSettingsService["Service"]);
       const deliveredEvents: Array<string> = [];
       const client = HttpClient.make((request) => {

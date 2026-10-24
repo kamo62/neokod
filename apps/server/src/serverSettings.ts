@@ -224,6 +224,14 @@ export class ServerSettingsService extends Context.Service<
 
     /** Stream of settings change events. */
     readonly streamChanges: Stream.Stream<ServerSettings>;
+
+    /**
+     * Acquire the settings change subscription synchronously in the caller's
+     * fiber, before returning a stream backed by that subscription. The
+     * subscription is released when the caller's scope closes. Values use the
+     * same secret materialisation pipeline as `streamChanges`.
+     */
+    readonly subscribeChanges: Effect.Effect<Stream.Stream<ServerSettings>, never, Scope.Scope>;
   }
 >()("neokod/serverSettings/ServerSettingsService") {
   /** @deprecated Import and use `layerTest` from this module. */
@@ -275,6 +283,7 @@ const makeTest = (overrides: DeepPartial<ServerSettings> = {}) =>
           })),
         ),
       streamChanges: Stream.empty,
+      subscribeChanges: Effect.succeed(Stream.empty),
     } satisfies ServerSettingsService["Service"];
   });
 
@@ -1073,6 +1082,22 @@ const make = Effect.gen(function* () {
       return resolveTextGenerationProvider(materialized);
     });
 
+  const materializeSettingsChange = (settings: ServerSettings): Effect.Effect<ServerSettings> =>
+    materializeProviderEnvironmentSecrets(settings).pipe(
+      Effect.flatMap(materializeManagedClientEvidenceCredential),
+      Effect.flatMap(materializeManagedClientEvidenceSecretFields),
+      Effect.flatMap(materializeTrackerCredentials),
+      Effect.catch((error: ServerSettingsError) =>
+        Effect.logWarning("failed to materialize provider environment secrets", {
+          operation: error.operation,
+          providerInstanceId: error.providerInstanceId,
+          environmentVariable: error.environmentVariable,
+          cause: error.cause,
+        }).pipe(Effect.as(settings)),
+      ),
+      Effect.map(resolveTextGenerationProvider),
+    );
+
   return {
     start,
     ready: Deferred.await(startedDeferred),
@@ -1095,23 +1120,13 @@ const make = Effect.gen(function* () {
         ),
       ),
     get streamChanges() {
-      return Stream.fromPubSub(changesPubSub).pipe(
-        Stream.mapEffect((settings) =>
-          materializeProviderEnvironmentSecrets(settings).pipe(
-            Effect.flatMap(materializeManagedClientEvidenceCredential),
-            Effect.flatMap(materializeManagedClientEvidenceSecretFields),
-            Effect.flatMap(materializeTrackerCredentials),
-            Effect.catch((error: ServerSettingsError) =>
-              Effect.logWarning("failed to materialize provider environment secrets", {
-                operation: error.operation,
-                providerInstanceId: error.providerInstanceId,
-                environmentVariable: error.environmentVariable,
-                cause: error.cause,
-              }).pipe(Effect.as(settings)),
-            ),
-          ),
+      return Stream.fromPubSub(changesPubSub).pipe(Stream.mapEffect(materializeSettingsChange));
+    },
+    get subscribeChanges() {
+      return PubSub.subscribe(changesPubSub).pipe(
+        Effect.map((subscription) =>
+          Stream.fromSubscription(subscription).pipe(Stream.mapEffect(materializeSettingsChange)),
         ),
-        Stream.map(resolveTextGenerationProvider),
       );
     },
   } satisfies ServerSettingsService["Service"];
