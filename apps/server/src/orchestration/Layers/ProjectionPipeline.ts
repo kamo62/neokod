@@ -17,6 +17,7 @@ import {
   resolveExplicitSettledTurnState,
   resolveSettledTurnStateForSessionStatus,
   shouldApplySessionUpdate,
+  shouldReplaceLatestTurnPointer,
 } from "@neokod/shared/orchestrationTurnOutcome";
 
 import { toPersistenceSqlError, type ProjectionRepositoryError } from "../../persistence/Errors.ts";
@@ -813,7 +814,12 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
           }
           yield* projectionThreadRepository.upsert({
             ...existingRow.value,
-            latestTurnId: event.payload.turnId,
+            latestTurnId: shouldReplaceLatestTurnPointer({
+              turnId: event.payload.turnId,
+              currentLatestTurnId: existingRow.value.latestTurnId,
+            })
+              ? event.payload.turnId
+              : existingRow.value.latestTurnId,
             updatedAt: event.occurredAt,
           });
           yield* refreshThreadShellSummary(event.payload.threadId);
@@ -1054,11 +1060,22 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
       const currentSession = yield* projectionThreadSessionRepository.getByThreadId({
         threadId: event.payload.threadId,
       });
+      const incomingActiveTurnId = event.payload.session.activeTurnId;
+      const currentTurn =
+        incomingActiveTurnId === null
+          ? Option.none()
+          : yield* projectionTurnRepository.getByTurnId({
+              threadId: event.payload.threadId,
+              turnId: incomingActiveTurnId,
+            });
       const appliesSession = shouldApplySessionUpdate({
         currentSession: Option.isSome(currentSession) ? currentSession.value : null,
         incomingSession: event.payload.session,
         outcome: event.payload.latestTurnOutcome,
         targetTurnId: event.payload.interruptedTurnId,
+        currentTurn: Option.isSome(currentTurn)
+          ? { turnId: currentTurn.value.turnId, state: currentTurn.value.state }
+          : null,
       });
       if (!appliesSession) {
         return;
@@ -1170,19 +1187,25 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
                 if (settledTurnState === null) {
                   return Effect.void;
                 }
+                // An already settled turn keeps the completion its settlement
+                // published. Only the first running -> terminal transition
+                // installs the authoritative session time.
+                const turnCompletedAt = isTerminalTurnState(turn.state)
+                  ? turn.completedAt
+                  : settledCompletedAt;
                 return projectionTurnRepository
                   .upsertByTurnId({
                     ...turn,
                     turnId: turn.turnId,
                     state: settledTurnState,
-                    completedAt: settledCompletedAt,
+                    completedAt: turnCompletedAt,
                   })
                   .pipe(
                     Effect.andThen(
                       projectionTurnSettlementRepository.recordSettlement({
                         threadId: turn.threadId,
                         turnId: turn.turnId,
-                        completedAt: settledCompletedAt,
+                        completedAt: turnCompletedAt,
                       }),
                     ),
                   );

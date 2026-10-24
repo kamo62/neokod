@@ -16,6 +16,7 @@ import {
   isTerminalTurnState,
   resolveSettledTurnState,
   shouldApplySessionUpdate,
+  shouldReplaceLatestTurnPointer,
 } from "@neokod/shared/orchestrationTurnOutcome";
 
 export type ThreadDetailReducerResult =
@@ -239,30 +240,38 @@ export function applyThreadDetailEvent(
       // authoritative turn timing with the message's own last update.
       const existingSettled =
         sameTurn && existingLatestTurn !== null && existingLatestTurn.state !== "running";
+      // A confirmed terminal turn keeps its outcome and closure time while the
+      // session no longer runs it. A provisional interrupt with the session
+      // still running remains resumable by streaming output.
+      const preserveSettledTerminal = existingSettled && !turnStillRunning;
       const latestTurn: OrchestrationThread["latestTurn"] =
         event.payload.role === "assistant" &&
         event.payload.turnId !== null &&
         (existingLatestTurn === null || sameTurn)
           ? {
               turnId: event.payload.turnId,
-              state: settlesTurn
-                ? existingLatestTurn?.state === "interrupted"
-                  ? "interrupted"
-                  : existingLatestTurn?.state === "error"
-                    ? "error"
-                    : "completed"
-                : "running",
+              state: preserveSettledTerminal
+                ? existingLatestTurn.state
+                : settlesTurn
+                  ? existingLatestTurn?.state === "interrupted"
+                    ? "interrupted"
+                    : existingLatestTurn?.state === "error"
+                      ? "error"
+                      : "completed"
+                  : "running",
               requestedAt: sameTurn ? existingLatestTurn.requestedAt : event.payload.createdAt,
               startedAt: sameTurn
                 ? (existingLatestTurn.startedAt ?? event.payload.createdAt)
                 : event.payload.createdAt,
-              completedAt: settlesTurn
-                ? existingSettled
-                  ? (existingLatestTurn.completedAt ?? null)
-                  : event.payload.updatedAt
-                : sameTurn
-                  ? (existingLatestTurn.completedAt ?? null)
-                  : null,
+              completedAt: preserveSettledTerminal
+                ? (existingLatestTurn.completedAt ?? null)
+                : settlesTurn
+                  ? existingSettled
+                    ? (existingLatestTurn.completedAt ?? null)
+                    : event.payload.updatedAt
+                  : sameTurn
+                    ? (existingLatestTurn.completedAt ?? null)
+                    : null,
               assistantMessageId: event.payload.messageId,
             }
           : existingLatestTurn;
@@ -297,18 +306,29 @@ export function applyThreadDetailEvent(
       const incomingSession = event.payload.session;
       const outcome = event.payload.latestTurnOutcome;
       const targetTurnId = event.payload.interruptedTurnId;
+      const currentLatestTurn = thread.latestTurn;
       const appliesSession = shouldApplySessionUpdate({
         currentSession: thread.session,
         incomingSession,
         outcome,
         targetTurnId,
+        currentTurn:
+          currentLatestTurn === null
+            ? null
+            : { turnId: currentLatestTurn.turnId, state: currentLatestTurn.state },
       });
       const nextSession = appliesSession ? incomingSession : thread.session;
       const runningTurnId =
         appliesSession && incomingSession.status === "running"
           ? incomingSession.activeTurnId
           : null;
-      const currentLatestTurn = thread.latestTurn;
+      // A Stop request marks the turn interrupted while the session still runs
+      // it. That state is provisional until an authoritative session update
+      // arrives, so explicit outcomes must be evaluated against a running turn.
+      const currentLatestIsProvisional =
+        currentLatestTurn !== null &&
+        currentLatestTurn.state === "interrupted" &&
+        sessionRunsTurn(thread.session, currentLatestTurn.turnId);
       const settledTurnState = resolveSettledTurnState({
         sessionStatus: incomingSession.status,
         outcome,
@@ -316,11 +336,15 @@ export function applyThreadDetailEvent(
         turn:
           currentLatestTurn === null
             ? null
-            : { turnId: currentLatestTurn.turnId, state: currentLatestTurn.state },
+            : {
+                turnId: currentLatestTurn.turnId,
+                state: currentLatestIsProvisional ? "running" : currentLatestTurn.state,
+              },
       });
       const preserveTerminalRunningTurn =
         runningTurnId !== null &&
         currentLatestTurn?.turnId === runningTurnId &&
+        !currentLatestIsProvisional &&
         isTerminalTurnState(currentLatestTurn.state);
       const settlesLatestTurn =
         currentLatestTurn !== null &&
@@ -351,15 +375,15 @@ export function applyThreadDetailEvent(
             ? {
                 ...currentLatestTurn,
                 state: settledTurnState,
-                // A running turn's completedAt can only hold a mid-turn
-                // placeholder checkpoint timestamp. Recovery can freeze it at
-                // the last observation instead of the event time. An explicit
-                // null means no observation exists; only an omitted field
-                // keeps the legacy session-time default.
+                // An already settled turn keeps the completion its settlement
+                // published. A provisional Stop was not settled, so its first
+                // authoritative terminal transition uses the session time.
                 completedAt:
-                  event.payload.latestTurnCompletedAt === undefined
-                    ? incomingSession.updatedAt
-                    : event.payload.latestTurnCompletedAt,
+                  isTerminalTurnState(currentLatestTurn.state) && !currentLatestIsProvisional
+                    ? currentLatestTurn.completedAt
+                    : event.payload.latestTurnCompletedAt === undefined
+                      ? incomingSession.updatedAt
+                      : event.payload.latestTurnCompletedAt,
               }
             : currentLatestTurn;
 
@@ -456,7 +480,10 @@ export function applyThreadDetailEvent(
         existingLatestTurn !== null && existingLatestTurn.state !== "running";
       const settlesTurn =
         !diffTurnStillRunning &&
-        (existingLatestTurn === null || existingLatestTurn.turnId === event.payload.turnId);
+        shouldReplaceLatestTurnPointer({
+          turnId: event.payload.turnId,
+          currentLatestTurnId: existingLatestTurn?.turnId ?? null,
+        });
       const latestTurn = settlesTurn
         ? {
             turnId: event.payload.turnId,
