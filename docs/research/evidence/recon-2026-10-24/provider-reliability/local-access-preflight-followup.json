@@ -1,0 +1,8 @@
+{
+  "checkedAt": "2026-10-24T15:52:21.328Z",
+  "kind": "actual HTTP preflight observation; not browser execution",
+  "status": 204,
+  "allowOrigin": null,
+  "allowHeaders": "authorization,b3,traceparent,content-type",
+  "allowCredentials": "true"
+}

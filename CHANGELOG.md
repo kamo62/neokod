@@ -7,6 +7,7 @@ Release impact: Minor because this adds structured Symphony feedback, accepted g
 - Freeze accepted guidance and provenance per attempt, intersect later policy without widening permission, and refuse unsupported executor pins, changed targets and publication gates without durable approval authority.
 - Consolidate Symphony monitoring into Work with lifecycle and overlapping attention filters, secondary History and on-demand detail. Incomplete, stale and disconnected evidence remains unknown.
 
+- Preserve the saved auxiliary text-generation provider and model, verify exact-instance catalogue evidence before dispatch, and show safe durable auxiliary failures without failing the main chat.
 - Acquire provider-status subscriptions before sending the initial configuration snapshot, so a ready transition cannot disappear during discovery. Preserve wrapped OpenCode SDK authentication status.
 - Keep native subagent cards visible when they have no progress text, and route schema-backed Codex child events without settling the parent conversation.
 - Accept the observed Codex 0.163 completed subagent activity in resumed history while retaining strict rejection of unknown activity kinds.

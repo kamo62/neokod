@@ -1,0 +1,45 @@
+{
+  "checkedAt": "2026-10-24T16:06:37.776Z",
+  "kind": "real authenticated network provider/auxiliary selection and persisted results, not Chrome or Symphony proof",
+  "checks": [
+    {
+      "name": "listed auxiliary, distinct primary provider",
+      "threadId": "1f5ca551-29a5-4a2f-9395-9b48f2f0046e",
+      "primarySelection": {
+        "instanceId": "claudeAgent",
+        "model": "haiku"
+      },
+      "auxiliarySelection": {
+        "instanceId": "githubCopilot",
+        "model": "auto"
+      },
+      "primaryOutcome": "completed",
+      "primaryExactReply": true,
+      "auxiliaryObserved": false,
+      "safeActivity": true,
+      "auxiliaryFailureCount": 1,
+      "titleChanged": false,
+      "passed": false
+    },
+    {
+      "name": "unlisted auxiliary, primary still succeeds",
+      "threadId": "f1bc5031-b40f-4c7a-9548-d3aa550b4c82",
+      "primarySelection": {
+        "instanceId": "githubCopilot",
+        "model": "auto"
+      },
+      "auxiliarySelection": {
+        "instanceId": "codex",
+        "model": "neokod-unlisted-test-model-1024"
+      },
+      "primaryOutcome": "completed",
+      "primaryExactReply": true,
+      "auxiliaryObserved": true,
+      "safeActivity": true,
+      "auxiliaryFailureCount": 1,
+      "titleChanged": false,
+      "passed": true
+    }
+  ],
+  "originalSelectionRestoration": "restored with revision acknowledgement"
+}

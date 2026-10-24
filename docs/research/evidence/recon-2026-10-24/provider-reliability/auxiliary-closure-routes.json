@@ -1,0 +1,52 @@
+{
+  "source": "fe55c42a746b8aae89ed309b934e2a1c7bb33d1d",
+  "routes": [
+    {
+      "agentInfo": {
+        "name": "OpenCode",
+        "version": "2.0.32"
+      },
+      "sessionId": "ses_e9164e213ffeJVzNRP74GxW8aV",
+      "requestedModel": "deepseek/deepseek-flash",
+      "selected": [
+        {
+          "id": "model",
+          "value": "deepseek/deepseek-flash",
+          "label": "deepseek/DeepSeek V4.1 Flash 1017"
+        },
+        {
+          "id": "effort",
+          "value": "default",
+          "label": "Default"
+        }
+      ]
+    },
+    {
+      "agentInfo": {
+        "name": "OpenCode",
+        "version": "2.0.32"
+      },
+      "sessionId": "ses_e9159d8c3ffeoiaMjlaVcR7uI4",
+      "requestedModel": "github-copilot/gpt-6.1-sol",
+      "selected": [
+        {
+          "id": "model",
+          "value": "github-copilot/gpt-6.1-sol",
+          "label": "github-copilot/GPT-6.1 Sol"
+        },
+        {
+          "id": "effort",
+          "value": "high",
+          "label": "High"
+        }
+      ]
+    }
+  ],
+  "opus": {
+    "actualModels": ["claude-opus-5-5"],
+    "requestedEffort": "high",
+    "route": "onboard first-party Claude CLI",
+    "verdict": "ACCEPT"
+  },
+  "substitution": null
+}

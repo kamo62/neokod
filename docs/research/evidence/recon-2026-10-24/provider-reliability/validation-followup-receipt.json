@@ -1,0 +1,35 @@
+{
+  "source": "032a7ceab78f918e8982f49e9e28f3ad6424a534",
+  "applicationSourceUnchangedSince": "c8fef250e3b2ff6d4d8055d3ae9913d1b1ccba37",
+  "checks": {
+    "command": "vp test run apps/server/src/workspace/WorkspaceFileSystem.test.ts apps/server/src/transport/LocalTransportAuth.test.ts apps/server/src/transport/WslBearerAuth.test.ts",
+    "node": "24.22.1",
+    "testFilesPassed": 3,
+    "testsPassed": 68,
+    "exitCode": 0,
+    "log": "core-file-access-followup.log",
+    "proof": "existing source tests, not live browser or owner-host acceptance"
+  },
+  "referenceApp": {
+    "path": "/Applications/T3 Code (Nightly).app",
+    "versionSource": "Contents/Info.plist:CFBundleShortVersionString",
+    "version": "0.1.3-nightly.20261024.3617",
+    "launchAttemptExitCode": 0,
+    "observedPid": 91883,
+    "computerUseReads": [
+      {
+        "outcome": "execution timeout, kernel reset"
+      },
+      {
+        "outcome": "Computer Use server timeoutReached"
+      }
+    ],
+    "usableWindowObserved": false,
+    "timeoutCause": "unknown",
+    "visualFeatureComparison": false
+  },
+  "providerSnapshot": "provider-followup-read.json",
+  "newProviderTurn": false,
+  "chromeObservation": "not retained as a new evidence artifact; not used to claim a new acceptance gate",
+  "buildsInstallsPackagingDeploymentPlaywright": false
+}

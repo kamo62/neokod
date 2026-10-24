@@ -1,0 +1,104 @@
+{
+  "checkedAt": "2026-10-24T15:43:32.578Z",
+  "kind": "authenticated config snapshot, no provider refresh or new turn",
+  "providers": [
+    {
+      "instanceId": "claudeAgent",
+      "driver": "claudeAgent",
+      "enabled": true,
+      "installed": true,
+      "version": "2.1.310",
+      "status": "ready",
+      "auth": {
+        "status": "authenticated"
+      },
+      "checkedAt": "2026-10-24T15:40:39.410Z",
+      "models": 13,
+      "limit": null
+    },
+    {
+      "instanceId": "codex",
+      "driver": "codex",
+      "enabled": true,
+      "installed": true,
+      "version": "0.163.0",
+      "status": "ready",
+      "auth": {
+        "status": "authenticated"
+      },
+      "checkedAt": "2026-10-24T15:40:39.818Z",
+      "models": 8,
+      "limit": null
+    },
+    {
+      "instanceId": "cursor",
+      "driver": "cursor",
+      "enabled": false,
+      "installed": false,
+      "version": null,
+      "status": "disabled",
+      "auth": {
+        "status": "unknown"
+      },
+      "checkedAt": "2026-10-24T15:40:38.236Z",
+      "models": 0,
+      "limit": null
+    },
+    {
+      "instanceId": "githubCopilot",
+      "driver": "githubCopilot",
+      "enabled": true,
+      "installed": true,
+      "version": "1.0.78",
+      "status": "ready",
+      "auth": {
+        "status": "authenticated"
+      },
+      "checkedAt": "2026-10-24T15:40:38.539Z",
+      "models": 1,
+      "limit": null
+    },
+    {
+      "instanceId": "grok",
+      "driver": "grok",
+      "enabled": false,
+      "installed": false,
+      "version": null,
+      "status": "disabled",
+      "auth": {
+        "status": "unknown"
+      },
+      "checkedAt": "2026-10-24T15:40:38.242Z",
+      "models": 1,
+      "limit": null
+    },
+    {
+      "instanceId": "kiro",
+      "driver": "kiro",
+      "enabled": false,
+      "installed": false,
+      "version": null,
+      "status": "disabled",
+      "auth": {
+        "status": "unknown"
+      },
+      "checkedAt": "2026-10-24T15:40:38.244Z",
+      "models": 1,
+      "limit": null
+    },
+    {
+      "instanceId": "opencode",
+      "driver": "opencode",
+      "enabled": true,
+      "installed": true,
+      "version": "2.0.32",
+      "status": "error",
+      "auth": {
+        "status": "unknown"
+      },
+      "checkedAt": "2026-10-24T15:40:38.452Z",
+      "models": 0,
+      "limit": null
+    }
+  ]
+}
