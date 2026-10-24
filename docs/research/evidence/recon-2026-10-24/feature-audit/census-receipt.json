@@ -1,0 +1,165 @@
+{
+  "windowStartInclusive": "2026-09-24T00:00:00Z",
+  "windowEndCollectedAt": "2026-10-24T09:53:03.540450+00:00",
+  "dailyCounts": [
+    {
+      "date": "2026-09-24",
+      "reported": 73,
+      "captured": 73
+    },
+    {
+      "date": "2026-09-25",
+      "reported": 81,
+      "captured": 81
+    },
+    {
+      "date": "2026-09-26",
+      "reported": 99,
+      "captured": 99
+    },
+    {
+      "date": "2026-09-27",
+      "reported": 24,
+      "captured": 24
+    },
+    {
+      "date": "2026-09-28",
+      "reported": 30,
+      "captured": 30
+    },
+    {
+      "date": "2026-09-29",
+      "reported": 22,
+      "captured": 22
+    },
+    {
+      "date": "2026-09-30",
+      "reported": 134,
+      "captured": 134
+    },
+    {
+      "date": "2026-10-01",
+      "reported": 122,
+      "captured": 122
+    },
+    {
+      "date": "2026-10-02",
+      "reported": 93,
+      "captured": 93
+    },
+    {
+      "date": "2026-10-03",
+      "reported": 76,
+      "captured": 76
+    },
+    {
+      "date": "2026-10-04",
+      "reported": 75,
+      "captured": 75
+    },
+    {
+      "date": "2026-10-05",
+      "reported": 94,
+      "captured": 94
+    },
+    {
+      "date": "2026-10-06",
+      "reported": 120,
+      "captured": 120
+    },
+    {
+      "date": "2026-10-07",
+      "reported": 71,
+      "captured": 71
+    },
+    {
+      "date": "2026-10-08",
+      "reported": 114,
+      "captured": 114
+    },
+    {
+      "date": "2026-10-09",
+      "reported": 82,
+      "captured": 82
+    },
+    {
+      "date": "2026-10-10",
+      "reported": 135,
+      "captured": 135
+    },
+    {
+      "date": "2026-10-11",
+      "reported": 184,
+      "captured": 184
+    },
+    {
+      "date": "2026-10-12",
+      "reported": 83,
+      "captured": 83
+    },
+    {
+      "date": "2026-10-13",
+      "reported": 59,
+      "captured": 59
+    },
+    {
+      "date": "2026-10-14",
+      "reported": 139,
+      "captured": 139
+    },
+    {
+      "date": "2026-10-15",
+      "reported": 98,
+      "captured": 98
+    },
+    {
+      "date": "2026-10-16",
+      "reported": 66,
+      "captured": 66
+    },
+    {
+      "date": "2026-10-17",
+      "reported": 408,
+      "captured": 408
+    },
+    {
+      "date": "2026-10-18",
+      "reported": 315,
+      "captured": 315
+    },
+    {
+      "date": "2026-10-19",
+      "reported": 278,
+      "captured": 278
+    },
+    {
+      "date": "2026-10-20",
+      "reported": 456,
+      "captured": 456
+    },
+    {
+      "date": "2026-10-21",
+      "reported": 219,
+      "captured": 219
+    },
+    {
+      "date": "2026-10-22",
+      "reported": 80,
+      "captured": 80
+    },
+    {
+      "date": "2026-10-23",
+      "reported": 67,
+      "captured": 67
+    },
+    {
+      "date": "2026-10-24",
+      "reported": 30,
+      "captured": 30
+    }
+  ],
+  "uniquePRs": 3927,
+  "duplicates": 0,
+  "rawBodiesRetained": true,
+  "readOnlyUpstream": true
+}

@@ -1,5 +1,6 @@
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
@@ -24,6 +25,68 @@ const decodeJson = Schema.decodeEffect(Schema.UnknownFromJsonString);
 const decodeAccountTokenUsageResponse = Schema.decodeUnknownEffect(
   CodexRpc.CLIENT_REQUEST_RESPONSES["account/usage/read"],
 );
+const decodeThreadResumeResponse = Schema.decodeUnknownEffect(
+  CodexRpc.CLIENT_REQUEST_RESPONSES["thread/resume"],
+);
+const decodeItemCompletedNotification = Schema.decodeUnknownEffect(
+  CodexRpc.SERVER_NOTIFICATION_PARAMS["item/completed"],
+);
+
+function historicalSubAgentActivity(kind: string) {
+  return {
+    agentPath: "/root/historical_child",
+    agentThreadId: "child-historical",
+    id: "activity-historical",
+    kind,
+    type: "subAgentActivity",
+  };
+}
+
+function threadResumeResponseWithHistoricalActivity(activity: unknown) {
+  return {
+    approvalPolicy: "never",
+    approvalsReviewer: "user",
+    cwd: "/tmp/historical-thread",
+    model: "gpt-5.3-codex",
+    modelProvider: "openai",
+    sandbox: { type: "dangerFullAccess" },
+    thread: {
+      cliVersion: "0.163.0",
+      createdAt: 0,
+      cwd: "/tmp/historical-thread",
+      ephemeral: false,
+      id: "historical-thread",
+      modelProvider: "openai",
+      preview: "",
+      sessionId: "historical-session",
+      source: "cli",
+      status: { type: "idle" },
+      turns: Array.from({ length: 4 }, (_, turnIndex) => ({
+        id: `turn-${turnIndex}`,
+        items: Array.from({ length: 4 }, (_, itemIndex) =>
+          turnIndex === 3 && itemIndex === 3
+            ? activity
+            : {
+                type: "agentMessage",
+                id: `msg-${turnIndex}-${itemIndex}`,
+                text: "historical",
+              },
+        ),
+        status: "completed",
+      })),
+      updatedAt: 0,
+    },
+  };
+}
+
+function itemCompletedNotificationWith(activity: unknown) {
+  return {
+    completedAtMs: 1_778_000_000_000,
+    item: activity,
+    threadId: "historical-thread",
+    turnId: "turn-3",
+  };
+}
 
 it.layer(NodeServices.layer)("effect-codex-app-server protocol", (it) => {
   it.effect("maps account usage responses to the upstream token usage schema", () =>
@@ -40,6 +103,42 @@ it.layer(NodeServices.layer)("effect-codex-app-server protocol", (it) => {
         dailyUsageBuckets: [{ startDate: "2026-06-10", tokens: 42 }],
         summary: { lifetimeTokens: 42 },
       });
+    }),
+  );
+
+  it.effect("decodes historical completed subAgentActivity and rejects unknown kinds", () =>
+    Effect.gen(function* () {
+      const completedActivity = historicalSubAgentActivity("completed");
+      const response = yield* decodeThreadResumeResponse(
+        threadResumeResponseWithHistoricalActivity(completedActivity),
+      );
+      const historicalItem = response.thread.turns[3]?.items[3];
+      assert.equal(historicalItem?.type, "subAgentActivity");
+      if (historicalItem?.type !== "subAgentActivity") return;
+      assert.equal(historicalItem.kind, "completed");
+
+      const notification = yield* decodeItemCompletedNotification(
+        itemCompletedNotificationWith(completedActivity),
+      );
+      assert.equal(notification.item.type, "subAgentActivity");
+      if (notification.item.type !== "subAgentActivity") return;
+      assert.equal(notification.item.kind, "completed");
+
+      const unknownActivity = historicalSubAgentActivity("unknownActivity");
+      assert.isTrue(
+        Exit.isFailure(
+          yield* Effect.exit(
+            decodeThreadResumeResponse(threadResumeResponseWithHistoricalActivity(unknownActivity)),
+          ),
+        ),
+      );
+      assert.isTrue(
+        Exit.isFailure(
+          yield* Effect.exit(
+            decodeItemCompletedNotification(itemCompletedNotificationWith(unknownActivity)),
+          ),
+        ),
+      );
     }),
   );
 

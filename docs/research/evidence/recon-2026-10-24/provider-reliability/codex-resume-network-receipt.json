@@ -1,0 +1,8 @@
+{
+  "head": "0c05baa3f",
+  "proof": "authenticated network command and read-only persisted result; not Chrome UI",
+  "threadId": "bfd2de18-8c0d-4dd0-9a35-7694a0a571a7",
+  "expectedReply": "CODEX_RESUME_SCHEMA_1024_OK",
+  "matched": true,
+  "elapsedSeconds": 14
+}

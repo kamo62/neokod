@@ -30,6 +30,7 @@ import {
   OpenCodeRuntime,
   OpenCodeRuntimeError,
   OpenCodeRuntimeLive,
+  openCodeRuntimeErrorDetail,
   parseOpenCodeServerTimeoutMs,
   parseOpenCodeServerUrlFromOutput,
   terminateOpenCodeProcessGroup,
@@ -123,6 +124,44 @@ describe("OpenCodeRuntimeError", () => {
 
     expect(error.message).toBe("Timed out waiting for OpenCode server start after 15000ms.");
     expect(String(error)).toContain("Timed out waiting for OpenCode server start after 15000ms.");
+  });
+});
+
+describe("openCodeRuntimeErrorDetail", () => {
+  it("keeps the SDK message and carries a nested HTTP 401", () => {
+    const error = new Error("Unauthorized", {
+      cause: {
+        body: { message: "invalid api key secret-token" },
+        status: 401,
+      },
+    });
+
+    const detail = openCodeRuntimeErrorDetail(error);
+    expect(detail).toBe("Unauthorized (status=401)");
+    // The provider probe classifies 401 from the detail, but the nested body
+    // may echo credentials and must not be dumped.
+    expect(detail).not.toContain("secret-token");
+  });
+
+  it("carries a 403 from a nested response shape", () => {
+    const error = new Error("Forbidden", {
+      cause: { response: { status: 403 } },
+    });
+
+    expect(openCodeRuntimeErrorDetail(error)).toBe("Forbidden (status=403)");
+  });
+
+  it("leaves a plain error message unchanged", () => {
+    expect(openCodeRuntimeErrorDetail(new Error("spawn failed"))).toBe("spawn failed");
+  });
+
+  it("keeps the existing response-shaped cause detail unchanged", () => {
+    expect(
+      openCodeRuntimeErrorDetail({
+        response: { status: 503 },
+        error: { message: "unavailable" },
+      }),
+    ).toBe('status=503 body={"message":"unavailable"}');
   });
 });
 

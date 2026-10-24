@@ -1,0 +1,14 @@
+{
+  "transport": "OpenCode2 ACP",
+  "agentVersion": "2.0.32",
+  "requestedModel": "deepseek/deepseek-flash",
+  "selectedModel": "deepseek/deepseek-flash",
+  "catalogueLabel": "deepseek/DeepSeek V4.1 Flash 1017",
+  "ownerConfirmed": true,
+  "selectionReceiptsVerified": [
+    "detection-correction",
+    "native-final-correction",
+    "outcomes-opus-reconciliation"
+  ],
+  "substitution": null
+}

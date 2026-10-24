@@ -1,0 +1,23 @@
+{
+  "head": "c8fef250e3b2ff6d4d8055d3ae9913d1b1ccba37",
+  "proof": "actual authenticated app network commands and persisted provider outcomes; not Chrome or Symphony Stop",
+  "threadId": "afd8078b-7ea4-4ae9-b359-79432771a0e2",
+  "stop": "interrupted",
+  "postStopContinuation": "provider error: Your workspace is out of credits. Add credits to continue.",
+  "exactReplyMatched": false,
+  "turns": [
+    {
+      "turn_id": "01a16d9f-ab45-7b22-a59a-86a11504fc0e",
+      "state": "error",
+      "completed_at": "2026-10-24T11:15:52.727Z",
+      "requested_at": "2026-10-24T11:15:43.020Z"
+    },
+    {
+      "turn_id": "01a16d9f-a7e8-7822-9bcf-2705936d4320",
+      "state": "interrupted",
+      "completed_at": "2026-10-24T11:15:42.542Z",
+      "requested_at": "2026-10-24T11:15:41.493Z"
+    }
+  ],
+  "noFurtherCreditRetries": true
+}

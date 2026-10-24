@@ -3,7 +3,6 @@ import {
   type ChatAttachment,
   MessageId,
   type OrchestrationEvent,
-  type OrchestrationSessionStatus,
   ThreadId,
 } from "@neokod/contracts";
 import * as Effect from "effect/Effect";
@@ -13,8 +12,19 @@ import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
+import {
+  isTerminalTurnState,
+  resolveExplicitSettledTurnState,
+  resolveSettledTurnStateForSessionStatus,
+  shouldApplySessionUpdate,
+  shouldReplaceLatestTurnPointer,
+} from "@neokod/shared/orchestrationTurnOutcome";
 
-import { toPersistenceSqlError, type ProjectionRepositoryError } from "../../persistence/Errors.ts";
+import {
+  PersistenceSqlError,
+  toPersistenceSqlError,
+  type ProjectionRepositoryError,
+} from "../../persistence/Errors.ts";
 import { OrchestrationEventStore } from "../../persistence/Services/OrchestrationEventStore.ts";
 import { ProjectionPendingApprovalRepository } from "../../persistence/Services/ProjectionPendingApprovals.ts";
 import { ProjectionProjectRepository } from "../../persistence/Services/ProjectionProjects.ts";
@@ -79,29 +89,6 @@ export const ORCHESTRATION_PROJECTOR_NAMES = {
 
 type ProjectorName =
   (typeof ORCHESTRATION_PROJECTOR_NAMES)[keyof typeof ORCHESTRATION_PROJECTOR_NAMES];
-
-/**
- * Turn state to settle still-running turns with when their session leaves the
- * "running" status, or null while the session is (re)starting or running and
- * turns must stay unsettled.
- */
-function settledTurnStateForSessionStatus(
-  status: OrchestrationSessionStatus,
-): "completed" | "interrupted" | "error" | null {
-  switch (status) {
-    case "idle":
-    case "ready":
-      return "completed";
-    case "error":
-      return "error";
-    case "interrupted":
-    case "stopped":
-      return "interrupted";
-    case "starting":
-    case "running":
-      return null;
-  }
-}
 
 interface ProjectorDefinition {
   readonly name: ProjectorName;
@@ -807,6 +794,9 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
         }
 
         case "thread.session-set": {
+          if (!(yield* appliesRunningSessionSetEvent(event))) {
+            return;
+          }
           const existingRow = yield* projectionThreadRepository.getById({
             threadId: event.payload.threadId,
           });
@@ -831,7 +821,12 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
           }
           yield* projectionThreadRepository.upsert({
             ...existingRow.value,
-            latestTurnId: event.payload.turnId,
+            latestTurnId: shouldReplaceLatestTurnPointer({
+              turnId: event.payload.turnId,
+              currentLatestTurnId: existingRow.value.latestTurnId,
+            })
+              ? event.payload.turnId
+              : existingRow.value.latestTurnId,
             updatedAt: event.occurredAt,
           });
           yield* refreshThreadShellSummary(event.payload.threadId);
@@ -1063,10 +1058,50 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
       }
     });
 
+    const appliesSessionSetEvent = Effect.fn("appliesSessionSetEvent")(function* (
+      event: Extract<OrchestrationEvent, { type: "thread.session-set" }>,
+    ) {
+      const incomingActiveTurnId = event.payload.session.activeTurnId;
+      const currentSession = yield* projectionThreadSessionRepository.getByThreadId({
+        threadId: event.payload.threadId,
+      });
+      const currentTurn =
+        incomingActiveTurnId === null
+          ? Option.none()
+          : yield* projectionTurnRepository.getByTurnId({
+              threadId: event.payload.threadId,
+              turnId: incomingActiveTurnId,
+            });
+      return shouldApplySessionUpdate({
+        currentSession: Option.isSome(currentSession) ? currentSession.value : null,
+        incomingSession: event.payload.session,
+        outcome: event.payload.latestTurnOutcome,
+        targetTurnId: event.payload.interruptedTurnId,
+        currentTurn: Option.isSome(currentTurn)
+          ? { turnId: currentTurn.value.turnId, state: currentTurn.value.state }
+          : null,
+      });
+    });
+
+    const appliesRunningSessionSetEvent = Effect.fn("appliesRunningSessionSetEvent")(function* (
+      event: Extract<OrchestrationEvent, { type: "thread.session-set" }>,
+    ) {
+      // Only running updates are late-event candidates here. Explicit
+      // outcomes for an old turn still settle their pinned historical row
+      // while the session and latest pointer remain on newer work.
+      if (event.payload.session.status !== "running") {
+        return true;
+      }
+      return yield* appliesSessionSetEvent(event);
+    });
+
     const applyThreadSessionsProjection: ProjectorDefinition["apply"] = Effect.fn(
       "applyThreadSessionsProjection",
     )(function* (event, _attachmentSideEffects) {
       if (event.type !== "thread.session-set") {
+        return;
+      }
+      if (!(yield* appliesSessionSetEvent(event))) {
         return;
       }
       yield* projectionThreadSessionRepository.upsert({
@@ -1138,15 +1173,16 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
         }
 
         case "thread.session-set": {
+          if (!(yield* appliesRunningSessionSetEvent(event))) {
+            return;
+          }
           const turnId = event.payload.session.activeTurnId;
           if (turnId === null || event.payload.session.status !== "running") {
             // Leaving the "running" session status is the turn-end signal:
             // settle still-running turns so their duration reflects the whole
             // turn rather than the last assistant message.
-            const settledTurnState = settledTurnStateForSessionStatus(event.payload.session.status);
-            if (settledTurnState === null) {
-              return;
-            }
+            const explicitOutcome = event.payload.latestTurnOutcome;
+            const explicitTargetTurnId = event.payload.interruptedTurnId;
             const existingTurns = yield* projectionTurnRepository.listByThreadId({
               threadId: event.payload.threadId,
             });
@@ -1160,26 +1196,47 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
                 ? event.payload.session.updatedAt
                 : event.payload.latestTurnCompletedAt;
             yield* Effect.forEach(
-              existingTurns.filter((turn) => turn.turnId !== null && turn.state === "running"),
-              (turn) =>
-                turn.turnId === null
-                  ? Effect.void
-                  : projectionTurnRepository
-                      .upsertByTurnId({
-                        ...turn,
+              existingTurns,
+              (turn) => {
+                if (turn.turnId === null) {
+                  return Effect.void;
+                }
+                const settledTurnState =
+                  explicitOutcome === undefined
+                    ? turn.state === "running"
+                      ? resolveSettledTurnStateForSessionStatus(event.payload.session.status)
+                      : null
+                    : resolveExplicitSettledTurnState({
+                        outcome: explicitOutcome,
+                        targetTurnId: explicitTargetTurnId,
+                        turn: { turnId: turn.turnId, state: turn.state },
+                      });
+                if (settledTurnState === null) {
+                  return Effect.void;
+                }
+                // An already settled turn keeps the completion its settlement
+                // published. Only the first running -> terminal transition
+                // installs the authoritative session time.
+                const turnCompletedAt = isTerminalTurnState(turn.state)
+                  ? turn.completedAt
+                  : settledCompletedAt;
+                return projectionTurnRepository
+                  .upsertByTurnId({
+                    ...turn,
+                    turnId: turn.turnId,
+                    state: settledTurnState,
+                    completedAt: turnCompletedAt,
+                  })
+                  .pipe(
+                    Effect.andThen(
+                      projectionTurnSettlementRepository.recordSettlement({
+                        threadId: turn.threadId,
                         turnId: turn.turnId,
-                        state: settledTurnState,
-                        completedAt: settledCompletedAt,
-                      })
-                      .pipe(
-                        Effect.andThen(
-                          projectionTurnSettlementRepository.recordSettlement({
-                            threadId: turn.threadId,
-                            turnId: turn.turnId,
-                            completedAt: settledCompletedAt,
-                          }),
-                        ),
-                      ),
+                        completedAt: turnCompletedAt,
+                      }),
+                    ),
+                  );
+              },
               { concurrency: 1 },
             );
             return;
@@ -1225,10 +1282,10 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             threadId: event.payload.threadId,
           });
           if (Option.isSome(existingTurn)) {
-            const nextState =
-              existingTurn.value.state === "completed" || existingTurn.value.state === "error"
-                ? existingTurn.value.state
-                : "running";
+            // A late running session update cannot reopen a terminal turn.
+            const nextState = isTerminalTurnState(existingTurn.value.state)
+              ? existingTurn.value.state
+              : "running";
             yield* projectionTurnRepository.upsertByTurnId({
               ...existingTurn.value,
               state: nextState,
@@ -1811,22 +1868,6 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
       );
     });
 
-    const bootstrapProjector = (projector: ProjectorDefinition) =>
-      projectionStateRepository
-        .getByProjector({
-          projector: projector.name,
-        })
-        .pipe(
-          Effect.flatMap((stateRow) =>
-            Stream.runForEach(
-              eventStore.readFromSequence(
-                Option.isSome(stateRow) ? stateRow.value.lastAppliedSequence : 0,
-              ),
-              (event) => runProjectorForEvent(projector, event),
-            ),
-          ),
-        );
-
     const projectEvent: OrchestrationProjectionPipelineShape["projectEvent"] = (event) =>
       Effect.forEach(projectors, (projector) => runProjectorForEvent(projector, event), {
         concurrency: 1,
@@ -1840,11 +1881,66 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
         ),
       );
 
-    const bootstrap: OrchestrationProjectionPipelineShape["bootstrap"] = Effect.forEach(
-      projectors,
-      bootstrapProjector,
-      { concurrency: 1 },
-    ).pipe(
+    // Replay events once in order. The coupled session, turn and thread
+    // projections must share one as-of boundary: their cursors may be equal or
+    // form the single partial-interruption shape this pipeline creates, a
+    // non-increasing prefix at N and suffix at N-1. Other projectors may catch
+    // up independently, including a newly introduced projector at cursor zero.
+    // Unsupported skew inside the coupled group is rejected before side effects.
+    const bootstrap: OrchestrationProjectionPipelineShape["bootstrap"] = Effect.gen(function* () {
+      const states = yield* Effect.forEach(
+        projectors,
+        (projector) =>
+          projectionStateRepository.getByProjector({ projector: projector.name }).pipe(
+            Effect.map((stateRow) => ({
+              projector,
+              lastAppliedSequence: Option.isSome(stateRow) ? stateRow.value.lastAppliedSequence : 0,
+            })),
+          ),
+        { concurrency: 1 },
+      );
+      const coupledProjectorNames = new Set<ProjectorName>([
+        ORCHESTRATION_PROJECTOR_NAMES.threadSessions,
+        ORCHESTRATION_PROJECTOR_NAMES.threadTurns,
+        ORCHESTRATION_PROJECTOR_NAMES.threads,
+      ]);
+      const coupledStates = states.filter((state) =>
+        coupledProjectorNames.has(state.projector.name),
+      );
+      const coupledOffsets = coupledStates.map((state) => state.lastAppliedSequence);
+      const maximumOffset = Math.max(...coupledOffsets);
+      const minimumOffset = Math.min(...coupledOffsets);
+      const offsetsAreOrdered = coupledOffsets.every(
+        (offset, index) => index === 0 || coupledOffsets[index - 1]! >= offset,
+      );
+      if (!offsetsAreOrdered || maximumOffset - minimumOffset > 1) {
+        const cursorSummary = coupledStates
+          .map((state) => `${state.projector.name}=${state.lastAppliedSequence}`)
+          .join(", ");
+        return yield* new PersistenceSqlError({
+          operation: "ProjectionPipeline.bootstrap:projector-coordination",
+          detail:
+            `Dependent projections require coordinated recovery (${cursorSummary}). ` +
+            "Unsupported projection cursor skew requires investigation. This version provides no automated or verified repair. Stop the application and back up the database, event store and attachments before any manual action. Recovery requires a separately validated procedure that rebuilds all projections together from the event store; row deletion or cursor resets must not be assumed safe. No automatic reset was performed.",
+        });
+      }
+      const replayFrom = Math.min(...states.map((state) => state.lastAppliedSequence));
+      yield* Stream.runForEach(
+        eventStore.readFromSequence(replayFrom, Number.MAX_SAFE_INTEGER),
+        (event) =>
+          Effect.forEach(
+            states,
+            (state) => {
+              if (state.lastAppliedSequence >= event.sequence) {
+                return Effect.void;
+              }
+              state.lastAppliedSequence = event.sequence;
+              return runProjectorForEvent(state.projector, event);
+            },
+            { concurrency: 1 },
+          ),
+      );
+    }).pipe(
       Effect.provideService(FileSystem.FileSystem, fileSystem),
       Effect.provideService(Path.Path, path),
       Effect.provideService(ServerConfig, serverConfig),

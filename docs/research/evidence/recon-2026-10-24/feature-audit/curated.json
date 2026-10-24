@@ -1,0 +1,474 @@
+{
+  "19848": {
+    "cluster": "usage-limit-recovery",
+    "disposition": "candidate-port-intent",
+    "neokodStatus": "gap",
+    "priority": "P1-correctness",
+    "neokodEvidence": "apps/server/src/provider/Layers/ClaudeUsageLimit.ts failureKind() maps terminal_reason \"blocking_limit\" to usage_limit unconditionally (lines ~122-144).",
+    "evidenceExtra": [
+      "body-read",
+      "neokod-source@0ab699566",
+      "neokod-source@3b134e4",
+      "patch-read"
+    ],
+    "confidence": "medium-high",
+    "note": "Port intent: blocking_limit is a usage limit only with rate-limit evidence (api_error_status 429, rejected rate_limit_event, or assistant error rate_limit); otherwise provider_error naming a full context window with /compact or new-thread guidance. Targets: ClaudeUsageLimit.ts (failureKind + hint type), ClaudeAdapter.ts rate_limit_event plumbing (~L1109, L3104), tests ClaudeUsageLimit.test.ts and ClaudeAdapter.test.ts. Not reproduced live."
+  },
+  "17408": {
+    "cluster": "provider-claude",
+    "disposition": "candidate-port-intent",
+    "neokodStatus": "gap",
+    "priority": "P1-security",
+    "neokodEvidence": "apps/server/src/provider/Layers/ClaudeAdapter.ts ~L3799-3811 passes mcpServers.neokod.headers.Authorization = mcpSession.authorizationHeader (the raw bearer) in SDK options.",
+    "evidenceExtra": ["body-read", "patch-read", "neokod-source@0ab699566"],
+    "confidence": "medium",
+    "note": "Upstream states the bearer was inline in --mcp-config, visible in process arguments. Whether the installed SDK 0.3.226 serialises mcpServers into argv was NOT verified here (no provider run allowed). Verify with a disposable session before changing. Fix variants: env placeholder (this PR) or Query.setMcpServers control request (#17898; present in sdk.d.ts:2627)."
+  },
+  "17898": {
+    "cluster": "provider-claude",
+    "disposition": "candidate-port-intent",
+    "neokodStatus": "gap",
+    "priority": "P1-security",
+    "neokodEvidence": "Same Neokod site as #17408; SDK Query.setMcpServers exists at node_modules/@anthropic-ai/claude-agent-sdk/sdk.d.ts:2627.",
+    "evidenceExtra": ["body-read", "patch-read", "neokod-source@0ab699566"],
+    "confidence": "medium",
+    "note": "Preferred variant of #17408: send MCP servers over the control channel right after query(); also survives CLAUDE_CODE_SUBPROCESS_ENV_SCRUB and avoids env inheritance by child commands. 90 s control-request deadline semantics need a Neokod decision."
+  },
+  "15459": {
+    "cluster": "provider-detection-health-updates",
+    "disposition": "candidate-port-intent",
+    "neokodStatus": "gap",
+    "priority": "P1-detection",
+    "neokodEvidence": "apps/server/src/provider/Layers/ClaudeProvider.ts ~L1017-1039 returns status ready / auth authenticated whenever the capabilities probe resolves; no tokenSource \"none\" check (tokenSource only read at ~L811).",
+    "evidenceExtra": ["body-read", "patch-read", "neokod-source@0ab699566"],
+    "confidence": "medium",
+    "note": "Matches plan 16.19 priority (provider detection truthfulness). Add apiKeySource to the probe result and a claudeAuthStatus() that disproves auth only for tokenSource \"none\" with no API key, email or subscription; third-party backends stay authenticated. Tests in ClaudeProvider.test.ts. Not reproduced live."
+  },
+  "23819": {
+    "cluster": "terminal-performance-correctness",
+    "disposition": "candidate-port-intent",
+    "neokodStatus": "planned",
+    "priority": "P1-perf-planned",
+    "neokodEvidence": "apps/server/src/terminal/Manager.ts ~L999-1111 concatenates pendingControlSequence + data and calls findStringTerminatorIndex from the OSC/DCS start each chunk (L1045, L1091).",
+    "evidenceExtra": [
+      "body-read",
+      "neokod-source@0ab699566",
+      "neokod-source@3b134e4",
+      "patch-read"
+    ],
+    "confidence": "high",
+    "note": "Already planned in plan.md 16.18 (merge 9f660d38...). Upstream patch adds pendingScanStart = max(0, pending.length - 1) and starts terminator scans there. Preserve BEL, C1 ST and split ESC-backslash; claim bounded rescanning only."
+  },
+  "23953": {
+    "cluster": "git-vcs-worktree",
+    "disposition": "candidate-port-intent",
+    "neokodStatus": "planned",
+    "priority": "P1-perf-planned",
+    "neokodEvidence": "apps/server/src/vcs/GitVcsDriverCore.ts ~L615-686 always appends decoded chunks to lineBuffer and scans for newlines even when onLine is undefined.",
+    "evidenceExtra": [
+      "body-read",
+      "neokod-source@0ab699566",
+      "neokod-source@3b134e4",
+      "patch-read"
+    ],
+    "confidence": "high",
+    "note": "Already planned in plan.md 16.18 (merge 9a638026...). Upstream gates line buffering/flush on onLine; Neokod structure differs (no separate lineDecoder), so port the intent, not the diff."
+  },
+  "13684": {
+    "cluster": "sqlite-persistence-startup",
+    "disposition": "candidate-port-intent",
+    "neokodStatus": "gap",
+    "priority": "P2-hardening",
+    "neokodEvidence": "apps/server/src/persistence/Layers/Sqlite.ts L36-38 sets WAL, foreign_keys, busy_timeout only; no journal_size_limit. No Sqlite.test.ts exists in persistence/Layers.",
+    "evidenceExtra": ["body-read", "patch-read", "neokod-source@0ab699566"],
+    "confidence": "medium-high",
+    "note": "Add PRAGMA journal_size_limit (upstream 32 MiB) so the -wal file shrinks after large writes. Needs a new small test; check Node sqlite behaviour on the supported Node 24 line."
+  },
+  "18471": {
+    "cluster": "sqlite-persistence-startup",
+    "disposition": "candidate-port-intent",
+    "neokodStatus": "gap",
+    "priority": "P2-hardening",
+    "neokodEvidence": "Same Neokod file: no PRAGMA optimize at open.",
+    "evidenceExtra": ["body-read", "patch-read", "neokod-source@0ab699566"],
+    "confidence": "medium",
+    "note": "Upstream runs PRAGMA optimize = 0x10012 after migrations. The 0x10000 flag needs SQLite >= 3.46; verify the SQLite version bundled with the supported Node before adopting or guard it."
+  },
+  "16544": {
+    "cluster": "provider-opencode",
+    "disposition": "candidate-port-intent",
+    "neokodStatus": "partial",
+    "priority": "P2-detection",
+    "neokodEvidence": "apps/server/src/provider/openCodeVersion.ts:21 OPENCODE_VERSION_PROBE_TIMEOUT = 5 s; Neokod already raised Claude (15 s) and Codex (25 s) with env overrides.",
+    "evidenceExtra": ["body-read", "neokod-source@0ab699566"],
+    "confidence": "high",
+    "note": "Raise or make configurable like the Claude/Codex probes; update OpenCodeDriver.test.ts (~L331). Kiro/Grok version probes are 4 s (KiroProvider.ts:24, GrokProvider.ts:49) and are the same class of risk."
+  },
+  "17501": {
+    "cluster": "usage-limit-recovery",
+    "disposition": "candidate-port-intent",
+    "neokodStatus": "gap",
+    "priority": "P2-contract",
+    "neokodEvidence": "Neokod Codex errors are classed provider_error only (CodexAdapter.ts ~L1540-1547); RuntimeErrorClass has no usage_limit (packages/contracts/src/providerRuntime.ts:103-109); no Codex usage-limit detection found in apps/server/src.",
+    "evidenceExtra": ["body-read", "patch-read", "neokod-source@0ab699566"],
+    "confidence": "medium",
+    "note": "Larger than the title suggests: needs a Codex usage-limit class (usageLimitExceeded, rateLimitExceeded, responseTooManyFailedAttempts with HTTP 429) and a contract/projection decision shared with the Usage plan U-2. Coordinator-owned contract change."
+  },
+  "19322": {
+    "cluster": "provider-session-lifecycle",
+    "disposition": "candidate-port-intent",
+    "neokodStatus": "gap",
+    "priority": "P2-lifecycle",
+    "neokodEvidence": "No spawnClaudeCodeProcess/process-group launcher found for Claude in apps/server/src (grep).",
+    "evidenceExtra": ["body-read", "neokod-source@0ab699566"],
+    "confidence": "medium",
+    "note": "Upstream starts the Claude CLI as its own process-group leader and kills the group on exit so plugin MCP children do not leak. POSIX only. Relates to plan X-7 (restart/stop ownership). Needs a disposable-process fixture; no live process signalling was done in this audit."
+  },
+  "23389": {
+    "cluster": "provider-session-lifecycle",
+    "disposition": "candidate-port-intent",
+    "neokodStatus": "gap",
+    "priority": "P2-lifecycle",
+    "neokodEvidence": "Same absence as #19322; Neokod resumes sessions after restart (ClaudeAdapter resume path) so a surviving CLI could race a resumed one.",
+    "evidenceExtra": ["body-read", "neokod-source@0ab699566"],
+    "confidence": "low-medium",
+    "note": "Upstream adds an sh launcher with a pipe-held watcher so the CLI group dies when the server dies; prevents two agents in one checkout after a hard stop. Security/process-management sensitive; gate behind plan 16.16 Phase 1E acceptance."
+  },
+  "12513": {
+    "cluster": "provider-session-lifecycle",
+    "disposition": "candidate-port-intent",
+    "neokodStatus": "not-assessed",
+    "priority": "P2-lifecycle",
+    "neokodEvidence": "apps/server/src/processRunner.ts has no forced-kill escalation match (grep forceKillAfter/SIGKILL returned nothing).",
+    "evidenceExtra": ["body-read", "neokod-source@0ab699566"],
+    "confidence": "low-medium",
+    "note": "One-second forced-kill escalation for helper processes that ignore SIGTERM; verify against Neokod process helpers (process/ and packages/shared/src/processGroup.ts) before porting."
+  },
+  "19314": {
+    "cluster": "token-context-accounting",
+    "disposition": "candidate-port-intent",
+    "neokodStatus": "not-assessed",
+    "priority": "P2-accuracy",
+    "neokodEvidence": "Neokod steers a running turn (ClaudeAdapter.ts ~L3983-4026) and computes processed totals as max(result usage, last known) (~L2015-2023), not a sum of steer segments.",
+    "evidenceExtra": ["body-read", "patch-read", "neokod-source@0ab699566"],
+    "confidence": "low",
+    "note": "Whether Neokod undercounts steered turns needs a fixture test; the max() rule may mask or mis-state it. Do not claim a bug."
+  },
+  "16394": {
+    "cluster": "token-context-accounting",
+    "neokodStatus": "partial",
+    "priority": "P3-coupled",
+    "neokodEvidence": "Neokod drops usedTokens<=0 snapshots at ProviderRuntimeIngestion.ts:~215-222, which masks the zero-usage <synthetic> frame defect but also hides genuine resets/compaction.",
+    "evidenceExtra": ["body-read", "patch-read", "neokod-source@0ab699566"],
+    "confidence": "medium",
+    "note": "If the zero filter is removed to preserve known zero (plan U-1), add the <synthetic> model guard at the same time."
+  },
+  "14672": {
+    "cluster": "usage-history-dashboard",
+    "neokodStatus": "gap",
+    "evidenceExtra": ["body-read"],
+    "note": "Claude transcripts record a <synthetic> placeholder model; a usage reader must skip it (also cached rows: usageScanCache.ts)."
+  },
+  "16358": {
+    "cluster": "usage-limits-accounts",
+    "neokodStatus": "not-applicable",
+    "evidenceExtra": ["body-read", "patch-read", "neokod-source@0ab699566"],
+    "confidence": "high",
+    "neokodEvidence": "Neokod never calls the SDK usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET method (no get_usage call in apps/server/src).",
+    "note": "Conditional lesson: if Neokod adopts the SDK get_usage control request, pass { skipBehaviors: true } (upstream: probe went from 5.4 s to 0.4 s with multi-GB transcripts) and treat the API as experimental."
+  },
+  "20537": {
+    "cluster": "provider-detection-health-updates",
+    "disposition": "candidate-port-intent",
+    "neokodStatus": "not-assessed",
+    "priority": "P2-detection",
+    "evidenceExtra": ["body-read", "patch-read"],
+    "note": "Bound Codex discovery by the remaining probe budget and keep a successful auth result when optional discovery times out. Compare with CodexProvider.ts probe budget (25 s, ~L59) before porting."
+  },
+  "19320": {
+    "cluster": "provider-detection-health-updates",
+    "disposition": "candidate-port-intent",
+    "neokodStatus": "not-assessed",
+    "priority": "P2-detection",
+    "evidenceExtra": ["body-read", "patch-read"],
+    "note": "Run instance-level Claude probes in the server state dir, not the inherited cwd ($HOME in packaged builds), because some wrappers refuse to run outside a project. Neokod ClaudeProvider.ts has an optional cwd parameter (~L762); the caller value was not traced."
+  },
+  "20360": {
+    "cluster": "provider-detection-health-updates",
+    "neokodStatus": "not-assessed",
+    "priority": "P3-detection",
+    "evidenceExtra": ["body-read"],
+    "note": "Idea only: this PR was closed unmerged. Fall back to codex --version so an outdated CLI shows the compatibility advisory instead of a bare probe failure."
+  },
+  "7232": {
+    "cluster": "provider-detection-health-updates",
+    "neokodStatus": "not-assessed",
+    "evidenceExtra": ["body-read"],
+    "note": "Idea only (closed unmerged): a probe timeout should not be persisted as authoritative status. Neokod providerStatusCache.ts hydrates cached status/auth at boot; whether a timeout warning survives a restart was not traced."
+  },
+  "14461": {
+    "neokodStatus": "equivalent",
+    "neokodEvidence": "packages/shared/src/processGroup.ts refuses pid <= 1 (lines ~616, ~1013).",
+    "evidenceExtra": ["body-read", "neokod-source@0ab699566"],
+    "confidence": "medium-high",
+    "note": "Neokod already guards process-group signals for pid 0/1; equivalence judged from presence of the guard, not from the upstream diff."
+  },
+  "13879": {
+    "neokodStatus": "equivalent",
+    "neokodEvidence": "apps/server/src/provider/OpenCodeServerLedger.ts exists (and its test).",
+    "evidenceExtra": ["body-read", "neokod-source@0ab699566"],
+    "confidence": "medium",
+    "note": "Ledger-based reaping of orphaned opencode servers appears already present; not diffed against upstream."
+  },
+  "18819": {
+    "neokodStatus": "equivalent",
+    "neokodEvidence": "apps/server/src/workspace/realPathContainment.ts and WorkspaceFileSystem.ts resolve realpath of the deepest existing ancestor.",
+    "evidenceExtra": ["body-read", "neokod-source@0ab699566"],
+    "confidence": "medium",
+    "note": "PR text itself says upstream #20449 supplied the containment behaviour; Neokod has comparable real-path containment."
+  },
+  "20446": {
+    "neokodStatus": "partial",
+    "neokodEvidence": "Secret-setting machinery appears in packages/contracts/src/settings.ts and apps/server/src/serverSettings.ts; OpenCode serverPassword handling not traced.",
+    "evidenceExtra": ["body-read", "patch-read", "neokod-source@0ab699566"],
+    "confidence": "low",
+    "note": "Verify OpenCode serverPassword is secret-annotated and redacted in settings reads/logs."
+  },
+  "13118": {
+    "disposition": "reference-only-credential-endpoint",
+    "neokodStatus": "excluded",
+    "evidenceExtra": ["body-read"],
+    "note": "Reads the Claude OAuth token from <config>/.credentials.json and calls an undocumented usage endpoint. Not proposed for Neokod without an explicit owner decision on credential handling."
+  },
+  "10409": {
+    "neokodStatus": "gap",
+    "evidenceExtra": ["body-read"],
+    "note": "Adds OpenCode SQLite/legacy JSON, Antigravity and Cursor account history. Cursor part reads CLI login (Keychain on macOS only after explicit opt-in per the PR text). Neokod supports Cursor and OpenCode but not Antigravity."
+  },
+  "15149": {
+    "neokodStatus": "gap",
+    "evidenceExtra": [
+      "body-read",
+      "neokod-source@3b134e4",
+      "patch-read",
+      "upstream-source@27e0c684"
+    ],
+    "confidence": "high",
+    "note": "Design reference for warm-scan cost: window-skip of cached files, quarter-hour day-format memo, bucket memo, cache writer memoised per entry, bounded stat concurrency. Patch read in full (non-test files)."
+  },
+  "15101": {
+    "neokodStatus": "gap",
+    "evidenceExtra": ["body-read"],
+    "note": "Codex service tier (default/priority/ultrafast) from thread_settings_applied; Ultrafast 6x / Fast 2x pricing; 30-day Codex total moved $1,408 -> $3,364 on the author machine (author-reported)."
+  },
+  "13599": {
+    "neokodStatus": "gap",
+    "evidenceExtra": ["body-read"],
+    "note": "Claude fast mode priced via LiteLLM provider_specific_entry.fast multiplier (2x for listed Opus models)."
+  },
+  "21863": {
+    "neokodStatus": "gap",
+    "evidenceExtra": ["body-read"],
+    "note": "Codex per-request counters must be reconciled against cumulative counters; naive request dedupe gave 265 instead of 240 in the PR fixture."
+  },
+  "22558": {
+    "neokodStatus": "gap",
+    "evidenceExtra": ["body-read", "patch-read"],
+    "note": "Codex zero-component token_count after compaction is a context-size marker, not a request; a resumed process restarts cumulative counters (cumulative == last)."
+  },
+  "23729": {
+    "neokodStatus": "gap",
+    "evidenceExtra": ["body-read"],
+    "note": "Fork/subagent rollouts start with inherited cumulative totals; the first real request must not be dropped or double counted."
+  },
+  "17711": {
+    "neokodStatus": "gap",
+    "evidenceExtra": ["body-read"],
+    "note": "Account identity must include workspace/org (Codex accountId; Claude organizationUuid); one email in two workspaces is two accounts."
+  },
+  "18723": {
+    "neokodStatus": "gap",
+    "evidenceExtra": ["body-read"],
+    "note": "Never let an older probe overwrite a newer live reading; keep reset-credit metadata."
+  },
+  "15116": {
+    "neokodStatus": "gap",
+    "evidenceExtra": ["body-read"],
+    "note": "A sparse streamed window must not clear a failed-probe marker."
+  },
+  "21055": {
+    "neokodStatus": "gap",
+    "evidenceExtra": ["body-read", "upstream-source@27e0c684"],
+    "note": "Price table is fetched from LiteLLM raw.githubusercontent.com with a GitHub API fallback, 24 h TTL and disk cache. In a local-first product this is outbound network access: needs an explicit opt-in, a bundled table, or user-entered prices."
+  },
+  "19446": {
+    "neokodStatus": "gap",
+    "evidenceExtra": ["body-read"],
+    "note": "Cold scans of Antigravity/OpenCode SQLite on the main thread stalled the event loop and made clients show reconnecting; move to paged reads off the main thread."
+  },
+  "8730": {
+    "note": "Branch is contaminated (1,117 files, +399k/-125k); the title (MCP environment usage summary) is the only meaningful signal. This PR was not merged; equivalent intent elsewhere was not assessed.",
+    "evidenceExtra": ["body-read", "neokod-source@3b134e4", "official-pr-description-read"]
+  },
+  "2829": {
+    "category": "mixed-truncated-unassessed",
+    "categoryReason": "Broad V2 orchestrator and provider runtime change; first-100 path sample is mobile-heavy, but PR body confirms backend orchestration, provider adapters, replay, forks/rollback and child fixtures. Full 1,912-file diff was not read.",
+    "cluster": "subagents-delegation-background",
+    "disposition": "feature-gap-proposal",
+    "neokodStatus": "planned-gated",
+    "confidence": "medium",
+    "evidenceExtra": ["body-read", "neokod-source@3b134e4", "official-pr-description-read"],
+    "note": "Relevant behavioural intent is managed orchestration/delegation, with provider-session, replay and rollback work. This is a broad mixed desktop/web/mobile/server rewrite, not a mobile-only change. Keep native UI/mobile portions excluded. Neokod ordinary-chat children remain planned under W6 after formal core exit; use the feature intent only, not upstream V2 architecture or UI. Full tree and diff were not reviewed; this disposition is limited to the PR description and sampled paths."
+  },
+  "9376": {
+    "category": "mixed-truncated-unassessed",
+    "categoryReason": "Cross-layer client/server feature; PR description covers desktop client mode, existing server discovery, connection UI and avoiding concurrent SQLite writers. First-100 file sample is incomplete.",
+    "cluster": "remote-direct-connection",
+    "disposition": "feature-gap-proposal",
+    "neokodStatus": "planned-gated",
+    "priority": "P2-planned",
+    "confidence": "high",
+    "evidenceExtra": ["body-read", "neokod-source@3b134e4", "official-pr-description-read"],
+    "note": "The owner-approved direct-connection exception makes the user-controlled own-machine portion relevant. Reuse only the intent for an explicit, authenticated and pinned owner target; do not port T3 pairing, shared tenancy or remote-control-plane behavior. Neokod W5 direct machine continuation remains separately gated. This PR is closed-unmerged and did not ship upstream; full 1,398-file diff was not read."
+  },
+  "13432": {
+    "category": "backend-candidate",
+    "categoryReason": "PR body explicitly describes a server-side terminalization fix after provider session open; first-100 file sample is mixed and incomplete.",
+    "cluster": "v2-orchestrator-rewrite",
+    "disposition": "reference-only-upstream-v2",
+    "neokodStatus": "not-assessed",
+    "confidence": "medium",
+    "evidenceExtra": ["body-read", "neokod-source@3b134e4", "official-pr-description-read"],
+    "note": "V2-specific final provider-turn.start failure behavior. Neokod has a different event-sourced orchestrator and explicit turn outcome/reconciliation paths; the analogous failure path needs focused comparison before any gap claim. The PR is closed-unmerged and did not ship upstream. The first 100 paths are mobile-heavy but do not support a mobile-only classification; the full 1,543-file tree/diff remains unread."
+  },
+  "13433": {
+    "category": "ui-excluded",
+    "categoryReason": "PR description is a desktop/web composer Stop control change; underlying control intent is UI-owned and its first-100 file sample is incomplete.",
+    "cluster": "web-ui-surface",
+    "disposition": "excluded-policy-ui",
+    "neokodStatus": "not-assessed",
+    "confidence": "medium",
+    "evidenceExtra": ["body-read", "official-pr-description-read"],
+    "note": "UI intent is to expose Stop while preparing/starting; exclude upstream interface changes under policy and compare the local behavior only if a user-visible defect is established. This is not a mobile-only PR despite the first-100 file sample. This PR was closed unmerged; equivalent intent elsewhere was not assessed; full 1,543-file tree/diff unread."
+  },
+  "13800": {
+    "category": "mixed-truncated-unassessed",
+    "categoryReason": "Branch synchronization PR says it merges main into the V2 branch and ports selected fixes; first-100 file sample is mixed and incomplete.",
+    "cluster": "v2-orchestrator-rewrite",
+    "disposition": "reference-only-upstream-v2",
+    "neokodStatus": "not-applicable",
+    "confidence": "high",
+    "evidenceExtra": ["body-read"],
+    "note": "This is a merge/synchronization of a long-lived V2 branch, not a mobile feature. Individual upstream changes should be counted and reviewed at their own PRs; this merge is on a stacked branch and is not proof of shipment to main. 279 changed files, first 100 paths only."
+  },
+  "14215": {
+    "category": "ui-excluded",
+    "categoryReason": "PR body describes broad shared interface localization across web, desktop and mobile; first-100 file sample is incomplete.",
+    "cluster": "web-ui-surface",
+    "disposition": "excluded-policy-ui",
+    "neokodStatus": "excluded",
+    "confidence": "high",
+    "evidenceExtra": ["body-read"],
+    "note": "This is cross-client UI/localization work, not a mobile-only feature. Neokod owns its UI and localization choices; do not port the upstream surfaces. The broad PR is explicitly draft/split work and the full 476-file diff was not read."
+  },
+  "14668": {
+    "category": "mixed-truncated-unassessed",
+    "categoryReason": "Branch synchronization PR merges main into V2 and describes a mixture of mobile, desktop, web and server changes; first-100 file sample is mobile-heavy and incomplete.",
+    "cluster": "v2-orchestrator-rewrite",
+    "disposition": "reference-only-upstream-v2",
+    "neokodStatus": "not-applicable",
+    "confidence": "high",
+    "evidenceExtra": ["body-read"],
+    "note": "Not a mobile-only PR: the body lists mainline server, web, desktop and mobile work imported into the V2 branch. Review component fixes through their source PRs if eligible; stacked-branch merge is not main shipment evidence. Full 130-file diff not read."
+  },
+  "15587": {
+    "category": "mixed-truncated-unassessed",
+    "categoryReason": "PR title mentions a mobile Termux/Codex feature, but its body is the blank contribution template and the 24,058-file list is truncated to 100 paths under .agents; no feature scope can be verified.",
+    "cluster": "misc-unclustered",
+    "disposition": "needs-human-triage",
+    "neokodStatus": "not-assessed",
+    "confidence": "low",
+    "evidenceExtra": ["body-read"],
+    "note": "Do not infer a mobile-only implementation from the title. The body does not describe the change; only 100 of 24,058 changed-file paths are available in the captured list and no patch was inspected. This closed-unmerged PR remains unclassified until its actual changed paths and intent are reviewed."
+  },
+  "16138": {
+    "category": "ci-release-build-tooling",
+    "categoryReason": "PR body describes a repository-wide Effect 4 stable dependency and import migration; the first-100 path sample covers only mobile/desktop portions and is incomplete.",
+    "cluster": "build-ci-test-docs",
+    "disposition": "excluded-noise-build-ci-deps",
+    "neokodStatus": "not-assessed",
+    "confidence": "high",
+    "evidenceExtra": ["body-read", "neokod-source@3b134e4"],
+    "note": "This is a broad dependency/runtime migration, not a mobile-only PR. The description reports Effect/@effect and OpenCode dependency upgrades plus import rewrites and behavior changes; 835 files changed and the full diff was not read. Neokod currently pins Effect 4.0.0-beta.78 in pnpm-lock.yaml; this does not make the PR a mobile feature or justify adopting its wide migration. Stable-version migration needs a separate dependency/compatibility decision."
+  },
+  "17321": {
+    "category": "mixed-truncated-unassessed",
+    "categoryReason": "PR body describes a cross-layer morning brief (server endpoint/model summary, stored visit state, actions and client UI); first 100 of 22,551 paths are .repos only and are not representative.",
+    "cluster": "misc-unclustered",
+    "disposition": "needs-human-triage",
+    "neokodStatus": "not-assessed",
+    "confidence": "low-medium",
+    "evidenceExtra": ["body-read", "official-pr-description-read"],
+    "note": "The product intent is a local machine-owned summary of completed/stopped work, distinct from development tooling. This PR was closed unmerged; equivalent intent elsewhere was not assessed. At 22,551 changed files with only the .repos first-100 sample and no patch/source read, its implementation, dependencies, local-first fit and overlap with Neokod Home/Work are unassessed."
+  },
+  "19406": {
+    "category": "mixed-truncated-unassessed",
+    "categoryReason": "Cross-layer Jira issue/tracker workflows include client behavior and server/API/MCP work; first-100 file sample contains web, server and package paths but is incomplete.",
+    "cluster": "source-control-hosts-pr",
+    "disposition": "backend-backlog-unassessed",
+    "neokodStatus": "partial",
+    "confidence": "medium",
+    "evidenceExtra": ["body-read", "official-pr-description-read"],
+    "note": "Neokod already has tracker adapters, including Jira, for Symphony; this closed-unmerged PR describes a separate general issue-workbench/MCP workflow. Existing tracker support is partial parity, not proof the ordinary chat issue UI exists. Keep upstream UI excluded and compare the backend contracts only against actual Neokod use cases; full 118-file diff was not read."
+  },
+  "19468": {
+    "category": "mixed-truncated-unassessed",
+    "categoryReason": "PR body describes provider error propagation across a Slack outbox and native-web-to-Slack mirrors; first-100 file sample is server/mobile-heavy and incomplete.",
+    "cluster": "misc-unclustered",
+    "disposition": "backend-backlog-unassessed",
+    "neokodStatus": "not-assessed",
+    "confidence": "low-medium",
+    "evidenceExtra": ["body-read"],
+    "note": "The error-preservation behavior is clear from the PR body, but the Compadre/Slack integration dependency and portability to Neokod were not traced. Do not treat the sampled mobile/server mix as the complete implementation or assume this is only a UI fix. Closed-unmerged; full 808-file diff was not read."
+  },
+  "22323": {
+    "category": "mixed-truncated-unassessed",
+    "categoryReason": "The title suggests usage-limit reset/auto-resume behavior, while the 100-path sample is desktop-only and the retained body is a blank template; no implementation scope is supported.",
+    "cluster": "usage-limit-recovery",
+    "disposition": "needs-human-triage",
+    "neokodStatus": "not-assessed",
+    "confidence": "low",
+    "evidenceExtra": ["body-read"],
+    "note": "The feature signal is title-only. This closed-unmerged PR cannot support an auto-resume design or desktop-shell classification without a real description and patch. Keep Neokod’s own usage-limit/recovery work scoped to its existing plan; do not infer behavior from the title."
+  },
+  "6315": {
+    "category": "mixed-truncated-unassessed",
+    "categoryReason": "PR body describes multi-host issue tracking, native provider reads/writes, timelines, linked PRs and bounded paging; first 100 of 337 paths are incomplete.",
+    "cluster": "source-control-hosts-pr",
+    "disposition": "backend-backlog-unassessed",
+    "neokodStatus": "partial",
+    "confidence": "medium-high",
+    "evidenceExtra": ["body-read", "neokod-source@3b134e4", "official-pr-description-read"],
+    "note": "The feature is not solely an upstream orchestration-v2 rewrite. Neokod has GitHub/GitLab/Azure/Linear/Jira tracker adapters in Symphony, while ordinary Code issue-workbench parity remains a separate scope. This PR closed unmerged and did not ship; full 337-file diff was not read. Compare backend semantics against the existing tracker adapters; exclude T3 UI changes."
+  },
+  "10439": {
+    "category": "mixed-truncated-unassessed",
+    "categoryReason": "PR body describes both a conversation-search service/contract and web/desktop find-in-thread UI; first 100 of 139 paths are incomplete.",
+    "cluster": "workspace-files-editors",
+    "disposition": "backend-backlog-unassessed",
+    "neokodStatus": "partial",
+    "confidence": "medium",
+    "evidenceExtra": ["body-read", "neokod-source@3b134e4", "official-pr-description-read"],
+    "note": "T3 search is a conversation capability, not only UI polish. Neokod has a workspace file index, but the inspected current source did not establish an equivalent full conversation/history index. Treat transcript search as a candidate gap to verify; all UI would be Neokod-owned, and the PR's V2 search contract/cache is not a direct port. PR merged to main and nightly ancestry verifies inclusion; full 139-file diff was not read."
+  },
+  "23965": {
+    "category": "mixed-truncated-unassessed",
+    "categoryReason": "PR body identifies a source-vs-dist build lookup bug for T3's resource-monitor binary; first 100 of 155 paths are incomplete.",
+    "cluster": "server-runtime-startup-http",
+    "disposition": "not-applicable-current-product",
+    "neokodStatus": "not-applicable",
+    "confidence": "high",
+    "evidenceExtra": ["body-read", "neokod-source@3b134e4", "official-pr-description-read"],
+    "note": "The upstream behavior is a resource-monitor executable lookup. No corresponding resourceTelemetry/resource-monitor source path was found in the inspected Neokod server tree, so this is not a current Neokod port candidate. Reconsider only if that subsystem is added; upstream PR merged, but its 155-file list is truncated and the full diff was not read."
+  }
+}

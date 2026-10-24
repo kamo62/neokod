@@ -408,6 +408,7 @@ function makeMutableServerSettingsService(
       get streamChanges() {
         return Stream.fromPubSub(changes);
       },
+      subscribeChanges: Effect.succeed(Stream.empty),
     } satisfies ServerSettingsModule.ServerSettingsService["Service"];
   });
 }

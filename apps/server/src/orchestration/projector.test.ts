@@ -39,6 +39,78 @@ function makeEvent(input: {
   } as OrchestrationEvent;
 }
 
+const projectorCreatedAt = "2026-02-23T08:00:00.000Z";
+
+function projectThreadCreated(model: ReturnType<typeof createEmptyReadModel>) {
+  return projectEvent(
+    model,
+    makeEvent({
+      sequence: 1,
+      type: "thread.created",
+      aggregateKind: "thread",
+      aggregateId: "thread-1",
+      occurredAt: projectorCreatedAt,
+      commandId: "cmd-create",
+      payload: {
+        threadId: "thread-1",
+        projectId: "project-1",
+        title: "demo",
+        modelSelection: {
+          provider: ProviderDriverKind.make("codex"),
+          model: "gpt-5.3-codex",
+        },
+        runtimeMode: "full-access",
+        branch: null,
+        worktreePath: null,
+        createdAt: projectorCreatedAt,
+        updatedAt: projectorCreatedAt,
+      },
+    }),
+  );
+}
+
+function projectSessionSet(
+  model: ReturnType<typeof createEmptyReadModel>,
+  input: {
+    readonly sequence: number;
+    readonly occurredAt: string;
+    readonly status: "running" | "ready";
+    readonly activeTurnId: string | null;
+    readonly interruptedTurnId?: string;
+    readonly latestTurnOutcome?: "completed" | "interrupted" | "error";
+  },
+) {
+  return projectEvent(
+    model,
+    makeEvent({
+      sequence: input.sequence,
+      type: "thread.session-set",
+      aggregateKind: "thread",
+      aggregateId: "thread-1",
+      occurredAt: input.occurredAt,
+      commandId: `cmd-session-${input.sequence}`,
+      payload: {
+        threadId: "thread-1",
+        session: {
+          threadId: "thread-1",
+          status: input.status,
+          providerName: "codex",
+          runtimeMode: "full-access",
+          activeTurnId: input.activeTurnId,
+          lastError: null,
+          updatedAt: input.occurredAt,
+        },
+        ...(input.interruptedTurnId !== undefined
+          ? { interruptedTurnId: input.interruptedTurnId }
+          : {}),
+        ...(input.latestTurnOutcome !== undefined
+          ? { latestTurnOutcome: input.latestTurnOutcome }
+          : {}),
+      },
+    }),
+  );
+}
+
 describe("orchestration projector", () => {
   it("applies thread.created events", async () => {
     const now = "2026-01-01T00:00:00.000Z";
@@ -425,6 +497,238 @@ describe("orchestration projector", () => {
       // Explicit null means no observation; recovery time must not fill it in.
       expect(thread?.latestTurn?.completedAt).toBeNull();
     }),
+  );
+
+  effectIt.effect("uses an explicit turn outcome instead of session-status inference", () =>
+    Effect.gen(function* () {
+      const model = yield* projectThreadCreated(createEmptyReadModel(projectorCreatedAt));
+      const running = yield* projectSessionSet(model, {
+        sequence: 2,
+        occurredAt: "2026-02-23T08:00:05.000Z",
+        status: "running",
+        activeTurnId: "turn-1",
+      });
+      const settledAt = "2026-02-23T08:01:00.000Z";
+      const settled = yield* projectSessionSet(running, {
+        sequence: 3,
+        occurredAt: settledAt,
+        status: "ready",
+        activeTurnId: null,
+        interruptedTurnId: "turn-1",
+        latestTurnOutcome: "interrupted",
+      });
+
+      // The ready session is availability, not the turn outcome.
+      expect(settled.threads[0]?.session?.status).toBe("ready");
+      expect(settled.threads[0]?.latestTurn?.state).toBe("interrupted");
+      expect(settled.threads[0]?.latestTurn?.completedAt).toBe(settledAt);
+    }),
+  );
+
+  effectIt.effect("does not let a delayed outcome settle newer running work", () =>
+    Effect.gen(function* () {
+      const model = yield* projectThreadCreated(createEmptyReadModel(projectorCreatedAt));
+      const firstTurn = yield* projectSessionSet(model, {
+        sequence: 2,
+        occurredAt: "2026-02-23T08:00:05.000Z",
+        status: "running",
+        activeTurnId: "turn-1",
+      });
+      const secondTurn = yield* projectSessionSet(firstTurn, {
+        sequence: 3,
+        occurredAt: "2026-02-23T08:00:10.000Z",
+        status: "running",
+        activeTurnId: "turn-2",
+      });
+      const delayed = yield* projectSessionSet(secondTurn, {
+        sequence: 4,
+        occurredAt: "2026-02-23T08:01:00.000Z",
+        status: "ready",
+        activeTurnId: null,
+        interruptedTurnId: "turn-1",
+        latestTurnOutcome: "interrupted",
+      });
+
+      const thread = delayed.threads[0];
+      // The delayed outcome belongs to turn-1; it must not replace or clear
+      // the newer running session or latest turn.
+      expect(thread?.session?.status).toBe("running");
+      expect(thread?.session?.activeTurnId).toBe("turn-2");
+      expect(thread?.latestTurn?.turnId).toBe("turn-2");
+      expect(thread?.latestTurn?.state).toBe("running");
+
+      const projectLateCheckpoint = (sequence: number, checkpointTurnCount: number) =>
+        projectEvent(
+          delayed,
+          makeEvent({
+            sequence,
+            type: "thread.turn-diff-completed",
+            aggregateKind: "thread",
+            aggregateId: "thread-1",
+            occurredAt: `2026-02-23T08:0${sequence}:00.000Z`,
+            commandId: `cmd-checkpoint-${sequence}`,
+            payload: {
+              threadId: "thread-1",
+              turnId: "turn-1",
+              checkpointTurnCount,
+              checkpointRef: `refs/neokod/checkpoints/thread-1/turn/${checkpointTurnCount}`,
+              status: "ready",
+              files: [],
+              assistantMessageId: null,
+              completedAt: `2026-02-23T08:0${sequence}:00.000Z`,
+            },
+          }),
+        );
+
+      const checkpointWhileNewerRunning = yield* projectLateCheckpoint(5, 1);
+      expect(checkpointWhileNewerRunning.threads[0]?.latestTurn?.turnId).toBe("turn-2");
+      expect(checkpointWhileNewerRunning.threads[0]?.latestTurn?.state).toBe("running");
+      expect(checkpointWhileNewerRunning.threads[0]?.session?.activeTurnId).toBe("turn-2");
+
+      const newTurnSettled = yield* projectSessionSet(checkpointWhileNewerRunning, {
+        sequence: 6,
+        occurredAt: "2026-02-23T08:06:00.000Z",
+        status: "ready",
+        activeTurnId: null,
+      });
+      expect(newTurnSettled.threads[0]?.latestTurn?.turnId).toBe("turn-2");
+      expect(newTurnSettled.threads[0]?.latestTurn?.state).toBe("completed");
+
+      const checkpointWhileNewerSettled = yield* projectEvent(
+        newTurnSettled,
+        makeEvent({
+          sequence: 7,
+          type: "thread.turn-diff-completed",
+          aggregateKind: "thread",
+          aggregateId: "thread-1",
+          occurredAt: "2026-02-23T08:07:00.000Z",
+          commandId: "cmd-checkpoint-7",
+          payload: {
+            threadId: "thread-1",
+            turnId: "turn-1",
+            checkpointTurnCount: 2,
+            checkpointRef: "refs/neokod/checkpoints/thread-1/turn/2",
+            status: "ready",
+            files: [],
+            assistantMessageId: null,
+            completedAt: "2026-02-23T08:07:00.000Z",
+          },
+        }),
+      );
+      expect(checkpointWhileNewerSettled.threads[0]?.latestTurn?.turnId).toBe("turn-2");
+      expect(checkpointWhileNewerSettled.threads[0]?.latestTurn?.state).toBe("completed");
+      expect(
+        checkpointWhileNewerSettled.threads[0]?.checkpoints.find(
+          (entry) => entry.turnId === "turn-1",
+        )?.checkpointTurnCount,
+      ).toBe(2);
+    }),
+  );
+
+  effectIt.effect(
+    "corrects an inferred completion and preserves it through late checkpoint and running updates",
+    () =>
+      Effect.gen(function* () {
+        const model = yield* projectThreadCreated(createEmptyReadModel(projectorCreatedAt));
+        const running = yield* projectSessionSet(model, {
+          sequence: 2,
+          occurredAt: "2026-02-23T08:00:05.000Z",
+          status: "running",
+          activeTurnId: "turn-1",
+        });
+        const inferred = yield* projectSessionSet(running, {
+          sequence: 3,
+          occurredAt: "2026-02-23T08:00:30.000Z",
+          status: "ready",
+          activeTurnId: null,
+        });
+        expect(inferred.threads[0]?.latestTurn?.state).toBe("completed");
+
+        const inferredAt = "2026-02-23T08:00:30.000Z";
+        const authoritativeAt = "2026-02-23T08:01:00.000Z";
+        const interrupted = yield* projectSessionSet(inferred, {
+          sequence: 4,
+          occurredAt: authoritativeAt,
+          status: "ready",
+          activeTurnId: null,
+          interruptedTurnId: "turn-1",
+          latestTurnOutcome: "interrupted",
+        });
+        expect(interrupted.threads[0]?.latestTurn?.state).toBe("interrupted");
+        expect(interrupted.threads[0]?.latestTurn?.completedAt).toBe(inferredAt);
+
+        const repeated = yield* projectSessionSet(interrupted, {
+          sequence: 5,
+          occurredAt: "2026-02-23T08:01:15.000Z",
+          status: "ready",
+          activeTurnId: null,
+          interruptedTurnId: "turn-1",
+          latestTurnOutcome: "interrupted",
+        });
+        expect(repeated.threads[0]?.latestTurn?.state).toBe("interrupted");
+        expect(repeated.threads[0]?.latestTurn?.completedAt).toBe(inferredAt);
+
+        const checkpointed = yield* projectEvent(
+          repeated,
+          makeEvent({
+            sequence: 6,
+            type: "thread.turn-diff-completed",
+            aggregateKind: "thread",
+            aggregateId: "thread-1",
+            occurredAt: "2026-02-23T08:02:00.000Z",
+            commandId: "cmd-checkpoint",
+            payload: {
+              threadId: "thread-1",
+              turnId: "turn-1",
+              checkpointTurnCount: 1,
+              checkpointRef: "refs/neokod/checkpoints/thread-1/turn/1",
+              status: "ready",
+              files: [],
+              assistantMessageId: null,
+              completedAt: "2026-02-23T08:02:00.000Z",
+            },
+          }),
+        );
+        expect(checkpointed.threads[0]?.latestTurn?.state).toBe("interrupted");
+        expect(checkpointed.threads[0]?.latestTurn?.completedAt).toBe(inferredAt);
+
+        const lateRunning = yield* projectSessionSet(checkpointed, {
+          sequence: 7,
+          occurredAt: "2026-02-23T08:03:00.000Z",
+          status: "running",
+          activeTurnId: "turn-1",
+        });
+        // A late running update for an already terminal turn cannot reopen the
+        // session that has left it.
+        expect(lateRunning.threads[0]?.session?.status).toBe("ready");
+        expect(lateRunning.threads[0]?.session?.activeTurnId).toBeNull();
+        expect(lateRunning.threads[0]?.latestTurn?.state).toBe("interrupted");
+        expect(lateRunning.threads[0]?.latestTurn?.completedAt).toBe(inferredAt);
+
+        const lateMessage = yield* projectEvent(
+          lateRunning,
+          makeEvent({
+            sequence: 8,
+            type: "thread.message-sent",
+            aggregateKind: "thread",
+            aggregateId: "thread-1",
+            occurredAt: "2026-02-23T08:04:00.000Z",
+            commandId: "cmd-late-message",
+            payload: {
+              threadId: "thread-1",
+              messageId: "message-late",
+              role: "assistant",
+              text: "late",
+              turnId: "turn-1",
+              streaming: true,
+              createdAt: "2026-02-23T08:04:00.000Z",
+              updatedAt: "2026-02-23T08:04:00.000Z",
+            },
+          }),
+        );
+        expect(lateMessage.threads[0]?.latestTurn?.state).toBe("interrupted");
+        expect(lateMessage.threads[0]?.latestTurn?.completedAt).toBe(inferredAt);
+      }),
   );
 
   it("updates canonical thread runtime mode from thread.runtime-mode-set", async () => {

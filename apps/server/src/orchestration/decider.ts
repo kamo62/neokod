@@ -587,6 +587,13 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
     }
 
     case "thread.session.set": {
+      if (command.latestTurnOutcome !== undefined && command.interruptedTurnId === undefined) {
+        return yield* new OrchestrationCommandInvariantError({
+          commandType: command.type,
+          detail:
+            "latestTurnOutcome requires interruptedTurnId so the settled turn is unambiguous.",
+        });
+      }
       yield* requireThread({
         readModel,
         command,
@@ -607,6 +614,12 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           ...(command.interruptedTurnId === undefined
             ? {}
             : { interruptedTurnId: command.interruptedTurnId }),
+          // Preserve the omitted/explicit distinction: an omitted outcome falls
+          // back to session-status inference, while a present outcome is
+          // authoritative for the turn pinned by interruptedTurnId.
+          ...(command.latestTurnOutcome === undefined
+            ? {}
+            : { latestTurnOutcome: command.latestTurnOutcome }),
           // Preserve the omitted/unknown distinction: only an omitted field
           // falls back to the legacy session-time completion. An explicit
           // null records that no current-turn observation exists.

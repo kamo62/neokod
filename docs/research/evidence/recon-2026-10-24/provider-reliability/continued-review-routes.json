@@ -1,0 +1,66 @@
+{
+  "ready-performance": {
+    "sessionId": "ses_e92730998ffeEMYJKV4qJgyrs0",
+    "requestedModel": "deepseek/deepseek-flash",
+    "selected": {
+      "model": "deepseek/deepseek-flash",
+      "effort": "default"
+    }
+  },
+  "sol-performance": {
+    "sessionId": "ses_e9268e357ffeXr1B7W3NrETi6Z",
+    "requestedModel": "github-copilot/gpt-6.1-sol",
+    "selected": {
+      "model": "github-copilot/gpt-6.1-sol",
+      "effort": "high"
+    }
+  },
+  "opus-performance": {
+    "sessionId": "ses_e9268dfb5ffe5pXdqpWaEy5x6t",
+    "requestedModel": "github-copilot/claude-opus-5.5",
+    "selected": {
+      "model": "github-copilot/claude-opus-5.5",
+      "effort": "high"
+    }
+  },
+  "outcomes-upgrade-empty": {
+    "sessionId": "ses_e92b3e1f4ffeUUSu9orqn1UZ6R",
+    "requestedModel": "deepseek/deepseek-flash",
+    "selected": {
+      "model": "deepseek/deepseek-flash",
+      "effort": "default"
+    }
+  },
+  "sol-outcomes-upgrade": {
+    "sessionId": "ses_e927747e5ffeuTgSlUyzkWXxyE",
+    "requestedModel": "github-copilot/gpt-6.1-sol",
+    "selected": {
+      "model": "github-copilot/gpt-6.1-sol",
+      "effort": "high"
+    }
+  },
+  "opus-outcomes-upgrade": {
+    "sessionId": "ses_e927747e2ffeI7caqKOex6Tu8M",
+    "requestedModel": "github-copilot/claude-opus-5.5",
+    "selected": {
+      "model": "github-copilot/claude-opus-5.5",
+      "effort": "high"
+    }
+  },
+  "luna-matrix-correction": {
+    "sessionId": "ses_e927b3a10ffe5iumjnQk4sQFmH",
+    "requestedModel": "github-copilot/gpt-6-luna",
+    "selected": {
+      "model": "github-copilot/gpt-6-luna",
+      "effort": "max"
+    }
+  },
+  "luna-ledger-extensions": {
+    "sessionId": "ses_e9277cd16ffeICvA9MxE1INu2p",
+    "requestedModel": "github-copilot/gpt-6-luna",
+    "selected": {
+      "model": "github-copilot/gpt-6-luna",
+      "effort": "max"
+    }
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "opus-schema-high": {
+    "agentInfo": {
+      "name": "OpenCode",
+      "version": "2.0.32"
+    },
+    "requestedModel": "github-copilot/claude-opus-5.5",
+    "selected": {
+      "model": "github-copilot/claude-opus-5.5",
+      "effort": "high",
+      "mode": "build"
+    }
+  },
+  "opus-outcomes-guard": {
+    "agentInfo": {
+      "name": "OpenCode",
+      "version": "2.0.32"
+    },
+    "requestedModel": "github-copilot/claude-opus-5.5",
+    "selected": {
+      "model": "github-copilot/claude-opus-5.5",
+      "effort": "high",
+      "mode": "build"
+    }
+  },
+  "opus-audit-fallback": {
+    "agentInfo": {
+      "name": "OpenCode",
+      "version": "2.0.32"
+    },
+    "requestedModel": "github-copilot/claude-opus-5.5",
+    "selected": {
+      "model": "github-copilot/claude-opus-5.5",
+      "effort": "high",
+      "mode": "build"
+    }
+  },
+  "directClaudeLimit": {
+    "actualModel": "claude-opus-5-5",
+    "provider": "firstParty",
+    "isError": true,
+    "result": "Account session limit; resets 2026-10-24 14:40 UTC",
+    "source": "opus-audit.json modelUsage and result"
+  },
+  "firstSchemaFallback": {
+    "effort": "default",
+    "supersededBy": "opus-schema-high",
+    "reason": "High effort explicitly configured for required final review"
+  }
+}

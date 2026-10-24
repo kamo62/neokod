@@ -1,0 +1,43 @@
+{
+  "head": "c8fef250e3b2ff6d4d8055d3ae9913d1b1ccba37",
+  "proof": "Native Chrome Computer Use against owned matching source runtime, followed by read-only persisted-state verification",
+  "threadId": "33d6470d-2936-422c-b914-76b33b5fb16b",
+  "driver": "githubCopilot",
+  "status": "passed",
+  "checks": [
+    "approval prompt sleep 20, Approve once",
+    "actual Stop generation -> Stopped banner/sidebar",
+    "browser Reload retained Stopped",
+    "same-thread exact CHROME_AFTER_STOP_1024_OK",
+    "provider refresh completes; Codex/Claude/Copilot authenticated; OpenCode2 explicit unsupported",
+    "Symphony paused/observe unknown execution; Run now disabled; incomplete history preserved"
+  ],
+  "turns": [
+    {
+      "turn_id": "f7a037a7-0b2c-4bba-b363-e8d896f6e571",
+      "state": "completed",
+      "started_at": "2026-10-24T11:33:36.897Z",
+      "completed_at": "2026-10-24T11:33:41.522Z"
+    },
+    {
+      "turn_id": "37f986cc-0f41-40ea-8c25-17c38aee396e",
+      "state": "interrupted",
+      "started_at": "2026-10-24T11:32:40.888Z",
+      "completed_at": "2026-10-24T11:33:07.027Z"
+    },
+    {
+      "turn_id": "316d0ad5-189e-4059-bda9-e7d4ea283cdb",
+      "state": "completed",
+      "started_at": "2026-10-24T11:32:04.877Z",
+      "completed_at": "2026-10-24T11:32:10.784Z"
+    }
+  ],
+  "firstAttempt": "Provider completed with a refusal before Stop; not counted as interruption proof",
+  "limits": [
+    "No Symphony tracker dispatch or identity-bound ownership Stop",
+    "No native desktop acceptance",
+    "Claude account limit, Codex continuation credit error; readiness is not credit availability",
+    "Vite old export cache required owned renderer restart with --force; no production build/install",
+    "Historical stopped activity button becomes generic Worked after successor; persisted turn remains interrupted"
+  ]
+}

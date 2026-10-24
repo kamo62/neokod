@@ -1,0 +1,16 @@
+{
+  "head": "c8fef250e3b2ff6d4d8055d3ae9913d1b1ccba37",
+  "rendererLauncherPid": 57053,
+  "command": [
+    "vp",
+    "dev",
+    "--config",
+    "/tmp/neokod-implementation-2026-10-23/runtime-composition-vite.config.mts",
+    "--configLoader",
+    "native",
+    "--force"
+  ],
+  "stoppedOwnedRendererPid": 30545,
+  "reason": "Vite cached pre-change package export map; current package export and symlinks verified",
+  "buildOrInstall": false
+}

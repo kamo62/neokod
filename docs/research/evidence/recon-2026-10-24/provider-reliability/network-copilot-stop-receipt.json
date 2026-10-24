@@ -1,0 +1,16 @@
+{
+  "status": "passed",
+  "proof": "authenticated network commands and persisted provider outcomes; not Chrome or Symphony Stop proof",
+  "checks": [
+    {
+      "driver": "githubCopilot",
+      "threadId": "33d6470d-2936-422c-b914-76b33b5fb16b",
+      "targetTurnId": "9be58406-02db-4e46-ad3f-2638ac60d81a",
+      "stopOutcome": "interrupted",
+      "firstSettlement": "2026-10-24T11:18:40.868Z",
+      "postStopExactReply": "GITHUBCOPILOT_AFTER_STOP_1024_OK",
+      "postStopCompleted": true,
+      "originalSettlementUnchanged": true
+    }
+  ]
+}

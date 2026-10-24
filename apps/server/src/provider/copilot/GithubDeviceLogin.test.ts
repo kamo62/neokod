@@ -62,6 +62,7 @@ const testLayer = () =>
       getProviderMaintenanceCapabilitiesForInstance: unused,
       setProviderMaintenanceActionState: unused,
       streamChanges: Stream.empty,
+      subscribeChanges: Effect.succeed(Stream.empty),
     } satisfies ProviderRegistry.ProviderRegistryShape),
   );
 

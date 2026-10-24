@@ -8,6 +8,7 @@ import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
 import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
+import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import {
   DEFAULT_AUTOMATIC_GIT_FETCH_INTERVAL,
@@ -35,6 +36,9 @@ import {
   ProjectSearchEntriesError,
   ProjectWriteFileError,
   type FilesystemBrowseFailure,
+  type ServerConfigStreamEvent,
+  type ServerProvider,
+  type ServerSettings as ServerSettingsModel,
   FilesystemBrowseError,
   AssetWorkspaceContextNotFoundError,
   AssetWorkspaceContextResolutionError,
@@ -1360,6 +1364,89 @@ export const makeSymphonyRpcHandlers = () => ({
       ),
       { "rpc.aggregate": "symphony" },
     ),
+});
+
+/**
+ * Compose the server-config change sources after their subscriptions have
+ * been acquired synchronously. The `subscribeChanges` effects must each
+ * register a `PubSub` subscription before resolving; mapping, provider
+ * debounce and client redaction happen after acquisition so no change lands
+ * in a scheduling gap between subscription and stream start.
+ */
+export const acquireServerConfigUpdates = (input: {
+  readonly keybindingsChanges: Effect.Effect<
+    Stream.Stream<Keybindings.KeybindingsChangeEvent>,
+    never,
+    Scope.Scope
+  >;
+  readonly providerChanges: Effect.Effect<
+    Stream.Stream<ReadonlyArray<ServerProvider>>,
+    never,
+    Scope.Scope
+  >;
+  readonly settingsChanges: Effect.Effect<Stream.Stream<ServerSettingsModel>, never, Scope.Scope>;
+}): Effect.Effect<Stream.Stream<ServerConfigStreamEvent>, never, Scope.Scope> =>
+  Effect.gen(function* () {
+    const keybindingsChanges = yield* input.keybindingsChanges;
+    const providerChanges = yield* input.providerChanges;
+    const settingsChanges = yield* input.settingsChanges;
+
+    const liveUpdates: Stream.Stream<ServerConfigStreamEvent> = Stream.merge(
+      keybindingsChanges.pipe(
+        Stream.map((event) => ({
+          version: 1 as const,
+          type: "keybindingsUpdated" as const,
+          payload: {
+            keybindings: event.keybindings,
+            issues: event.issues,
+          },
+        })),
+      ),
+      Stream.merge(
+        providerChanges.pipe(
+          Stream.map((providers) => ({
+            version: 1 as const,
+            type: "providerStatuses" as const,
+            payload: { providers },
+          })),
+          Stream.debounce(Duration.millis(PROVIDER_STATUS_DEBOUNCE_MS)),
+        ),
+        settingsChanges.pipe(
+          Stream.map((settings) => ServerSettings.redactServerSettingsForClient(settings)),
+          Stream.map((settings) => ({
+            version: 1 as const,
+            type: "settingsUpdated" as const,
+            payload: { settings },
+          })),
+        ),
+      ),
+    );
+
+    return liveUpdates;
+  });
+
+/**
+ * Emit the snapshot once it has loaded, then every live update that lands
+ * after `acquireUpdates` resolves. Subscription acquisition is therefore
+ * complete before the provider refresh or snapshot work starts, and the live
+ * stream is returned directly rather than forked through a queue, so a
+ * producer defect reaches the RPC caller instead of leaving an idle stream.
+ */
+export const subscribeServerConfigStream = Effect.fn("subscribeServerConfigStream")(function* <
+  E,
+>(input: {
+  readonly acquireUpdates: Effect.Effect<
+    Stream.Stream<ServerConfigStreamEvent>,
+    never,
+    Scope.Scope
+  >;
+  readonly refresh: Effect.Effect<unknown, never>;
+  readonly loadSnapshot: Effect.Effect<ServerConfigStreamEvent, E>;
+}): Effect.fn.Return<Stream.Stream<ServerConfigStreamEvent, E>, E, Scope.Scope> {
+  const liveUpdates = yield* input.acquireUpdates;
+  yield* input.refresh.pipe(Effect.ignoreCause({ log: true }), Effect.forkScoped);
+  const snapshot = yield* input.loadSnapshot;
+  return Stream.concat(Stream.make(snapshot), liveUpdates);
 });
 
 const makeWsRpcLayer = (
@@ -2817,51 +2904,21 @@ const makeWsRpcLayer = (
         [WS_METHODS.subscribeServerConfig]: (_input) =>
           observeRpcStreamEffect(
             WS_METHODS.subscribeServerConfig,
-            Effect.gen(function* () {
-              const keybindingsUpdates = keybindings.streamChanges.pipe(
-                Stream.map((event) => ({
-                  version: 1 as const,
-                  type: "keybindingsUpdated" as const,
-                  payload: {
-                    keybindings: event.keybindings,
-                    issues: event.issues,
-                  },
-                })),
-              );
-              const providerStatuses = providerRegistry.streamChanges.pipe(
-                Stream.map((providers) => ({
-                  version: 1 as const,
-                  type: "providerStatuses" as const,
-                  payload: { providers },
-                })),
-                Stream.debounce(Duration.millis(PROVIDER_STATUS_DEBOUNCE_MS)),
-              );
-              const settingsUpdates = serverSettings.streamChanges.pipe(
-                Stream.map((settings) => ServerSettings.redactServerSettingsForClient(settings)),
-                Stream.map((settings) => ({
-                  version: 1 as const,
-                  type: "settingsUpdated" as const,
-                  payload: { settings },
-                })),
-              );
-
-              yield* providerRegistry
-                .refresh()
-                .pipe(Effect.ignoreCause({ log: true }), Effect.forkScoped);
-
-              const liveUpdates = Stream.merge(
-                keybindingsUpdates,
-                Stream.merge(providerStatuses, settingsUpdates),
-              );
-
-              return Stream.concat(
-                Stream.make({
+            subscribeServerConfigStream({
+              acquireUpdates: acquireServerConfigUpdates({
+                keybindingsChanges: keybindings.subscribeChanges,
+                providerChanges: providerRegistry.subscribeChanges,
+                settingsChanges: serverSettings.subscribeChanges,
+              }),
+              refresh: providerRegistry.refresh(),
+              loadSnapshot: Effect.gen(function* () {
+                const snapshot: ServerConfigStreamEvent = {
                   version: 1 as const,
                   type: "snapshot" as const,
                   config: yield* loadServerConfig,
-                }),
-                liveUpdates,
-              );
+                };
+                return snapshot;
+              }),
             }),
             { "rpc.aggregate": "server" },
           ),

@@ -1,11 +1,17 @@
 ## 3.8.0 - Unreleased (Minor)
 
-Release impact: Minor because this adds structured Symphony feedback, accepted guidance snapshots, identity-bound recovery and the production Work view. This is candidate source on a feature branch. It is held from shipping until the recorded live feedback gate passes; no build or release publication was performed.
+Release impact: Minor because this adds structured Symphony feedback, accepted guidance snapshots, identity-bound recovery and the production Work view. This is unreleased dev source. Formal core acceptance remains open; no build or release publication was performed.
 
 - Preserve independent question answers and supported notes, distinguish answered history from approval, and retain uncertain delivery evidence through interruption and restart.
 - Bind process ownership to the exact attempt and claim generation. Stop retains ownership until supported identity and closure are confirmed, including after restart and failed persistence.
 - Freeze accepted guidance and provenance per attempt, intersect later policy without widening permission, and refuse unsupported executor pins, changed targets and publication gates without durable approval authority.
 - Consolidate Symphony monitoring into Work with lifecycle and overlapping attention filters, secondary History and on-demand detail. Incomplete, stale and disconnected evidence remains unknown.
+
+- Acquire provider-status subscriptions before sending the initial configuration snapshot, so a ready transition cannot disappear during discovery. Preserve wrapped OpenCode SDK authentication status.
+- Keep native subagent cards visible when they have no progress text, and route schema-backed Codex child events without settling the parent conversation.
+- Accept the observed Codex 0.163 completed subagent activity in resumed history while retaining strict rejection of unknown activity kinds.
+- Preserve provider-confirmed interrupted/error outcomes, exact turn identity and first settlement across late messages, checkpoints and reload. Replay coupled projections in event order, permit legacy runtime-item catch-up and consume history beyond the default 1,000-event cap. Unsupported coupled cursor skew stops startup without resetting stored evidence.
+- Avoid repeated terminal control-sequence scanning and unused Git output line buffering. Output, progress and truncation semantics are preserved; local measurements establish reduced scanning only.
 
 ## 3.7.2 - 2026-10-23 (Patch)
 

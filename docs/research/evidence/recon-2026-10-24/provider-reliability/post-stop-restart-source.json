@@ -1,0 +1,24 @@
+{
+  "head": "c8fef250e3b2ff6d4d8055d3ae9913d1b1ccba37",
+  "stoppedOwnedBackend": 51337,
+  "backendPid": 54871,
+  "rendererPid": 30545,
+  "cwd": "/Users/kamogelo/.codex/worktrees/neokod-core-execution/t3code",
+  "command": [
+    "node",
+    "apps/server/src/bin.ts",
+    "serve",
+    "--mode",
+    "web",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "24773",
+    "--base-dir",
+    "/tmp/neokod-implementation-2026-10-23/runtime",
+    "--dev-url",
+    "http://127.0.0.1:16733",
+    "--no-browser"
+  ],
+  "reason": "verify normal-thread Stop/result persistence after restart; not Symphony recovery proof"
+}

@@ -1,0 +1,2995 @@
+{
+  "report_date": "2026-10-24",
+  "model": "gpt-6-luna at max; substituted for unavailable requested Luna 6.1.",
+  "root": "/Users/kamogelo/.codex/worktrees/neokod-core-execution/t3code",
+  "scope": "Read-only breadth expansion of the established twenty-product roster. Prior usage inventory files are retained unchanged. Not exhaustive feature parity.",
+  "canonical_inputs": [
+    "README.md and AGENTS.md (repository instructions and local-first boundaries)",
+    "plan.md §12–§16.19 (especially usage U-1–U-7, W5, W6, formal core gates)",
+    "docs/research/feature-verdicts-2026-10-04.md revision 5",
+    "docs/research/competitor-codebase-review-2026-10-04.md",
+    "competitor-feature-inventory.md/.json/.csv (prior usage work; preserved)"
+  ],
+  "coverage": {
+    "roster_count": 20,
+    "product_rows": 20,
+    "gap_clusters": 12,
+    "current_official_source_or_document_anchor_count": 20,
+    "current_head_pins_or_documented_revision_count": 20,
+    "public_source_or_document_only": 20,
+    "competitor_runtime_executions": 0,
+    "Neokod_builds_or_installs": 0,
+    "claimed_exhaustive_feature_parity": false,
+    "unavailable_or_qualified_sources": [
+      "Traycer execution host/backend is private/unavailable.",
+      "Empryo v3 backend/current newest surfaces are private; public repository is v2 core.",
+      "GOAT evidence is from current dev branch; packaged-release linkage is not established.",
+      "Several other rows rely on official documentation/product README, not a current runtime proof."
+    ],
+    "out_of_scope_categories": [
+      "hosted relay, cloud accounts/pairing, mobile, shared tenancy",
+      "provider gateway/platform credit billing as a Neokod product feature",
+      "upstream UI porting"
+    ],
+    "source_url_count": 28,
+    "feature_assessment_rows": 40,
+    "feature_assessment_source_reference_count": 48,
+    "feature_assessment_unique_source_url_count": 38,
+    "product_roster_rows_are_not_feature_verdicts": true,
+    "source_url_count_semantics": "Original 28 product-level source/document anchors; per-feature citations are counted in feature_assessment_source_reference_count and unique_source_url_count.",
+    "t3_pr_body_sources": "Selected preserved public PR API bodies: #10439, #15057, #15149, #15208, #15768, #15783, #18429, #18467, #17458, #22070, #11846, #14642, #15024. Citations are linked per feature."
+  },
+  "status_vocabulary": [
+    "present in inspected production source",
+    "partial",
+    "planned (gated)",
+    "candidate (not found in inspected paths; not an absence claim)",
+    "candidate (not a missing verdict)",
+    "excluded by policy (slice-specific)",
+    "unavailable evidence",
+    "no additional validated gap"
+  ],
+  "proof_boundary": "Public source/docs establish a source-level or documented capability only. No competitor binary, provider account, live provider turn, tracker mutation, machine connection, or runtime workflow was exercised. Neokod source status is not formal core/runtime acceptance.",
+  "ui_rule": "Upstream UI is intent-only under repository AGENTS.md. Any shipped visual behavior must be a deliberate Neokod design using Neokod components.",
+  "metrics_rule": "Keep current context occupancy, processed usage, provider quota/account windows, provider-reported charges, API-equivalent estimates and platform credits separate. Unknown/absent/unpriced is never zero; estimated API-equivalent cost is not actual subscription spend.",
+  "products": [
+    {
+      "n": 1,
+      "product": "T3",
+      "repo": "pingdotgg/t3code",
+      "sha": "27e0c684c585f955252d65f06206dd11a143bff5",
+      "evidence_status": "Current public implementation source inspected; not executed.",
+      "feature": "Agent-called, app-managed child tasks with asynchronous or waiting execution, task status/cancel, child-result attribution, and optional worktree isolation. The code distinguishes this from native subagent tools and warns about authority/approval boundaries.",
+      "sources": [
+        {
+          "url": "https://github.com/pingdotgg/t3code/blob/27e0c684c585f955252d65f06206dd11a143bff5/apps/server/src/mcp/toolkits/orchestrator/tools.ts",
+          "class": "Primary OSS implementation source",
+          "pin_date": "2026-10-24"
+        }
+      ],
+      "gap_ids": ["G01", "G03", "G05", "G06", "G09", "G11", "G12"]
+    },
+    {
+      "n": 2,
+      "product": "Paseo",
+      "repo": "getpaseo/paseo",
+      "sha": "b8bb335c563279be45544b1b20a1fa5b3e56d422",
+      "evidence_status": "Current official orchestration documentation inspected; no runtime execution.",
+      "feature": "Official orchestration guide documents built-in agent tools that can launch another agent, show children in a subagent track, and notify the parent on completion; it also links to separate worktree, other-machine, recurring-job, heartbeat and skill workflows.",
+      "sources": [
+        {
+          "url": "https://github.com/getpaseo/paseo/blob/b8bb335c563279be45544b1b20a1fa5b3e56d422/public-docs/orchestration.md",
+          "class": "Official public documentation",
+          "pin_date": "2026-10-24"
+        }
+      ],
+      "gap_ids": ["G01", "G02", "G05"]
+    },
+    {
+      "n": 3,
+      "product": "Synara",
+      "repo": "Emanuele-web04/synara",
+      "sha": "29b11e105200c7bc6e2c71a06a375513d4c8a72d",
+      "evidence_status": "Current official repository README inspected; public product documentation only.",
+      "feature": "Task-centred workspace surfaces for changes, terminal, browser previews/WebMCP, files/editor, Git/PRs, provider handoffs, recurring automations and scoped external MCP. The README says automation outcomes attach to projects and threads.",
+      "sources": [
+        {
+          "url": "https://github.com/Emanuele-web04/synara/blob/29b11e105200c7bc6e2c71a06a375513d4c8a72d/README.md",
+          "class": "Official repository README",
+          "pin_date": "2026-10-24"
+        }
+      ],
+      "gap_ids": ["G05", "G10"]
+    },
+    {
+      "n": 4,
+      "product": "MonoCode",
+      "repo": "hardbeat920/monocode",
+      "sha": "26465c620977f3951d0a532a0f7db32c3c179007",
+      "evidence_status": "Current official remote-access documentation inspected; no runtime execution.",
+      "feature": "User-operated remote host over SSH with per-device tokens/revocation, persistent host-owned sessions, reconnect snapshots, stable command IDs/receipts for uncertain sends, remote file/Git/history/worktree actions, and no automatic replay of uncertain provider work.",
+      "sources": [
+        {
+          "url": "https://github.com/hardbeat920/monocode/blob/26465c620977f3951d0a532a0f7db32c3c179007/docs/remote-access.md",
+          "class": "Official public implementation documentation",
+          "pin_date": "2026-10-24"
+        }
+      ],
+      "gap_ids": ["G02"]
+    },
+    {
+      "n": 5,
+      "product": "OpenCodeX",
+      "repo": "lidge-jun/opencodex",
+      "sha": "9f0d40a25f8b842c33ab233d466d0bd991d86052",
+      "evidence_status": "Current official README and usage source inspected.",
+      "feature": "Local model gateway/dashboard with dozens of provider adapters, OpenAI-compatible endpoints, account-pool quota/routing policies, and request usage/cost summaries.",
+      "sources": [
+        {
+          "url": "https://github.com/lidge-jun/opencodex/blob/9f0d40a25f8b842c33ab233d466d0bd991d86052/README.md",
+          "class": "Official repository README",
+          "pin_date": "2026-10-24"
+        },
+        {
+          "url": "https://github.com/lidge-jun/opencodex/blob/9f0d40a25f8b842c33ab233d466d0bd991d86052/gui/src/pages/Usage.tsx",
+          "class": "Primary OSS implementation source; usage inventory",
+          "pin_date": "2026-10-24"
+        }
+      ],
+      "gap_ids": ["G03"]
+    },
+    {
+      "n": 6,
+      "product": "Omnigent",
+      "repo": "omnigent-ai/omnigent",
+      "sha": "f87fed537627f3278445df86fba6cd14bb809c1f",
+      "evidence_status": "Current public implementation source inspected.",
+      "feature": "Subagent recovery reconstructs child work from persisted session snapshots and re-delivers retained terminal child results to a parent inbox after process restart; delivery bookkeeping/inbox behavior has documented boundaries.",
+      "sources": [
+        {
+          "url": "https://github.com/omnigent-ai/omnigent/blob/f87fed537627f3278445df86fba6cd14bb809c1f/omnigent/runner/subagent_recovery.py",
+          "class": "Primary OSS implementation source",
+          "pin_date": "2026-10-24"
+        }
+      ],
+      "gap_ids": ["G01"]
+    },
+    {
+      "n": 7,
+      "product": "Empryo",
+      "repo": "proxysoul/Empryo",
+      "sha": "c27dac116d2ee1637abfc6634bebf08b5c379454",
+      "evidence_status": "Current public README/source inspected; current v3 backend and newest surfaces unavailable.",
+      "feature": "Public README describes a project map used before edits, exact function/class edits, self-checking typecheck/lint/tests, and project-specific memory. It explicitly says the public repository is v2 core and is not the full private v3 source.",
+      "sources": [
+        {
+          "url": "https://github.com/proxysoul/Empryo/blob/c27dac116d2ee1637abfc6634bebf08b5c379454/README.md",
+          "class": "Official repository README; v2 public core, v3 partly private",
+          "pin_date": "2026-10-24"
+        }
+      ],
+      "gap_ids": ["G08"]
+    },
+    {
+      "n": 8,
+      "product": "PandaCode",
+      "repo": "aicodeking/pandacode",
+      "sha": "9e47ea045b8bd76e8113d3696175f54636fbb64b",
+      "evidence_status": "Current official implementation documentation inspected.",
+      "feature": "App-managed architect/worker teams with bounded parallelism/rounds/attempts, advisory file scopes, authenticated worker identities, deduplicated mailbox requests, cursored inboxes, SQLite messages/checkpoints, pause/stop/resume and parent synthesis.",
+      "sources": [
+        {
+          "url": "https://github.com/aicodeking/pandacode/blob/9e47ea045b8bd76e8113d3696175f54636fbb64b/docs/architect-workers.md",
+          "class": "Official public implementation documentation",
+          "pin_date": "2026-10-24"
+        }
+      ],
+      "gap_ids": ["G01"]
+    },
+    {
+      "n": 9,
+      "product": "GOAT",
+      "repo": "goat-si/goat",
+      "sha": "4a04fa32548e792122bdb5ff954e29b6be905bf8",
+      "evidence_status": "Current dev-branch implementation source inspected; packaged release linkage/runtime not established.",
+      "feature": "Fleet console derives cross-environment running/attention/reported counts and host telemetry/heat from fleet snapshots; source imports cloud-machine and host-health facilities.",
+      "sources": [
+        {
+          "url": "https://github.com/goat-si/goat/blob/4a04fa32548e792122bdb5ff954e29b6be905bf8/apps/web/src/components/fleet/FleetConsole.tsx",
+          "class": "Primary OSS implementation source on dev branch",
+          "pin_date": "2026-10-24"
+        }
+      ],
+      "gap_ids": ["G07"]
+    },
+    {
+      "n": 10,
+      "product": "Orca",
+      "repo": "stablyai/orca",
+      "sha": "d3d429c15614062cc8764a546d85e3d9d9a852d2",
+      "evidence_status": "Current public implementation source inspected.",
+      "feature": "Worker dispatch records an accepted mutation receipt and starting dispatch in storage before launch, records environment/peer/protocol identity for federated dispatch, and separates acceptance from subsequent lifecycle transition.",
+      "sources": [
+        {
+          "url": "https://github.com/stablyai/orca/blob/d3d429c15614062cc8764a546d85e3d9d9a852d2/src/main/runtime/orchestration/db/worker-dispatch/worker-dispatch-start.ts",
+          "class": "Primary OSS implementation source",
+          "pin_date": "2026-10-24"
+        }
+      ],
+      "gap_ids": ["G02", "G07"]
+    },
+    {
+      "n": 11,
+      "product": "Agent Orchestrator",
+      "repo": "OrchestratorInc/agent-orchestrator",
+      "sha": "7e1bb8f0b740eff6a2663f36d22f9db064bd9a8a",
+      "evidence_status": "Current official repository README/source inventory inspected; no runtime execution.",
+      "feature": "Official product description presents project-aware task planning/delegation and live Kanban supervision from task through worker, PR, CI and review; the public codebase includes usage provenance types.",
+      "sources": [
+        {
+          "url": "https://github.com/OrchestratorInc/agent-orchestrator/blob/7e1bb8f0b740eff6a2663f36d22f9db064bd9a8a/README.md",
+          "class": "Official repository README product description",
+          "pin_date": "2026-10-24"
+        },
+        {
+          "url": "https://github.com/OrchestratorInc/agent-orchestrator/tree/7e1bb8f0b740eff6a2663f36d22f9db064bd9a8a",
+          "class": "Official public repository and product description; feature wording not independently runtime-verified",
+          "pin_date": "2026-10-24"
+        },
+        {
+          "url": "https://github.com/OrchestratorInc/agent-orchestrator/blob/7e1bb8f0b740eff6a2663f36d22f9db064bd9a8a/backend/internal/domain/usage.go",
+          "class": "Primary OSS implementation source for usage provenance",
+          "pin_date": "2026-10-24"
+        }
+      ],
+      "gap_ids": ["G01", "G03", "G04", "G07"]
+    },
+    {
+      "n": 12,
+      "product": "Hermes",
+      "repo": "NousResearch/hermes-agent",
+      "sha": "bac34e9e9946c9c6a9ce7ce64efadd47f8fa375b",
+      "evidence_status": "Current official user documentation inspected; runtime implementation not independently verified.",
+      "feature": "Documented web dashboard includes usage/session analytics, cron-job create/edit/pause/resume/trigger, isolated profiles with model/provider/skills/MCP settings, and delegated batch tasks with consolidated result delivery.",
+      "sources": [
+        {
+          "url": "https://github.com/NousResearch/hermes-agent/blob/bac34e9e9946c9c6a9ce7ce64efadd47f8fa375b/website/docs/user-guide/features/web-dashboard.md",
+          "class": "Official user documentation",
+          "pin_date": "2026-10-24"
+        },
+        {
+          "url": "https://github.com/NousResearch/hermes-agent/blob/bac34e9e9946c9c6a9ce7ce64efadd47f8fa375b/website/docs/user-guide/features/delegation.md",
+          "class": "Official user documentation",
+          "pin_date": "2026-10-24"
+        }
+      ],
+      "gap_ids": ["G01", "G03", "G05", "G10"]
+    },
+    {
+      "n": 13,
+      "product": "Oh My Pi",
+      "repo": "can1357/oh-my-pi",
+      "sha": "0b5c27ab24719c86a5986b95ee55f4e75bc1aaa0",
+      "evidence_status": "Current public implementation/docs inspected.",
+      "feature": "Local usage package imports session JSONL, incrementally synchronizes into hourly SQLite rollups and supports a local dashboard; agent compaction estimates use provider-observed anchors rather than only naive text estimates.",
+      "sources": [
+        {
+          "url": "https://github.com/can1357/oh-my-pi/blob/0b5c27ab24719c86a5986b95ee55f4e75bc1aaa0/packages/stats/README.md",
+          "class": "Official package documentation",
+          "pin_date": "2026-10-24"
+        },
+        {
+          "url": "https://github.com/can1357/oh-my-pi/blob/0b5c27ab24719c86a5986b95ee55f4e75bc1aaa0/packages/agent/src/compaction/transcript-tokens.ts",
+          "class": "Primary OSS implementation source",
+          "pin_date": "2026-10-24"
+        }
+      ],
+      "gap_ids": ["G03", "G10"]
+    },
+    {
+      "n": 14,
+      "product": "Pi",
+      "repo": "earendil-works/pi",
+      "sha": "bdb151774ed6bef2b5676bbff4669f20a0c233fe",
+      "evidence_status": "Current official extension documentation inspected.",
+      "feature": "Coding-agent extension API for commands, tools and UI/lifecycle integrations; Pi is itself a harness and its optional subagent example should not be read as Neokod-managed orchestration.",
+      "sources": [
+        {
+          "url": "https://github.com/earendil-works/pi/blob/bdb151774ed6bef2b5676bbff4669f20a0c233fe/packages/coding-agent/docs/extensions.md",
+          "class": "Official public implementation documentation",
+          "pin_date": "2026-10-24"
+        }
+      ],
+      "gap_ids": ["G10"]
+    },
+    {
+      "n": 15,
+      "product": "bb",
+      "repo": "get-bb/bb",
+      "sha": "5e1acd765039e874643f34c4d35409e58484e408",
+      "evidence_status": "Current official worktree documentation inspected.",
+      "feature": "Managed Git worktrees per thread with separate branches, setup/teardown scripts, and optional explicit `.worktreeinclude` file copying for ignored local files; documents cleanup/stop semantics.",
+      "sources": [
+        {
+          "url": "https://github.com/get-bb/bb/blob/5e1acd765039e874643f34c4d35409e58484e408/docs/worktrees.md",
+          "class": "Official public implementation documentation",
+          "pin_date": "2026-10-24"
+        }
+      ],
+      "gap_ids": ["G06"]
+    },
+    {
+      "n": 16,
+      "product": "Superset",
+      "repo": "superset-sh/superset",
+      "sha": "86a6414296d3242693ac898bc785b942be58514f",
+      "evidence_status": "Current public implementation source inspected.",
+      "feature": "Tasks screen supports native tasks plus separate GitHub-issue and Linear sources, list/board selection, query search, assignee/label/project filters and per-task detail navigation.",
+      "sources": [
+        {
+          "url": "https://github.com/superset-sh/superset/blob/86a6414296d3242693ac898bc785b942be58514f/apps/desktop/src/renderer/routes/_authenticated/_dashboard/tasks/components/TasksView/TasksView.tsx",
+          "class": "Primary OSS implementation source",
+          "pin_date": "2026-10-24"
+        }
+      ],
+      "gap_ids": ["G04", "G07"]
+    },
+    {
+      "n": 17,
+      "product": "Traycer",
+      "repo": "traycerai/traycer",
+      "sha": "08bdf4e09e6365619911b52159fabd40f84fb5a6",
+      "evidence_status": "Current public client source inspected; execution host/backend source unavailable.",
+      "feature": "Public client exposes a detailed usage analytics summary/coverage surface and reports host/service attribution; broader execution-host task semantics remain unavailable from reviewed public source.",
+      "sources": [
+        {
+          "url": "https://github.com/traycerai/traycer/blob/08bdf4e09e6365619911b52159fabd40f84fb5a6/clients/gui-app/src/components/usage-analytics/usage-summary-panel.tsx",
+          "class": "Public client implementation; private host/backend unavailable",
+          "pin_date": "2026-10-24"
+        }
+      ],
+      "gap_ids": ["G03"]
+    },
+    {
+      "n": 18,
+      "product": "HarnessRouter",
+      "repo": "HarnessRouter/harnessrouter",
+      "sha": "91f12963cc2c92be2f8ce89a384b4222417aadb1",
+      "evidence_status": "Current official README and public usage source inspected.",
+      "feature": "Unified Harness Protocol gateway for many harnesses with persistent sessions, streaming, files/artifacts/cancellation and platform credit billing/usage charts.",
+      "sources": [
+        {
+          "url": "https://github.com/HarnessRouter/harnessrouter/blob/91f12963cc2c92be2f8ce89a384b4222417aadb1/README.md",
+          "class": "Official repository README",
+          "pin_date": "2026-10-24"
+        },
+        {
+          "url": "https://github.com/HarnessRouter/harnessrouter/blob/91f12963cc2c92be2f8ce89a384b4222417aadb1/ui/src/app/%28app%29/billing/usage/page.tsx",
+          "class": "Primary OSS implementation source; usage inventory",
+          "pin_date": "2026-10-24"
+        }
+      ],
+      "gap_ids": ["G03"]
+    },
+    {
+      "n": 19,
+      "product": "CodexMonitor",
+      "repo": "Dimillian/CodexMonitor",
+      "sha": "dd61b9abd37de5ded86e82b9fe8a83fd49d46fa5",
+      "evidence_status": "Current official README and usage UI source inspected.",
+      "feature": "Local Codex desktop includes context ring, Git diff/stage/commit/branches, GitHub Issues/PRs via gh, prompt library, file search, terminal, and weekly workspace-filtered usage snapshot.",
+      "sources": [
+        {
+          "url": "https://github.com/Dimillian/CodexMonitor/blob/dd61b9abd37de5ded86e82b9fe8a83fd49d46fa5/README.md",
+          "class": "Official repository README",
+          "pin_date": "2026-10-24"
+        },
+        {
+          "url": "https://github.com/Dimillian/CodexMonitor/blob/dd61b9abd37de5ded86e82b9fe8a83fd49d46fa5/src/features/home/components/HomeUsageSection.tsx",
+          "class": "Primary OSS implementation source; usage inventory",
+          "pin_date": "2026-10-24"
+        }
+      ],
+      "gap_ids": ["G03", "G04"]
+    },
+    {
+      "n": 20,
+      "product": "CodexHost",
+      "repo": "BytePioneer-AI/codex-host",
+      "sha": "82e4839808ae692ac5cd0c23339c3db8e7a043c9",
+      "evidence_status": "Current capability-boundary documentation and usage source inspected.",
+      "feature": "Host-specific capability documentation distinguishes per-harness limits and semantics; usage source records machine-wide multi-harness request/latency/cost/cache metrics with pricing provenance.",
+      "sources": [
+        {
+          "url": "https://github.com/BytePioneer-AI/codex-host/blob/82e4839808ae692ac5cd0c23339c3db8e7a043c9/docs/harnesses/capability-boundaries.md",
+          "class": "Official public capability documentation",
+          "pin_date": "2026-10-24"
+        },
+        {
+          "url": "https://github.com/BytePioneer-AI/codex-host/blob/82e4839808ae692ac5cd0c23339c3db8e7a043c9/packages/renderer-extension/src/renderer-usage-control.ts",
+          "class": "Primary OSS implementation source; usage inventory",
+          "pin_date": "2026-10-24"
+        }
+      ],
+      "gap_ids": ["G03", "G10"]
+    }
+  ],
+  "gaps": [
+    {
+      "id": "G01",
+      "priority": "W6-C1–C6 after formal core exit; distinct from G04 Track C handoff",
+      "category": "App-managed ordinary-chat child tasks and durable result delivery",
+      "competitor_evidence_products": [
+        "T3",
+        "Paseo",
+        "Omnigent",
+        "PandaCode",
+        "Agent Orchestrator",
+        "Hermes"
+      ],
+      "neokod_status": "planned (gated)",
+      "neokod_actual_paths": [
+        "apps/web/src/components/SubagentsPanel.tsx",
+        "apps/web/src/components/SubagentsPanel.logic.ts",
+        "apps/server/src/symphony/Review/ModelReviewer.ts",
+        "plan.md §16.6 W6-C1–C6",
+        "plan.md §16.18 formal core exit"
+      ],
+      "actual_boundary": "Provider-native activity observations are present in the Subagents panel. They are not app-managed admission or durable result delivery. Ordinary-chat managed children are specified in W6-C1–C6 (§16.6) and remain gated by formal core exit and the stated stop/restart/live-result acceptance.",
+      "local_first_fit": "High for bounded child execution in the same local environment; provider-native tools and Neokod-managed children must remain separate evidence types.",
+      "ui_intent_only": "Use competitor flows as interaction evidence only. Keep Neokod’s own normal-chat components and existing SubagentsPanel; no upstream UI port.",
+      "minimal_reuse": "Follow W6-C1–C6 through contracts, persistence, current provider/session authority, immutable result pin, queued wake and contextual tree. Reuse existing runtime item projection and session/runtime ownership; do not route chat delegation through Symphony.",
+      "dependencies_gates": "Formal core exit first. W6 C1–C3 acceptance includes request replay/refusal, caps/depth, exact base and dirty-state evidence, provider/runtimeMode checks, Stop/restart unknown states, durable result return from one observed local OpenCode child; expand adapters only after live probes.",
+      "verification": "Focused repository/contract/MCP tests; composed layer boot; crash at launch/delivery; Stop race; reconnect/restart no duplicate result; one user-visible result in parent; provider native observations remain distinguishable.",
+      "competitor_sources": [
+        {
+          "feature_assessment_id": "G01/T3",
+          "product": "T3",
+          "sha": "27e0c684c585f955252d65f06206dd11a143bff5",
+          "url": "https://github.com/pingdotgg/t3code/blob/27e0c684c585f955252d65f06206dd11a143bff5/apps/server/src/mcp/toolkits/orchestrator/tools.ts",
+          "source_class": "Primary OSS implementation source",
+          "feature": "Agent-called app-managed child tasks with async/wait execution, status/cancel, attributed results and optional worktree isolation.",
+          "evidence_status": "Current public implementation source inspected; not executed.",
+          "runtime_status": "Not executed by this audit; source/document evidence only."
+        },
+        {
+          "feature_assessment_id": "G01/Paseo",
+          "product": "Paseo",
+          "sha": "b8bb335c563279be45544b1b20a1fa5b3e56d422",
+          "url": "https://github.com/getpaseo/paseo/blob/b8bb335c563279be45544b1b20a1fa5b3e56d422/public-docs/orchestration.md",
+          "source_class": "Official public documentation",
+          "feature": "Official guide documents agent-launched children, a subagent track and parent completion notification.",
+          "evidence_status": "Current official orchestration documentation inspected; no runtime execution.",
+          "runtime_status": "Not executed by this audit; source/document evidence only."
+        },
+        {
+          "feature_assessment_id": "G01/Omnigent",
+          "product": "Omnigent",
+          "sha": "f87fed537627f3278445df86fba6cd14bb809c1f",
+          "url": "https://github.com/omnigent-ai/omnigent/blob/f87fed537627f3278445df86fba6cd14bb809c1f/omnigent/runner/subagent_recovery.py",
+          "source_class": "Primary OSS implementation source",
+          "feature": "Public recovery implementation re-delivers retained terminal child results to a parent inbox after restart.",
+          "evidence_status": "Current public implementation source inspected.",
+          "runtime_status": "Not executed by this audit; source/document evidence only."
+        },
+        {
+          "feature_assessment_id": "G01/PandaCode",
+          "product": "PandaCode",
+          "sha": "9e47ea045b8bd76e8113d3696175f54636fbb64b",
+          "url": "https://github.com/aicodeking/pandacode/blob/9e47ea045b8bd76e8113d3696175f54636fbb64b/docs/architect-workers.md",
+          "source_class": "Official public implementation documentation",
+          "feature": "Official worker-team documentation describes bounded parallelism, request dedupe, persisted mailbox/checkpoints and parent synthesis.",
+          "evidence_status": "Current official implementation documentation inspected.",
+          "runtime_status": "Not executed by this audit; source/document evidence only."
+        },
+        {
+          "feature_assessment_id": "G01/Agent Orchestrator",
+          "product": "Agent Orchestrator",
+          "sha": "7e1bb8f0b740eff6a2663f36d22f9db064bd9a8a",
+          "url": "https://github.com/OrchestratorInc/agent-orchestrator/blob/7e1bb8f0b740eff6a2663f36d22f9db064bd9a8a/README.md",
+          "source_class": "Official repository README product description",
+          "feature": "Product description presents project-aware task planning and worker delegation; this row is an adjacent orchestration reference.",
+          "evidence_status": "Current official repository README/source inventory inspected; no runtime execution.",
+          "runtime_status": "Not executed by this audit; source/document evidence only."
+        },
+        {
+          "feature_assessment_id": "G01/Hermes",
+          "product": "Hermes",
+          "sha": "bac34e9e9946c9c6a9ce7ce64efadd47f8fa375b",
+          "url": "https://github.com/NousResearch/hermes-agent/blob/bac34e9e9946c9c6a9ce7ce64efadd47f8fa375b/website/docs/user-guide/features/delegation.md",
+          "source_class": "Official user documentation",
+          "feature": "Official delegation documentation describes delegated batch tasks and consolidated result delivery.",
+          "evidence_status": "Current official user documentation inspected; runtime implementation not independently verified.",
+          "runtime_status": "Not executed by this audit; source/document evidence only."
+        }
+      ],
+      "limitation": "Selected product evidence only; source or documentation is not a live Neokod-compatible child run. Neokod owns any UI and does not copy upstream UI.",
+      "feature_assessment_ids": [
+        "G01/T3",
+        "G01/Paseo",
+        "G01/Omnigent",
+        "G01/PandaCode",
+        "G01/Agent Orchestrator",
+        "G01/Hermes"
+      ],
+      "feature_status_basis": "Product-level feature status and its source are in feature_assessments; cluster status is a summary, not a parity verdict."
+    },
+    {
+      "id": "G02",
+      "priority": "Track B, W5 after Track A; separately gated owner-machine continuation",
+      "category": "Registered owner-machine targets and acknowledged continuation",
+      "competitor_evidence_products": ["Paseo", "MonoCode", "Orca"],
+      "neokod_status": "partial",
+      "neokod_actual_paths": [
+        "apps/web/src/components/settings/ConnectionsSettings.tsx",
+        "apps/desktop/src/app/DesktopConnectionCatalogStore.ts",
+        "packages/client-runtime/src/connection/registry.ts",
+        "packages/client-runtime/src/environment/knownEnvironment.ts",
+        "apps/web/src/environments/primary/target.ts",
+        "plan.md §16.16 W5"
+      ],
+      "actual_boundary": "Local/browser and WSL connection paths plus generic connection contracts are present. The desktop saved-connection catalogue currently returns the canonical empty catalogue. A named, pinned owner-machine target and acknowledged task continuation are not established in inspected source; this is not an absence of all connection support.",
+      "local_first_fit": "High for directly connected owner/work machines using user-supplied token, pinned repository and target. Exclude hosted relay, cloud accounts, pairing, mobile and shared tenancy.",
+      "ui_intent_only": "A visible machine/repository pin may be designed in Neokod’s environment picker; competitor remote UI is not ported.",
+      "minimal_reuse": "Complete W5 over connection registry, environment descriptor and client runtime; persist direct server entries safely; add one continuation manifest/receipt linked to originating chat and retain host-side attempt authority.",
+      "dependencies_gates": "Non-loopback server requires bearer token; TLS or approved direct Tailscale/LAN path; explicit target/repo/branch; dirty-code/context transfer policy; no fallback to a different machine/home; machine-qualified IDs; formal core prerequisites.",
+      "verification": "User-owned two-machine test: select/pin target, reconnect after network loss, resume one accepted task, verify repository/base/dirty state, no duplicate provider call, and exactly one acknowledged parent result. No live connection proof in this audit.",
+      "competitor_sources": [
+        {
+          "feature_assessment_id": "G02/Paseo",
+          "product": "Paseo",
+          "sha": "b8bb335c563279be45544b1b20a1fa5b3e56d422",
+          "url": "https://github.com/getpaseo/paseo/blob/b8bb335c563279be45544b1b20a1fa5b3e56d422/public-docs/orchestration.md",
+          "source_class": "Official public documentation",
+          "feature": "Official orchestration guide links a separate other-machine workflow; details are not asserted from the link alone.",
+          "evidence_status": "Current official orchestration documentation inspected; no runtime execution.",
+          "runtime_status": "Not executed by this audit; source/document evidence only.",
+          "boundary": "Adjacent evidence only; no hosted relay or pairing claim is ported."
+        },
+        {
+          "feature_assessment_id": "G02/MonoCode",
+          "product": "MonoCode",
+          "sha": "26465c620977f3951d0a532a0f7db32c3c179007",
+          "url": "https://github.com/hardbeat920/monocode/blob/26465c620977f3951d0a532a0f7db32c3c179007/docs/remote-access.md",
+          "source_class": "Official public implementation documentation",
+          "feature": "Official remote-access documentation describes a user-operated SSH host, per-device tokens, persistent sessions and uncertain-send receipts.",
+          "evidence_status": "Current official remote-access documentation inspected; no runtime execution.",
+          "runtime_status": "Not executed by this audit; source/document evidence only."
+        },
+        {
+          "feature_assessment_id": "G02/Orca",
+          "product": "Orca",
+          "sha": "d3d429c15614062cc8764a546d85e3d9d9a852d2",
+          "url": "https://github.com/stablyai/orca/blob/d3d429c15614062cc8764a546d85e3d9d9a852d2/src/main/runtime/orchestration/db/worker-dispatch/worker-dispatch-start.ts",
+          "source_class": "Primary OSS implementation source",
+          "feature": "Dispatch source records accepted/starting receipts and environment/peer identity; federated transport is not an owner-machine equivalence.",
+          "evidence_status": "Current public implementation source inspected.",
+          "runtime_status": "Not executed by this audit; source/document evidence only.",
+          "boundary": "Federated transport slice is excluded; use only as a lifecycle/receipt reference."
+        }
+      ],
+      "limitation": "Paseo only links a separate other-machine workflow in the reviewed guide. Orca is a federated-dispatch reference, not evidence for an in-scope Neokod transport. MonoCode is documentation, not a runtime test.",
+      "feature_assessment_ids": ["G02/Paseo", "G02/MonoCode", "G02/Orca"],
+      "feature_status_basis": "Product-level feature status and its source are in feature_assessments; cluster status is a summary, not a parity verdict."
+    },
+    {
+      "id": "G03",
+      "priority": "Section 12 U-1–U-7 is planned; §13.2 holds the usage/cost dashboard until Tracks A–C are complete",
+      "category": "Local historical provider usage, cost and model graphs",
+      "competitor_evidence_products": [
+        "T3",
+        "OpenCodeX",
+        "Agent Orchestrator",
+        "Hermes",
+        "Oh My Pi",
+        "Traycer",
+        "HarnessRouter",
+        "CodexMonitor",
+        "CodexHost"
+      ],
+      "neokod_status": "planned (gated); current context, selected quota and optional usage facts are present",
+      "neokod_actual_paths": [
+        "packages/contracts/src/providerRuntime.ts:428–491",
+        "packages/contracts/src/server.ts:157–184",
+        "apps/server/src/provider/providerSnapshot.ts:283",
+        "apps/server/src/provider/copilot/CopilotQuota.ts",
+        "apps/server/src/provider/Layers/ClaudeUsageLimit.ts",
+        "apps/server/src/provider/Layers/CodexAdapter.ts:160–183",
+        "apps/server/src/provider/Layers/ClaudeAdapter.ts:2186–2201",
+        "apps/server/src/orchestration/Layers/ProviderRuntimeIngestion.ts:215–221",
+        "apps/web/src/components/chat/ContextWindowMeter.tsx",
+        "apps/web/src/lib/contextWindow.ts",
+        "plan.md §12 U-1–U-7; §13.2 hold"
+      ],
+      "actual_boundary": "Current context occupancy, selected provider quota windows and optional per-turn usage/cost facts are present in source. Codex normalization and ProviderRuntimeIngestion still filter usedTokens <= 0, so known-zero preservation remains debt. A normalized durable cross-session ledger and historical graphs are planned under U-1–U-7 and remain held by §13.2. T3 #15149 strengthens design evidence only; it does not lift the hold.",
+      "local_first_fit": "Strong: local persisted facts, declared-source import and owner-machine summary federation are aligned with local-first.",
+      "ui_intent_only": "Usage page information hierarchy is intent-only. Design Overview/Limits/Models with Neokod components; do not copy competitor charts.",
+      "minimal_reuse": "Follow U-1–U-7: normalize event/session/environment/account/attempt/model and counter semantics; cached last-good quota refresh; idempotent local facts/cursors; bounded queries; coverage-aware view; opt-in import; machine/child attribution only after source identity.",
+      "dependencies_gates": "Known zero vs absent; context vs processed tokens vs provider limits vs actual charges vs API-equivalent estimate; child/retry dedupe; unknown pricing; account identity; stale/unavailable state; bounded import/query.",
+      "verification": "Replay/import restart fixture with resets/duplicates/known zero/absent/unpriced; reconcile UI totals to source events; quota refresh single-flight and stale-state test; no claim actual subscription spend from token pricing.",
+      "competitor_sources": [
+        {
+          "feature_assessment_id": "G03/T3",
+          "product": "T3",
+          "sha": "27e0c684c585f955252d65f06206dd11a143bff5",
+          "url": "https://github.com/pingdotgg/t3code/pull/15149",
+          "source_class": "Public GitHub PR API body (preserved raw body; primary historical feature evidence)",
+          "feature": "Usage page warm scans and cache/walk aggregation optimization; PR body reports bounded historical windows and scan-performance work.",
+          "evidence_status": "Body read from retained API capture; merge metadata is recorded in the closed-PR census.",
+          "runtime_status": "Not executed by this audit. Author-reported tests/probes in the PR body were not rerun.",
+          "source_tag": "v0.1.3-nightly.20261024.3617",
+          "merge_commit": "71dbaf1f94b580491d033f2e347a9b1c507fd793",
+          "merge_commit_in_retained_latest_prerelease": true
+        },
+        {
+          "feature_assessment_id": "G03/OpenCodeX",
+          "product": "OpenCodeX",
+          "sha": "9f0d40a25f8b842c33ab233d466d0bd991d86052",
+          "url": "https://github.com/lidge-jun/opencodex/blob/9f0d40a25f8b842c33ab233d466d0bd991d86052/gui/src/pages/Usage.tsx",
+          "source_class": "Primary OSS implementation source; usage inventory",
+          "feature": "Usage page displays gateway/account-pool request and cost summaries; this is not Neokod-local provider history.",
+          "evidence_status": "Current official README and usage source inspected.",
+          "runtime_status": "Not executed by this audit; source/document evidence only."
+        },
+        {
+          "feature_assessment_id": "G03/Agent Orchestrator",
+          "product": "Agent Orchestrator",
+          "sha": "7e1bb8f0b740eff6a2663f36d22f9db064bd9a8a",
+          "url": "https://github.com/OrchestratorInc/agent-orchestrator/blob/7e1bb8f0b740eff6a2663f36d22f9db064bd9a8a/backend/internal/domain/usage.go",
+          "source_class": "Primary OSS implementation source for usage provenance",
+          "feature": "Public usage domain types include attribution/provenance fields.",
+          "evidence_status": "Current official repository README/source inventory inspected; no runtime execution.",
+          "runtime_status": "Not executed by this audit; source/document evidence only."
+        },
+        {
+          "feature_assessment_id": "G03/Hermes",
+          "product": "Hermes",
+          "sha": "bac34e9e9946c9c6a9ce7ce64efadd47f8fa375b",
+          "url": "https://github.com/NousResearch/hermes-agent/blob/bac34e9e9946c9c6a9ce7ce64efadd47f8fa375b/website/docs/user-guide/features/web-dashboard.md",
+          "source_class": "Official user documentation",
+          "feature": "Official dashboard docs describe usage/session analytics.",
+          "evidence_status": "Current official user documentation inspected; runtime implementation not independently verified.",
+          "runtime_status": "Not executed by this audit; source/document evidence only."
+        },
+        {
+          "feature_assessment_id": "G03/Oh My Pi",
+          "product": "Oh My Pi",
+          "sha": "0b5c27ab24719c86a5986b95ee55f4e75bc1aaa0",
+          "url": "https://github.com/can1357/oh-my-pi/blob/0b5c27ab24719c86a5986b95ee55f4e75bc1aaa0/packages/stats/README.md",
+          "source_class": "Official package documentation",
+          "feature": "Local stats package imports session JSONL and incrementally maintains hourly SQLite rollups/dashboard.",
+          "evidence_status": "Current public implementation/docs inspected.",
+          "runtime_status": "Not executed by this audit; source/document evidence only."
+        },
+        {
+          "feature_assessment_id": "G03/Traycer",
+          "product": "Traycer",
+          "sha": "08bdf4e09e6365619911b52159fabd40f84fb5a6",
+          "url": "https://github.com/traycerai/traycer/blob/08bdf4e09e6365619911b52159fabd40f84fb5a6/clients/gui-app/src/components/usage-analytics/usage-summary-panel.tsx",
+          "source_class": "Public client implementation; private host/backend unavailable",
+          "feature": "Public client shows usage summary/coverage and host/service attribution; private host semantics are unavailable.",
+          "evidence_status": "Current public client source inspected; execution host/backend source unavailable.",
+          "runtime_status": "Not executed by this audit; source/document evidence only."
+        },
+        {
+          "feature_assessment_id": "G03/HarnessRouter",
+          "product": "HarnessRouter",
+          "sha": "91f12963cc2c92be2f8ce89a384b4222417aadb1",
+          "url": "https://github.com/HarnessRouter/harnessrouter/blob/91f12963cc2c92be2f8ce89a384b4222417aadb1/ui/src/app/%28app%29/billing/usage/page.tsx",
+          "source_class": "Primary OSS implementation source; usage inventory",
+          "feature": "Usage page reports platform-credit billing for a unified harness gateway.",
+          "evidence_status": "Current official README and public usage source inspected.",
+          "runtime_status": "Not executed by this audit; source/document evidence only."
+        },
+        {
+          "feature_assessment_id": "G03/CodexMonitor",
+          "product": "CodexMonitor",
+          "sha": "dd61b9abd37de5ded86e82b9fe8a83fd49d46fa5",
+          "url": "https://github.com/Dimillian/CodexMonitor/blob/dd61b9abd37de5ded86e82b9fe8a83fd49d46fa5/src/features/home/components/HomeUsageSection.tsx",
+          "source_class": "Primary OSS implementation source; usage inventory",
+          "feature": "Local Codex usage section presents a weekly workspace-filtered usage snapshot.",
+          "evidence_status": "Current official README and usage UI source inspected.",
+          "runtime_status": "Not executed by this audit; source/document evidence only."
+        },
+        {
+          "feature_assessment_id": "G03/CodexHost",
+          "product": "CodexHost",
+          "sha": "82e4839808ae692ac5cd0c23339c3db8e7a043c9",
+          "url": "https://github.com/BytePioneer-AI/codex-host/blob/82e4839808ae692ac5cd0c23339c3db8e7a043c9/packages/renderer-extension/src/renderer-usage-control.ts",
+          "source_class": "Primary OSS implementation source; usage inventory",
+          "feature": "Usage source records multi-harness request/latency/cost/cache metrics and pricing provenance.",
+          "evidence_status": "Current capability-boundary documentation and usage source inspected.",
+          "runtime_status": "Not executed by this audit; source/document evidence only."
+        }
+      ],
+      "limitation": "Keep context occupancy, processed usage, provider quota, provider-reported charges, API-equivalent estimates and platform credits separate. T3 author-reported benchmark results were not rerun; no subscription spend or parity claim follows.",
+      "feature_assessment_ids": [
+        "G03/T3",
+        "G03/OpenCodeX",
+        "G03/Agent Orchestrator",
+        "G03/Hermes",
+        "G03/Oh My Pi",
+        "G03/Traycer",
+        "G03/HarnessRouter",
+        "G03/CodexMonitor",
+        "G03/CodexHost"
+      ],
+      "feature_status_basis": "Product-level feature status and its source are in feature_assessments; cluster status is a summary, not a parity verdict."
+    },
+    {
+      "id": "G04",
+      "priority": "Track C in §13.1: W6 GitHub Issues handoff after Tracks A and B",
+      "category": "GitHub Issues handoff to a Symphony task, PR and result in the originating chat",
+      "competitor_evidence_products": ["Superset", "Agent Orchestrator", "CodexMonitor"],
+      "neokod_status": "planned (W6 handoff, Track C); partial foundations",
+      "neokod_actual_paths": [
+        "apps/server/src/symphony/HandoffService.ts:515–566",
+        "apps/server/src/symphony/Trackers/Registry.ts",
+        "apps/server/src/symphony/Persistence/Layers/WorkItemRepository.ts",
+        "apps/web/src/components/symphony/SymphonyWorkView.tsx",
+        "packages/contracts/src/rpc.ts:symphony.delegateFromThread",
+        "plan.md §13.1 Track C; §W6 items 1–8 (lines 783–798)"
+      ],
+      "actual_boundary": "The canonical plan already specifies W6 items 1–8: atomic request/work-item admission, canonical reference resolution, source-thread/message identity, typed attributed result delivery and a live GitHub issue-to-PR exit. Current delegateFromThread validates a source thread but creates a manual Symphony item with delegated identity; it does not persist the complete external-reference/source-message/result receipt. Start with one GitHub Issues path. This W6 handoff is distinct from W6-C1–C6 ordinary-chat managed children.",
+      "local_first_fit": "High for direct user-authored tracker credentials and locally executed workflows. Keep tracker source authentication separate from provider agent capabilities.",
+      "ui_intent_only": "Keep Work/Run details Neokod-owned; no Superset or AO board UI port.",
+      "minimal_reuse": "Resolve native task identity through the configured adapter, then upsert/claim the existing WorkItemRepository key; record source chat/message, accepted request, run/evidence/PR and one return receipt.",
+      "dependencies_gates": "Per-adapter read/write capability, identity/scope validation, exact native IDs, duplicate polling/chat race, state/dependency semantics, secret isolation; no tracker mutation without proved auth/scope.",
+      "verification": "One GitHub Issues path from chat reference to canonical item, one claim under polling race, then result/PR link returns to originating chat; unavailable/ambiguous IDs must refuse honestly.",
+      "competitor_sources": [
+        {
+          "feature_assessment_id": "G04/Superset",
+          "product": "Superset",
+          "sha": "86a6414296d3242693ac898bc785b942be58514f",
+          "url": "https://github.com/superset-sh/superset/blob/86a6414296d3242693ac898bc785b942be58514f/apps/desktop/src/renderer/routes/_authenticated/_dashboard/tasks/components/TasksView/TasksView.tsx",
+          "source_class": "Primary OSS implementation source",
+          "feature": "Tasks view lists native tasks and separate GitHub Issues/Linear sources with filters and per-task details.",
+          "evidence_status": "Current public implementation source inspected.",
+          "runtime_status": "Not executed by this audit; source/document evidence only."
+        },
+        {
+          "feature_assessment_id": "G04/Agent Orchestrator",
+          "product": "Agent Orchestrator",
+          "sha": "7e1bb8f0b740eff6a2663f36d22f9db064bd9a8a",
+          "url": "https://github.com/OrchestratorInc/agent-orchestrator/blob/7e1bb8f0b740eff6a2663f36d22f9db064bd9a8a/README.md",
+          "source_class": "Official repository README product description",
+          "feature": "README product description follows project tasks through workers, PR, CI and review; source-chat receipt is not established.",
+          "evidence_status": "Current official repository README/source inventory inspected; no runtime execution.",
+          "runtime_status": "Not executed by this audit; source/document evidence only."
+        },
+        {
+          "feature_assessment_id": "G04/CodexMonitor",
+          "product": "CodexMonitor",
+          "sha": "dd61b9abd37de5ded86e82b9fe8a83fd49d46fa5",
+          "url": "https://github.com/Dimillian/CodexMonitor/blob/dd61b9abd37de5ded86e82b9fe8a83fd49d46fa5/README.md",
+          "source_class": "Official repository README",
+          "feature": "README documents GitHub Issues/PR integration through gh; it does not establish an originating-chat receipt.",
+          "evidence_status": "Current official README and usage UI source inspected.",
+          "runtime_status": "Not executed by this audit; source/document evidence only."
+        }
+      ],
+      "limitation": "Competitor sources here show adjacent task/issue intake or task-to-PR surfaces; they do not all prove an equivalent durable source-chat/message receipt. No live tracker/provider flow was exercised.",
+      "scope_distinction": "G04 is Symphony issue-to-originating-chat handoff in W6 / Track C (§13.1 and §W6, items 1–8). G01 and G06 are separate ordinary-chat managed-child and child-worktree work under W6-C1–C6 (§16.6).",
+      "feature_assessment_ids": ["G04/Superset", "G04/Agent Orchestrator", "G04/CodexMonitor"],
+      "feature_status_basis": "Product-level feature status and its source are in feature_assessments; cluster status is a summary, not a parity verdict."
+    },
+    {
+      "id": "G05",
+      "priority": "Candidate after Tracks A–C; §13.2 holds competitor features outside those tracks; no scope decision assumed",
+      "category": "Durable user-owned schedules in ordinary chat",
+      "competitor_evidence_products": ["T3", "Synara", "Paseo", "Hermes"],
+      "neokod_status": "candidate (not found in inspected normal-chat paths; not an absence claim)",
+      "neokod_actual_paths": [
+        "apps/server/src/symphony/Orchestrator/Layers/SymphonyOrchestratorLive.ts:877–1010",
+        "apps/server/src/symphony/Persistence/Layers/WorkItemRepository.ts",
+        "apps/server/src/symphony/Orchestrator/Retry.ts",
+        "plan.md §13.2; schedules are not the Symphony retry/poll loop"
+      ],
+      "actual_boundary": "Symphony retry scheduling and bounded PR-status polling/rechecks are present for configured work items. Those server-owned workflows are not user-owned recurring prompts in ordinary chat. No normal-chat durable schedule path was identified in the inspected production paths. T3 #18467 and related PR bodies add primary scheduling evidence but do not change §13.2.",
+      "local_first_fit": "Fits if each schedule is local, user-owned, tied to one explicitly pinned environment/provider and can be paused/cancelled.",
+      "ui_intent_only": "Schedule list/details are Neokod UI intent; do not reproduce competitor schedule manager screens.",
+      "minimal_reuse": "Only after durable admission/result delivery: persist schedule identity/owner/brief/target/permission policy, create an ordinary durable request occurrence, attach outcome, cancel safely. A watch should compare bounded output/current PR facts and wake only on meaningful change.",
+      "dependencies_gates": "No background approval bypass; recheck authority/provider mode each occurrence; bounded concurrency/output; idempotent occurrence IDs; clear dispatch-vs-turn outcome; stop on permission/mode change.",
+      "verification": "Restart/pause/resume/cancel, duplicate tick, quota/provider unavailable, offline target, unchanged output, failure backoff and occurrence result receipt; no external delivery default.",
+      "competitor_sources": [
+        {
+          "feature_assessment_id": "G05/T3",
+          "product": "T3",
+          "sha": "27e0c684c585f955252d65f06206dd11a143bff5",
+          "url": "https://github.com/pingdotgg/t3code/pull/18467",
+          "source_class": "Public GitHub PR API body (preserved raw body; primary historical feature evidence)",
+          "feature": "Thread-bound scheduled-task semantics: current provider selection (#18467), launched-thread receipt (#17458), elapsed-time DST intervals (#15768), and thread-deletion cleanup (#22070).",
+          "evidence_status": "Body read from retained API capture; merge metadata is recorded in the closed-PR census.",
+          "runtime_status": "Not executed by this audit. Author-reported tests/probes in the PR body were not rerun.",
+          "source_tag": "v0.1.3-nightly.20261024.3617",
+          "merge_commit": "a27e32fba7a7a8368a6a106c691ec0cc6af147d4",
+          "merge_commit_in_retained_latest_prerelease": true
+        },
+        {
+          "feature_assessment_id": "G05/T3",
+          "product": "T3",
+          "sha": "27e0c684c585f955252d65f06206dd11a143bff5",
+          "url": "https://github.com/pingdotgg/t3code/pull/17458",
+          "source_class": "Public GitHub PR API body (preserved raw body; primary historical feature evidence)",
+          "feature": "Thread-bound scheduled-task semantics: current provider selection (#18467), launched-thread receipt (#17458), elapsed-time DST intervals (#15768), and thread-deletion cleanup (#22070).",
+          "evidence_status": "Body read from retained API capture; merge metadata is recorded in the closed-PR census.",
+          "runtime_status": "Not executed by this audit. Author-reported tests/probes in the PR body were not rerun.",
+          "source_tag": "v0.1.3-nightly.20261024.3617",
+          "merge_commit": "ec967f3e823ced78b67e88dcace4f87c71bcd32e",
+          "merge_commit_in_retained_latest_prerelease": true
+        },
+        {
+          "feature_assessment_id": "G05/T3",
+          "product": "T3",
+          "sha": "27e0c684c585f955252d65f06206dd11a143bff5",
+          "url": "https://github.com/pingdotgg/t3code/pull/15768",
+          "source_class": "Public GitHub PR API body (preserved raw body; primary historical feature evidence)",
+          "feature": "Thread-bound scheduled-task semantics: current provider selection (#18467), launched-thread receipt (#17458), elapsed-time DST intervals (#15768), and thread-deletion cleanup (#22070).",
+          "evidence_status": "Body read from retained API capture; merge metadata is recorded in the closed-PR census.",
+          "runtime_status": "Not executed by this audit. Author-reported tests/probes in the PR body were not rerun.",
+          "source_tag": "v0.1.3-nightly.20261024.3617",
+          "merge_commit": "b18a9bf5b1729723a36903a8d6c9e113ba0cf5d5",
+          "merge_commit_in_retained_latest_prerelease": true
+        },
+        {
+          "feature_assessment_id": "G05/T3",
+          "product": "T3",
+          "sha": "27e0c684c585f955252d65f06206dd11a143bff5",
+          "url": "https://github.com/pingdotgg/t3code/pull/22070",
+          "source_class": "Public GitHub PR API body (preserved raw body; primary historical feature evidence)",
+          "feature": "Thread-bound scheduled-task semantics: current provider selection (#18467), launched-thread receipt (#17458), elapsed-time DST intervals (#15768), and thread-deletion cleanup (#22070).",
+          "evidence_status": "Body read from retained API capture; merge metadata is recorded in the closed-PR census.",
+          "runtime_status": "Not executed by this audit. Author-reported tests/probes in the PR body were not rerun.",
+          "source_tag": "v0.1.3-nightly.20261024.3617",
+          "merge_commit": "2edeeda61677c059a87ef6eadafa155acb8c6b26",
+          "merge_commit_in_retained_latest_prerelease": true
+        },
+        {
+          "feature_assessment_id": "G05/Synara",
+          "product": "Synara",
+          "sha": "29b11e105200c7bc6e2c71a06a375513d4c8a72d",
+          "url": "https://github.com/Emanuele-web04/synara/blob/29b11e105200c7bc6e2c71a06a375513d4c8a72d/README.md",
+          "source_class": "Official repository README",
+          "feature": "Official README describes recurring automations with outcomes attached to projects/threads.",
+          "evidence_status": "Current official repository README inspected; public product documentation only.",
+          "runtime_status": "Not executed by this audit; source/document evidence only."
+        },
+        {
+          "feature_assessment_id": "G05/Paseo",
+          "product": "Paseo",
+          "sha": "b8bb335c563279be45544b1b20a1fa5b3e56d422",
+          "url": "https://github.com/getpaseo/paseo/blob/b8bb335c563279be45544b1b20a1fa5b3e56d422/public-docs/orchestration.md",
+          "source_class": "Official public documentation",
+          "feature": "Official guide links recurring-job and heartbeat workflows.",
+          "evidence_status": "Current official orchestration documentation inspected; no runtime execution.",
+          "runtime_status": "Not executed by this audit; source/document evidence only."
+        },
+        {
+          "feature_assessment_id": "G05/Hermes",
+          "product": "Hermes",
+          "sha": "bac34e9e9946c9c6a9ce7ce64efadd47f8fa375b",
+          "url": "https://github.com/NousResearch/hermes-agent/blob/bac34e9e9946c9c6a9ce7ce64efadd47f8fa375b/website/docs/user-guide/features/web-dashboard.md",
+          "source_class": "Official user documentation",
+          "feature": "Official dashboard documentation describes cron-job create/edit/pause/resume/trigger controls.",
+          "evidence_status": "Current official user documentation inspected; runtime implementation not independently verified.",
+          "runtime_status": "Not executed by this audit; source/document evidence only."
+        }
+      ],
+      "limitation": "T3 evidence covers specific scheduling semantics and fixes, not a general guarantee for every provider or trigger. This is a research candidate, not implementation authorization.",
+      "feature_assessment_ids": ["G05/T3", "G05/Synara", "G05/Paseo", "G05/Hermes"],
+      "feature_status_basis": "Product-level feature status and its source are in feature_assessments; cluster status is a summary, not a parity verdict."
+    },
+    {
+      "id": "G06",
+      "priority": "W6-C child-worktree scope after formal core exit; not a separate Git platform and not G04",
+      "category": "Parallel managed-child worktree isolation",
+      "competitor_evidence_products": ["T3", "bb"],
+      "neokod_status": "planned (gated); ordinary Git/worktree support is present",
+      "neokod_actual_paths": [
+        "apps/server/src/git/GitManager.ts",
+        "apps/server/src/git/GitWorkflowService.ts",
+        "apps/server/src/git/WorktreeRemovalLease.ts",
+        "apps/web/src/components/DiffPanel.tsx",
+        "apps/web/src/components/GitActionsControl.tsx",
+        "apps/web/src/components/chat/ThreadWorkspaceRail.tsx",
+        "plan.md §16.6 W6-C1 child worktree scope"
+      ],
+      "actual_boundary": "Neokod has production local/per-thread Git worktrees, branch/PR/diff actions and worktree safety leases. Child-specific isolated workspaces are planned inside W6-C; this is not a claim that Git or worktrees are absent.",
+      "local_first_fit": "Strong for parallel local children. Do not silently share writable checkout; keep child base commit and parent dirty edits distinct.",
+      "ui_intent_only": "Use current Neokod workspace/diff UI. Competitor Git/worktree UI is intent only.",
+      "minimal_reuse": "Call existing GitManager/GitWorkflowService from the future W6 child setup path; pin exact base and dirty coverage, use existing workspace leases/cleanup, surface reviewed root and branch.",
+      "dependencies_gates": "Formal core exit; W6 isolated worktree is already specified; worktree setup/cleanup lease; no stale root fallback; secret and ignored-file policy.",
+      "verification": "Real-Git fixture verifies isolated writes, same base, parent dirty file preservation/exclusion, correct diff root, cancellation cleanup and no second workspace writer.",
+      "competitor_sources": [
+        {
+          "feature_assessment_id": "G06/T3",
+          "product": "T3",
+          "sha": "27e0c684c585f955252d65f06206dd11a143bff5",
+          "url": "https://github.com/pingdotgg/t3code/blob/27e0c684c585f955252d65f06206dd11a143bff5/apps/server/src/mcp/toolkits/orchestrator/tools.ts",
+          "source_class": "Primary OSS implementation source",
+          "feature": "T3 managed-child tool source describes optional child worktree isolation.",
+          "evidence_status": "Current public implementation source inspected; not executed.",
+          "runtime_status": "Not executed by this audit; source/document evidence only."
+        },
+        {
+          "feature_assessment_id": "G06/bb",
+          "product": "bb",
+          "sha": "5e1acd765039e874643f34c4d35409e58484e408",
+          "url": "https://github.com/get-bb/bb/blob/5e1acd765039e874643f34c4d35409e58484e408/docs/worktrees.md",
+          "source_class": "Official public implementation documentation",
+          "feature": "Official worktree docs describe managed per-thread worktrees, separate branches, setup/teardown and optional ignored-file inclusion.",
+          "evidence_status": "Current official worktree documentation inspected.",
+          "runtime_status": "Not executed by this audit; source/document evidence only."
+        }
+      ],
+      "limitation": "bb documents per-thread worktrees, not necessarily a child-team isolation guarantee. T3 source is implementation evidence only; neither is Neokod runtime acceptance.",
+      "feature_assessment_ids": ["G06/T3", "G06/bb"],
+      "feature_status_basis": "Product-level feature status and its source are in feature_assessments; cluster status is a summary, not a parity verdict."
+    },
+    {
+      "id": "G07",
+      "priority": "Track A: current Symphony lifecycle and core acceptance work",
+      "category": "Derived lifecycle and attention overview",
+      "competitor_evidence_products": ["Agent Orchestrator", "Orca", "Superset", "GOAT"],
+      "neokod_status": "present in inspected production source; formal core/live acceptance remains partial",
+      "neokod_actual_paths": [
+        "apps/web/src/symphonyWork.logic.ts",
+        "apps/web/src/components/symphony/SymphonyWorkView.tsx",
+        "apps/web/src/components/symphony/SymphonyWorkList.tsx",
+        "apps/server/src/symphony/Orchestrator/Recovery.ts",
+        "apps/server/src/symphony/Orchestrator/ProjectBoard.ts",
+        "plan.md §16.15–§16.19"
+      ],
+      "actual_boundary": "Neokod has a production Symphony Work/Project/Run/Attention/History board, lifecycle projection, recovery and PR evidence paths. The remaining work is existing formal core/provider/restart acceptance, not a missing generic task board. No status is inferred from board position alone.",
+      "local_first_fit": "High for local Symphony runs and owner-controlled tracker work.",
+      "ui_intent_only": "Only adopt information hierarchy and truthful status intent. Preserve Neokod design and semantic projection; no upstream UI port.",
+      "minimal_reuse": "Keep one server-owned lifecycle projection and derive attention as an overlay, not an exclusive state. Reuse existing Work/Run/Attention/History queries and explain status from evidence.",
+      "dependencies_gates": "Core lifecycle/recovery, feedback identity and per-provider run truth; no Ready inference from board position or PR presence; unknown ownership remains attention.",
+      "verification": "Table-driven lifecycle states, reconnect/restart, PR/CI freshness and attention overlap; source/browser validation limited to currently available app evidence.",
+      "competitor_sources": [
+        {
+          "feature_assessment_id": "G07/Agent Orchestrator",
+          "product": "Agent Orchestrator",
+          "sha": "7e1bb8f0b740eff6a2663f36d22f9db064bd9a8a",
+          "url": "https://github.com/OrchestratorInc/agent-orchestrator/blob/7e1bb8f0b740eff6a2663f36d22f9db064bd9a8a/README.md",
+          "source_class": "Official repository README product description",
+          "feature": "README product description presents task-to-worker/PR/CI/review supervision.",
+          "evidence_status": "Current official repository README/source inventory inspected; no runtime execution.",
+          "runtime_status": "Not executed by this audit; source/document evidence only."
+        },
+        {
+          "feature_assessment_id": "G07/Orca",
+          "product": "Orca",
+          "sha": "d3d429c15614062cc8764a546d85e3d9d9a852d2",
+          "url": "https://github.com/stablyai/orca/blob/d3d429c15614062cc8764a546d85e3d9d9a852d2/src/main/runtime/orchestration/db/worker-dispatch/worker-dispatch-start.ts",
+          "source_class": "Primary OSS implementation source",
+          "feature": "Dispatch source distinguishes accepted receipt from starting/running lifecycle and records target identity.",
+          "evidence_status": "Current public implementation source inspected.",
+          "runtime_status": "Not executed by this audit; source/document evidence only."
+        },
+        {
+          "feature_assessment_id": "G07/Superset",
+          "product": "Superset",
+          "sha": "86a6414296d3242693ac898bc785b942be58514f",
+          "url": "https://github.com/superset-sh/superset/blob/86a6414296d3242693ac898bc785b942be58514f/apps/desktop/src/renderer/routes/_authenticated/_dashboard/tasks/components/TasksView/TasksView.tsx",
+          "source_class": "Primary OSS implementation source",
+          "feature": "Tasks view supports list/board selection, filters and per-task detail; this is a surface comparison only.",
+          "evidence_status": "Current public implementation source inspected.",
+          "runtime_status": "Not executed by this audit; source/document evidence only."
+        },
+        {
+          "feature_assessment_id": "G07/GOAT",
+          "product": "GOAT",
+          "sha": "4a04fa32548e792122bdb5ff954e29b6be905bf8",
+          "url": "https://github.com/goat-si/goat/blob/4a04fa32548e792122bdb5ff954e29b6be905bf8/apps/web/src/components/fleet/FleetConsole.tsx",
+          "source_class": "Primary OSS implementation source on dev branch",
+          "feature": "Dev-branch FleetConsole derives cross-environment running/attention counts and host telemetry.",
+          "evidence_status": "Current dev-branch implementation source inspected; packaged release linkage/runtime not established.",
+          "runtime_status": "Not executed by this audit; source/document evidence only."
+        }
+      ],
+      "limitation": "Agent Orchestrator is a product description; GOAT is dev-branch fleet evidence with no packaged-release linkage and its cloud/fleet slice is excluded. Competitor dashboards were not executed.",
+      "feature_assessment_ids": ["G07/Agent Orchestrator", "G07/Orca", "G07/Superset", "G07/GOAT"],
+      "feature_status_basis": "Product-level feature status and its source are in feature_assessments; cluster status is a summary, not a parity verdict."
+    },
+    {
+      "id": "G08",
+      "priority": "P3; investigate only after a measured repository-task failure",
+      "category": "Code-aware project briefing and durable project memory",
+      "competitor_evidence_products": ["Empryo"],
+      "neokod_status": "partial; indexed workspace file search is present; no additional validated project-memory gap",
+      "neokod_actual_paths": [
+        "apps/server/src/workspace/WorkspaceSearchIndex.ts",
+        "packages/contracts/src/project.ts",
+        "apps/web/src/lib/composerPathSearchState.ts (workspace/file search callers)",
+        "existing project/thread provider context"
+      ],
+      "actual_boundary": "Workspace file browsing/search and contextual editing are present. A symbol/dependency map or user-curated durable project-memory retrieval product was not established in the inspected production paths. This is not a general absence claim.",
+      "local_first_fit": "Potential local benefit for repeated large-repository work; not a universal feature requirement.",
+      "ui_intent_only": "Any project facts or memory surface must be Neokod-designed and visibly source-linked.",
+      "minimal_reuse": "Use existing WorkspaceSearchIndex and project/thread context to produce bounded citations first. Add symbol extraction or memory only if a matched-task study shows fewer missed files or lower briefing cost.",
+      "dependencies_gates": "Source freshness, repo scope, generated-file handling, explicit memory ownership, content provenance, no hidden cross-project retrieval.",
+      "verification": "Held-out repository tasks compare file discovery and implementation correctness against current search with identical prompts; no source-backed accuracy claim from Empryo README alone.",
+      "competitor_sources": [
+        {
+          "feature_assessment_id": "G08/Empryo",
+          "product": "Empryo",
+          "sha": "c27dac116d2ee1637abfc6634bebf08b5c379454",
+          "url": "https://github.com/proxysoul/Empryo/blob/c27dac116d2ee1637abfc6634bebf08b5c379454/README.md",
+          "source_class": "Official repository README; v2 public core, v3 partly private",
+          "feature": "Public v2 README describes a project map/memory workflow; current v3 implementation is private/unavailable.",
+          "evidence_status": "Current public README/source inspected; current v3 backend and newest surfaces unavailable.",
+          "runtime_status": "Not executed by this audit; source/document evidence only."
+        }
+      ],
+      "limitation": "Empryo public source is v2; current v3 backend/newer surfaces are private and unavailable. Do not infer v3 behavior or source-backed retrieval accuracy.",
+      "feature_assessment_ids": ["G08/Empryo"],
+      "feature_status_basis": "Product-level feature status and its source are in feature_assessments; cluster status is a summary, not a parity verdict."
+    },
+    {
+      "id": "G09",
+      "priority": "Candidate only; no validated missing feature; rank only against a concrete workflow need",
+      "category": "History, transcript search and stable result windows",
+      "competitor_evidence_products": ["T3"],
+      "neokod_status": "present in inspected source for title/project/branch and workspace-file search; in-thread find remains a candidate",
+      "neokod_actual_paths": [
+        "apps/web/src/components/CommandPalette.logic.ts:177–199",
+        "apps/server/src/workspace/WorkspaceSearchIndex.ts",
+        "packages/contracts/src/project.ts",
+        "apps/web/src/state/threads.ts"
+      ],
+      "actual_boundary": "CommandPalette searches thread title/project/branch; WorkspaceSearchIndex covers workspace files. A targeted name search did not find an in-thread transcript-find handler in apps/web/src. That search result does not prove feature absence. T3 #10439 supplies primary candidate evidence.",
+      "local_first_fit": "High for bounded local transcript history if requested, but no new engine is justified by current evidence.",
+      "ui_intent_only": "Search result presentation and query ownership are UI intent only; keep existing command palette and history surfaces.",
+      "minimal_reuse": "Before adding anything, inspect existing thread snapshots/indexes and cursor contract. If a concrete request remains, add bounded transcript query/window semantics to the existing store.",
+      "dependencies_gates": "Query identity and stale-result isolation, pagination/cursors, retention and privacy scope; avoid whole-history scan on each keystroke.",
+      "verification": "Large history fixture, same-query result ownership, cursor restart and bounded work; do not report missing full-text search from no search hit.",
+      "competitor_sources": [
+        {
+          "feature_assessment_id": "G09/T3",
+          "product": "T3",
+          "sha": "27e0c684c585f955252d65f06206dd11a143bff5",
+          "url": "https://github.com/pingdotgg/t3code/pull/10439",
+          "source_class": "Public GitHub PR API body (preserved raw body; primary historical feature evidence)",
+          "feature": "Mod+F in-thread find across projected conversation history; bounded query snapshots, revision invalidation and match identity without message bodies.",
+          "evidence_status": "Body read from retained API capture; merge metadata is recorded in the closed-PR census.",
+          "runtime_status": "Not executed by this audit. Author-reported tests/probes in the PR body were not rerun.",
+          "source_tag": "v0.1.3-nightly.20261024.3617",
+          "merge_commit": "12069eefd707f78eafc27812027c994eea0613cf",
+          "merge_commit_in_retained_latest_prerelease": true
+        }
+      ],
+      "limitation": "Do not call full transcript search missing. T3 PR body and author-reported verification were not independently rerun; no transcript-search parity claim is made.",
+      "feature_assessment_ids": ["G09/T3"],
+      "feature_status_basis": "Product-level feature status and its source are in feature_assessments; cluster status is a summary, not a parity verdict."
+    },
+    {
+      "id": "G10",
+      "priority": "No generic gap validated; keep capability truth provider-specific",
+      "category": "Context/compaction, skills/MCP and harness extension APIs",
+      "competitor_evidence_products": ["Synara", "Hermes", "Oh My Pi", "Pi", "CodexHost"],
+      "neokod_status": "present in inspected production source for context occupancy, provider skills and provider-owned MCP; no generic compaction/extension gap validated",
+      "neokod_actual_paths": [
+        "apps/web/src/components/chat/ContextWindowMeter.tsx",
+        "apps/web/src/lib/contextWindow.ts",
+        "apps/web/src/providerSkillSearch.ts",
+        "apps/web/src/components/chat/SkillInlineText.tsx",
+        "apps/web/src/components/chat/CopilotMcpControls.tsx",
+        "packages/contracts/src/providerRuntime.ts"
+      ],
+      "actual_boundary": "Neokod has a current context meter, provider-specific skills and Copilot-specific MCP controls. Native compaction, permissions and tool support remain harness-specific; a generic extension marketplace or universal compaction service is not inferred.",
+      "local_first_fit": "Local native skills/MCP fit where user-approved, but a generic plugin marketplace or custom universal agent extension API is not an evidenced requirement.",
+      "ui_intent_only": "Do not port agent TUI extension menus or provider-specific UI. Use Neokod component conventions for any explicit per-provider capability display.",
+      "minimal_reuse": "Keep capabilities in existing provider contracts/adapters. Add a specific capability only for a named supported adapter and preserve the provider’s native authority/approval semantics.",
+      "dependencies_gates": "Provider capability manifests and tested adapters; no implied native compaction, custom tools, MCP reach or model availability from a generic handshake.",
+      "verification": "Per-provider contract/unit test plus live adapter evidence before advertising a capability; distinguish context occupancy from usage/quota.",
+      "competitor_sources": [
+        {
+          "feature_assessment_id": "G10/Synara",
+          "product": "Synara",
+          "sha": "29b11e105200c7bc6e2c71a06a375513d4c8a72d",
+          "url": "https://github.com/Emanuele-web04/synara/blob/29b11e105200c7bc6e2c71a06a375513d4c8a72d/README.md",
+          "source_class": "Official repository README",
+          "feature": "Official README describes scoped external MCP configuration.",
+          "evidence_status": "Current official repository README inspected; public product documentation only.",
+          "runtime_status": "Not executed by this audit; source/document evidence only."
+        },
+        {
+          "feature_assessment_id": "G10/Hermes",
+          "product": "Hermes",
+          "sha": "bac34e9e9946c9c6a9ce7ce64efadd47f8fa375b",
+          "url": "https://github.com/NousResearch/hermes-agent/blob/bac34e9e9946c9c6a9ce7ce64efadd47f8fa375b/website/docs/user-guide/features/web-dashboard.md",
+          "source_class": "Official user documentation",
+          "feature": "Official dashboard docs describe isolated profiles with provider/model/skills/MCP configuration.",
+          "evidence_status": "Current official user documentation inspected; runtime implementation not independently verified.",
+          "runtime_status": "Not executed by this audit; source/document evidence only."
+        },
+        {
+          "feature_assessment_id": "G10/Oh My Pi",
+          "product": "Oh My Pi",
+          "sha": "0b5c27ab24719c86a5986b95ee55f4e75bc1aaa0",
+          "url": "https://github.com/can1357/oh-my-pi/blob/0b5c27ab24719c86a5986b95ee55f4e75bc1aaa0/packages/agent/src/compaction/transcript-tokens.ts",
+          "source_class": "Primary OSS implementation source",
+          "feature": "Compaction source estimates transcript tokens from provider-observed anchors rather than naive text only.",
+          "evidence_status": "Current public implementation/docs inspected.",
+          "runtime_status": "Not executed by this audit; source/document evidence only."
+        },
+        {
+          "feature_assessment_id": "G10/Pi",
+          "product": "Pi",
+          "sha": "bdb151774ed6bef2b5676bbff4669f20a0c233fe",
+          "url": "https://github.com/earendil-works/pi/blob/bdb151774ed6bef2b5676bbff4669f20a0c233fe/packages/coding-agent/docs/extensions.md",
+          "source_class": "Official public implementation documentation",
+          "feature": "Official extension documentation exposes harness-level commands/tools/UI lifecycle APIs.",
+          "evidence_status": "Current official extension documentation inspected.",
+          "runtime_status": "Not executed by this audit; source/document evidence only."
+        },
+        {
+          "feature_assessment_id": "G10/CodexHost",
+          "product": "CodexHost",
+          "sha": "82e4839808ae692ac5cd0c23339c3db8e7a043c9",
+          "url": "https://github.com/BytePioneer-AI/codex-host/blob/82e4839808ae692ac5cd0c23339c3db8e7a043c9/docs/harnesses/capability-boundaries.md",
+          "source_class": "Official public capability documentation",
+          "feature": "Capability-boundary documentation distinguishes host-specific limits and harness semantics.",
+          "evidence_status": "Current capability-boundary documentation and usage source inspected.",
+          "runtime_status": "Not executed by this audit; source/document evidence only."
+        }
+      ],
+      "limitation": "The compared products expose features at different layers. Public docs/source are not live adapter evidence; no universal competitor support or Neokod parity claim is made.",
+      "feature_assessment_ids": [
+        "G10/Synara",
+        "G10/Hermes",
+        "G10/Oh My Pi",
+        "G10/Pi",
+        "G10/CodexHost"
+      ],
+      "feature_status_basis": "Product-level feature status and its source are in feature_assessments; cluster status is a summary, not a parity verdict."
+    },
+    {
+      "id": "G11",
+      "priority": "Bounded candidate from #18429; owner scoping/priority remains open and §13.2 applies to competitor work outside A–C",
+      "category": "Terminal subscriber output budget and recovery",
+      "competitor_evidence_products": ["T3"],
+      "neokod_status": "partial; terminal history and input paths are present; output subscriber budget is unverified",
+      "neokod_actual_paths": [
+        "apps/server/src/ws.ts:2810–2819",
+        "apps/server/src/terminal/Manager.ts:888–909,2720–2725",
+        "packages/contracts/src/terminal.ts:65–67",
+        "packages/client-runtime/src/state/terminalSession.ts:235–430",
+        "apps/web/src/components/ThreadTerminalDrawer.tsx:488"
+      ],
+      "actual_boundary": "Neokod has PTY sessions, byte/line-capped persisted history with UTF-8 boundary handling, xterm scrollback and an acknowledged/serialized input queue. Current ws.ts routes TerminalManager.subscribe through Stream.callback and Queue.offer without an explicit per-subscriber byte budget at that seam. Whether RPC acknowledgements bound downstream consumption was not traced, so end-to-end unbounded buffering is not claimed. T3 #18429 is a concrete bounded port candidate, not implementation authority.",
+      "local_first_fit": "High; terminal execution is local/selected environment functionality.",
+      "ui_intent_only": "Terminal controls and panels remain Neokod-owned. Use flow-control concepts only.",
+      "minimal_reuse": "No rewrite. If a concrete output pressure gap is selected, add bounded queue/consumer admission at existing terminal event seams and retain cursors/UTF-8-safe read limits.",
+      "dependencies_gates": "Determine current output path and queue bound before implementation; preserve no-loss/replay semantics; bound memory for newline-free output; no per-function test suite.",
+      "verification": "Large single-line, high-rate output, slow reader, reconnect/remount and replay fixtures with byte accounting; prove bounded queue and no truncation/corruption.",
+      "competitor_sources": [
+        {
+          "feature_assessment_id": "G11/T3",
+          "product": "T3",
+          "sha": "27e0c684c585f955252d65f06206dd11a143bff5",
+          "url": "https://github.com/pingdotgg/t3code/pull/18429",
+          "source_class": "Public GitHub PR API body (preserved raw body; primary historical feature evidence)",
+          "feature": "Per-subscriber synchronous mailbox with an 8 MiB budget; overflow drops only that subscriber, whose next pull receives a bounded history snapshot then live output.",
+          "evidence_status": "Body read from retained API capture; merge metadata is recorded in the closed-PR census.",
+          "runtime_status": "Not executed by this audit. Author-reported tests/probes in the PR body were not rerun.",
+          "source_tag": "v0.1.3-nightly.20261024.3617",
+          "merge_commit": "3284143b454f2353ab3e0101c894986fe429123d",
+          "merge_commit_in_retained_latest_prerelease": true,
+          "boundary": "The body says the 8 MiB subscriber budget is not an exact heap or JSON-frame ceiling."
+        }
+      ],
+      "limitation": "The T3 PR body reports an 8 MiB subscriber mailbox, overflow isolation and author-run Linux web/PTY recovery checks. This audit did not execute T3 or independently repeat those checks; the 8 MiB budget is not a hard JSON-frame/heap ceiling.",
+      "feature_assessment_ids": ["G11/T3"],
+      "feature_status_basis": "Product-level feature status and its source are in feature_assessments; cluster status is a summary, not a parity verdict."
+    },
+    {
+      "id": "G12",
+      "priority": "Owner-scoped candidate after Tracks A–C; no implementation authority assumed",
+      "category": "PR watch, thread settlement and settled-worktree cleanup",
+      "neokod_status": "candidate (not a missing verdict); related Neokod lifecycle/PR foundations are present",
+      "neokod_actual_paths": [
+        "apps/server/src/orchestration/Layers/TurnSettlementReactor.ts",
+        "apps/server/src/orchestration/decider.ts:620–641",
+        "apps/server/src/symphony/Orchestrator/Layers/SymphonyOrchestratorLive.ts:877–1010,2201–2271",
+        "apps/server/src/git/WorktreeRemovalLease.ts"
+      ],
+      "actual_boundary": "Neokod has server-owned ordinary-turn settlement, Symphony PR refresh/merged-outcome settlement and a lease that protects worktree removal. These are distinct from T3 ordinary-chat PR watches, event-driven PR wake/auto-settle policy and scheduled cleanup of settled ordinary-thread worktrees. No equivalent handler was identified in the inspected paths; this is not a product-wide absence certification.",
+      "local_first_fit": "Potentially local if explicitly scoped to an owner-authorised PR source and current thread lifecycle; no hosted relay or shared tenancy is assumed. Scope and priority remain an owner decision.",
+      "ui_intent_only": "T3 watch/menu controls are interaction evidence only. Any Neokod presentation must use Neokod components and server-owned lifecycle facts.",
+      "minimal_reuse": "If later authorised, assess the existing PR refresh, lifecycle and WorktreeRemovalLease seams. Do not add agent-side polling loops or infer thread closure from PR presence.",
+      "dependencies_gates": "Formal lifecycle/restart acceptance, authenticated PR scope, bounded polling, unchanged-state suppression, restart dedupe, server-owned closure and safe cleanup leases.",
+      "verification": "If selected: no wake on unchanged state, one wake per meaningful change, restart dedupe, bounded poll interval, preserved unknown outcomes and no cleanup while ownership/worktree evidence is uncertain.",
+      "limitation": "T3 PR bodies are public evidence; their reported validation was not rerun here. Related stacked PR #13476 is not observed in the retained latest-nightly commit list and is not used as current-source evidence. PR #15208 describes optional cleanup and retains an open scope question for clean unmerged worktrees. No T3 runtime or private source was accessed.",
+      "feature_assessment_ids": ["G12/T3"],
+      "competitor_evidence_products": ["T3"],
+      "competitor_sources": [
+        {
+          "feature_assessment_id": "G12/T3",
+          "product": "T3",
+          "sha": "27e0c684c585f955252d65f06206dd11a143bff5",
+          "url": "https://github.com/pingdotgg/t3code/pull/15057",
+          "source_class": "Public GitHub PR API body (preserved raw body; primary historical feature evidence)",
+          "feature": "PR watch, auto-settle policy, merge-triggered refresh and optional settled-worktree cleanup are separate source-backed behaviors; this cluster does not imply a single required Neokod feature.",
+          "evidence_status": "Body read from retained API capture; merge metadata is recorded in the closed-PR census.",
+          "runtime_status": "Not executed by this audit. Author-reported tests/probes in the PR body were not rerun.",
+          "source_tag": "v0.1.3-nightly.20261024.3617",
+          "merge_commit": "18b21325c3ab1ff4f0ee7b017d9c4eefc2b2d307",
+          "merge_commit_in_retained_latest_prerelease": true
+        },
+        {
+          "feature_assessment_id": "G12/T3",
+          "product": "T3",
+          "sha": "27e0c684c585f955252d65f06206dd11a143bff5",
+          "url": "https://github.com/pingdotgg/t3code/pull/11846",
+          "source_class": "Public GitHub PR API body (preserved raw body; primary historical feature evidence)",
+          "feature": "PR watch, auto-settle policy, merge-triggered refresh and optional settled-worktree cleanup are separate source-backed behaviors; this cluster does not imply a single required Neokod feature.",
+          "evidence_status": "Body read from retained API capture; merge metadata is recorded in the closed-PR census.",
+          "runtime_status": "Not executed by this audit. Author-reported tests/probes in the PR body were not rerun.",
+          "source_tag": "v0.1.3-nightly.20261024.3617",
+          "merge_commit": "0109670411d13b9e380766e98b386b2f756ecf5b",
+          "merge_commit_in_retained_latest_prerelease": true
+        },
+        {
+          "feature_assessment_id": "G12/T3",
+          "product": "T3",
+          "sha": "27e0c684c585f955252d65f06206dd11a143bff5",
+          "url": "https://github.com/pingdotgg/t3code/pull/14642",
+          "source_class": "Public GitHub PR API body (preserved raw body; primary historical feature evidence)",
+          "feature": "PR watch, auto-settle policy, merge-triggered refresh and optional settled-worktree cleanup are separate source-backed behaviors; this cluster does not imply a single required Neokod feature.",
+          "evidence_status": "Body read from retained API capture; merge metadata is recorded in the closed-PR census.",
+          "runtime_status": "Not executed by this audit. Author-reported tests/probes in the PR body were not rerun.",
+          "source_tag": "v0.1.3-nightly.20261024.3617",
+          "merge_commit": "bf8ffe81a63c82d3de5fbaa9991fd5f30034a452",
+          "merge_commit_in_retained_latest_prerelease": true
+        },
+        {
+          "feature_assessment_id": "G12/T3",
+          "product": "T3",
+          "sha": "27e0c684c585f955252d65f06206dd11a143bff5",
+          "url": "https://github.com/pingdotgg/t3code/pull/15024",
+          "source_class": "Public GitHub PR API body (preserved raw body; primary historical feature evidence)",
+          "feature": "PR watch, auto-settle policy, merge-triggered refresh and optional settled-worktree cleanup are separate source-backed behaviors; this cluster does not imply a single required Neokod feature.",
+          "evidence_status": "Body read from retained API capture; merge metadata is recorded in the closed-PR census.",
+          "runtime_status": "Not executed by this audit. Author-reported tests/probes in the PR body were not rerun.",
+          "source_tag": "v0.1.3-nightly.20261024.3617",
+          "merge_commit": "ca4f84e702428656665d53635e16251112091657",
+          "merge_commit_in_retained_latest_prerelease": true
+        },
+        {
+          "feature_assessment_id": "G12/T3",
+          "product": "T3",
+          "sha": "27e0c684c585f955252d65f06206dd11a143bff5",
+          "url": "https://github.com/pingdotgg/t3code/pull/15783",
+          "source_class": "Public GitHub PR API body (preserved raw body; primary historical feature evidence)",
+          "feature": "PR watch, auto-settle policy, merge-triggered refresh and optional settled-worktree cleanup are separate source-backed behaviors; this cluster does not imply a single required Neokod feature.",
+          "evidence_status": "Body read from retained API capture; merge metadata is recorded in the closed-PR census.",
+          "runtime_status": "Not executed by this audit. Author-reported tests/probes in the PR body were not rerun.",
+          "source_tag": "v0.1.3-nightly.20261024.3617",
+          "merge_commit": "d5fdfdcf05330680c2947bbb458772f63dba964f",
+          "merge_commit_in_retained_latest_prerelease": true
+        },
+        {
+          "feature_assessment_id": "G12/T3",
+          "product": "T3",
+          "sha": "27e0c684c585f955252d65f06206dd11a143bff5",
+          "url": "https://github.com/pingdotgg/t3code/pull/15208",
+          "source_class": "Public GitHub PR API body (preserved raw body; primary historical feature evidence)",
+          "feature": "PR watch, auto-settle policy, merge-triggered refresh and optional settled-worktree cleanup are separate source-backed behaviors; this cluster does not imply a single required Neokod feature.",
+          "evidence_status": "Body read from retained API capture; merge metadata is recorded in the closed-PR census.",
+          "runtime_status": "Not executed by this audit. Author-reported tests/probes in the PR body were not rerun.",
+          "source_tag": "v0.1.3-nightly.20261024.3617",
+          "merge_commit": "21bedfb175b9eec8652adc35d7882bdc3c3c9d59",
+          "merge_commit_in_retained_latest_prerelease": true,
+          "boundary": "Cleanup is optional/off by default in the body; do not infer a Neokod cleanup policy."
+        }
+      ],
+      "feature_status_basis": "Product-level feature status and its source are in feature_assessments; cluster status is a summary, not a parity verdict."
+    }
+  ],
+  "neokod_source_snapshot": {
+    "branch": "feat/neokod-provider-reliability",
+    "head": "0c05baa3f426d91ed97bb0d625f1531a3380b9c0",
+    "evidence_status": "Read-only source inspection; no installed Neokod desktop/runtime was executed in this correction."
+  },
+  "t3_source_snapshot": {
+    "tag": "v0.1.3-nightly.20261024.3617",
+    "sha": "27e0c684c585f955252d65f06206dd11a143bff5",
+    "published_at": "2026-10-24T09:52:02Z",
+    "release_channel": "Prerelease nightly; not stable-release evidence.",
+    "runtime_status": "No T3 runtime was executed by this correction. PR-body test/probe claims remain author-reported."
+  },
+  "matrix_semantics": {
+    "products": "Exactly twenty source-roster entries; product-level rows carry source anchors and selected feature summaries, not one scalar Neokod verdict.",
+    "feature_assessments": "Authoritative per-product/per-feature rows, including feature-specific source references, Neokod status, current-source slices, gates and limitations.",
+    "product_gap_links": "Each product gap_ids value is the union of its feature_assessments; each gap competitor_evidence_products and competitor_sources is projected from rows with that feature_id.",
+    "csv_grain": "One row per product-feature assessment; JSON-valued cells contain the row source/path arrays.",
+    "source_url_count": "coverage.source_url_count counts original product roster anchors only; feature-specific source URLs are counted separately."
+  },
+  "feature_assessments": [
+    {
+      "id": "G01/T3",
+      "feature_id": "G01",
+      "feature_area": "App-managed ordinary-chat child tasks and durable result delivery",
+      "product": "T3",
+      "product_n": 1,
+      "repo": "pingdotgg/t3code",
+      "product_source_sha": "27e0c684c585f955252d65f06206dd11a143bff5",
+      "product_evidence_status": "Current public implementation source inspected; not executed.",
+      "competitor_feature": "Agent-called app-managed child tasks with async/wait execution, status/cancel, attributed results and optional worktree isolation.",
+      "source_refs": [
+        {
+          "url": "https://github.com/pingdotgg/t3code/blob/27e0c684c585f955252d65f06206dd11a143bff5/apps/server/src/mcp/toolkits/orchestrator/tools.ts",
+          "source_sha": "27e0c684c585f955252d65f06206dd11a143bff5",
+          "source_class": "Primary OSS implementation source",
+          "source_evidence_status": "Current public implementation source inspected; not executed.",
+          "runtime_status": "Not executed by this audit; source/document evidence only.",
+          "feature_note": "Current pinned T3 implementation source; managed-task tool contracts, not Neokod UI or a live execution."
+        }
+      ],
+      "neokod_feature_status": "planned (gated)",
+      "neokod_present_slices": ["Provider-native subagent activity observations are present."],
+      "neokod_planned_or_unverified_slices": [
+        "App-managed ordinary-chat admission, durable child identity and result return are W6-C1–C6 after formal core exit."
+      ],
+      "neokod_actual_paths": [
+        "apps/web/src/components/SubagentsPanel.tsx",
+        "apps/web/src/components/SubagentsPanel.logic.ts",
+        "apps/server/src/symphony/Review/ModelReviewer.ts",
+        "plan.md §16.6 W6-C1–C6",
+        "plan.md §16.18 formal core exit"
+      ],
+      "scope_fit": "Local-first intent is relevant; upstream UI is excluded.",
+      "gate_or_priority": "W6-C1–C6 after formal core exit; distinct from G04 Track C handoff",
+      "limitation": "T3 source is pinned public code, not runtime proof; managed children remain separate from Symphony tracker pull."
+    },
+    {
+      "id": "G01/Paseo",
+      "feature_id": "G01",
+      "feature_area": "App-managed ordinary-chat child tasks and durable result delivery",
+      "product": "Paseo",
+      "product_n": 2,
+      "repo": "getpaseo/paseo",
+      "product_source_sha": "b8bb335c563279be45544b1b20a1fa5b3e56d422",
+      "product_evidence_status": "Current official orchestration documentation inspected; no runtime execution.",
+      "competitor_feature": "Official guide documents agent-launched children, a subagent track and parent completion notification.",
+      "source_refs": [
+        {
+          "url": "https://github.com/getpaseo/paseo/blob/b8bb335c563279be45544b1b20a1fa5b3e56d422/public-docs/orchestration.md",
+          "source_sha": "b8bb335c563279be45544b1b20a1fa5b3e56d422",
+          "source_class": "Official public documentation",
+          "source_evidence_status": "Current official orchestration documentation inspected; no runtime execution.",
+          "runtime_status": "Not executed by this audit; source/document evidence only.",
+          "feature_note": "Child orchestration section of official guide."
+        }
+      ],
+      "neokod_feature_status": "planned (gated)",
+      "neokod_present_slices": ["Provider-native activity observations are present."],
+      "neokod_planned_or_unverified_slices": [
+        "Managed admission/result delivery remains W6-C1–C6 gated."
+      ],
+      "neokod_actual_paths": [
+        "apps/web/src/components/SubagentsPanel.tsx",
+        "apps/web/src/components/SubagentsPanel.logic.ts",
+        "apps/server/src/symphony/Review/ModelReviewer.ts",
+        "plan.md §16.6 W6-C1–C6",
+        "plan.md §16.18 formal core exit"
+      ],
+      "scope_fit": "Local child orchestration could fit; own UI only.",
+      "gate_or_priority": "W6-C1–C6 after formal core exit; distinct from G04 Track C handoff",
+      "limitation": "Official documentation only; no competitor runtime was exercised."
+    },
+    {
+      "id": "G01/Omnigent",
+      "feature_id": "G01",
+      "feature_area": "App-managed ordinary-chat child tasks and durable result delivery",
+      "product": "Omnigent",
+      "product_n": 6,
+      "repo": "omnigent-ai/omnigent",
+      "product_source_sha": "f87fed537627f3278445df86fba6cd14bb809c1f",
+      "product_evidence_status": "Current public implementation source inspected.",
+      "competitor_feature": "Public recovery implementation re-delivers retained terminal child results to a parent inbox after restart.",
+      "source_refs": [
+        {
+          "url": "https://github.com/omnigent-ai/omnigent/blob/f87fed537627f3278445df86fba6cd14bb809c1f/omnigent/runner/subagent_recovery.py",
+          "source_sha": "f87fed537627f3278445df86fba6cd14bb809c1f",
+          "source_class": "Primary OSS implementation source",
+          "source_evidence_status": "Current public implementation source inspected.",
+          "runtime_status": "Not executed by this audit; source/document evidence only.",
+          "feature_note": "Source-level child recovery and retained-result delivery."
+        }
+      ],
+      "neokod_feature_status": "planned (gated)",
+      "neokod_present_slices": ["Symphony has separate run/evidence recovery paths."],
+      "neokod_planned_or_unverified_slices": [
+        "Ordinary-chat child admission and durable result inbox are W6-C1–C6 gated."
+      ],
+      "neokod_actual_paths": [
+        "apps/web/src/components/SubagentsPanel.tsx",
+        "apps/web/src/components/SubagentsPanel.logic.ts",
+        "apps/server/src/symphony/Review/ModelReviewer.ts",
+        "plan.md §16.6 W6-C1–C6",
+        "plan.md §16.18 formal core exit"
+      ],
+      "scope_fit": "Use bounded recovery ideas only; do not transplant runner architecture.",
+      "gate_or_priority": "W6-C1–C6 after formal core exit; distinct from G04 Track C handoff",
+      "limitation": "Source only; process-local inbox details do not establish a Neokod guarantee."
+    },
+    {
+      "id": "G01/PandaCode",
+      "feature_id": "G01",
+      "feature_area": "App-managed ordinary-chat child tasks and durable result delivery",
+      "product": "PandaCode",
+      "product_n": 8,
+      "repo": "aicodeking/pandacode",
+      "product_source_sha": "9e47ea045b8bd76e8113d3696175f54636fbb64b",
+      "product_evidence_status": "Current official implementation documentation inspected.",
+      "competitor_feature": "Official worker-team documentation describes bounded parallelism, request dedupe, persisted mailbox/checkpoints and parent synthesis.",
+      "source_refs": [
+        {
+          "url": "https://github.com/aicodeking/pandacode/blob/9e47ea045b8bd76e8113d3696175f54636fbb64b/docs/architect-workers.md",
+          "source_sha": "9e47ea045b8bd76e8113d3696175f54636fbb64b",
+          "source_class": "Official public implementation documentation",
+          "source_evidence_status": "Current official implementation documentation inspected.",
+          "runtime_status": "Not executed by this audit; source/document evidence only.",
+          "feature_note": "Architect/worker documentation; file scopes are described as advisory."
+        }
+      ],
+      "neokod_feature_status": "planned (gated)",
+      "neokod_present_slices": ["Provider-native activity observations are present."],
+      "neokod_planned_or_unverified_slices": [
+        "App-managed child admission, bounded assignments and durable parent return are W6-C1–C6 gated."
+      ],
+      "neokod_actual_paths": [
+        "apps/web/src/components/SubagentsPanel.tsx",
+        "apps/web/src/components/SubagentsPanel.logic.ts",
+        "apps/server/src/symphony/Review/ModelReviewer.ts",
+        "plan.md §16.6 W6-C1–C6",
+        "plan.md §16.18 formal core exit"
+      ],
+      "scope_fit": "Local bounded children may fit; enforce or label advisory scopes.",
+      "gate_or_priority": "W6-C1–C6 after formal core exit; distinct from G04 Track C handoff",
+      "limitation": "Documentation only; no live multi-agent run."
+    },
+    {
+      "id": "G01/Agent Orchestrator",
+      "feature_id": "G01",
+      "feature_area": "App-managed ordinary-chat child tasks and durable result delivery",
+      "product": "Agent Orchestrator",
+      "product_n": 11,
+      "repo": "OrchestratorInc/agent-orchestrator",
+      "product_source_sha": "7e1bb8f0b740eff6a2663f36d22f9db064bd9a8a",
+      "product_evidence_status": "Current official repository README/source inventory inspected; no runtime execution.",
+      "competitor_feature": "Product description presents project-aware task planning and worker delegation; this row is an adjacent orchestration reference.",
+      "source_refs": [
+        {
+          "url": "https://github.com/OrchestratorInc/agent-orchestrator/blob/7e1bb8f0b740eff6a2663f36d22f9db064bd9a8a/README.md",
+          "source_sha": "7e1bb8f0b740eff6a2663f36d22f9db064bd9a8a",
+          "source_class": "Official repository README product description",
+          "source_evidence_status": "Current official repository README/source inventory inspected; no runtime execution.",
+          "runtime_status": "Not executed by this audit; source/document evidence only.",
+          "feature_note": "README/product description; not independently runtime-verified."
+        }
+      ],
+      "neokod_feature_status": "planned (gated)",
+      "neokod_present_slices": [
+        "Symphony task/worker flow is separate from ordinary Code-thread children."
+      ],
+      "neokod_planned_or_unverified_slices": [
+        "Ordinary-chat managed-child admission/result remains W6-C1–C6 gated."
+      ],
+      "neokod_actual_paths": [
+        "apps/web/src/components/SubagentsPanel.tsx",
+        "apps/web/src/components/SubagentsPanel.logic.ts",
+        "apps/server/src/symphony/Review/ModelReviewer.ts",
+        "plan.md §16.6 W6-C1–C6",
+        "plan.md §16.18 formal core exit"
+      ],
+      "scope_fit": "Local app-managed child intent only; hosted marketplace/control plane excluded.",
+      "gate_or_priority": "W6-C1–C6 after formal core exit; distinct from G04 Track C handoff",
+      "limitation": "Product description, not source-level or runtime proof of the described execution."
+    },
+    {
+      "id": "G01/Hermes",
+      "feature_id": "G01",
+      "feature_area": "App-managed ordinary-chat child tasks and durable result delivery",
+      "product": "Hermes",
+      "product_n": 12,
+      "repo": "NousResearch/hermes-agent",
+      "product_source_sha": "bac34e9e9946c9c6a9ce7ce64efadd47f8fa375b",
+      "product_evidence_status": "Current official user documentation inspected; runtime implementation not independently verified.",
+      "competitor_feature": "Official delegation documentation describes delegated batch tasks and consolidated result delivery.",
+      "source_refs": [
+        {
+          "url": "https://github.com/NousResearch/hermes-agent/blob/bac34e9e9946c9c6a9ce7ce64efadd47f8fa375b/website/docs/user-guide/features/delegation.md",
+          "source_sha": "bac34e9e9946c9c6a9ce7ce64efadd47f8fa375b",
+          "source_class": "Official user documentation",
+          "source_evidence_status": "Current official user documentation inspected; runtime implementation not independently verified.",
+          "runtime_status": "Not executed by this audit; source/document evidence only.",
+          "feature_note": "Delegation guide, separate from dashboard usage/schedule claims."
+        }
+      ],
+      "neokod_feature_status": "planned (gated)",
+      "neokod_present_slices": ["Provider-native activity observations are present."],
+      "neokod_planned_or_unverified_slices": [
+        "Managed child admission/result semantics remain W6-C1–C6 gated."
+      ],
+      "neokod_actual_paths": [
+        "apps/web/src/components/SubagentsPanel.tsx",
+        "apps/web/src/components/SubagentsPanel.logic.ts",
+        "apps/server/src/symphony/Review/ModelReviewer.ts",
+        "plan.md §16.6 W6-C1–C6",
+        "plan.md §16.18 formal core exit"
+      ],
+      "scope_fit": "Local result delivery may inform intent; external messaging channels are excluded by default.",
+      "gate_or_priority": "W6-C1–C6 after formal core exit; distinct from G04 Track C handoff",
+      "limitation": "Official documentation only; runtime behavior was not independently exercised."
+    },
+    {
+      "id": "G02/Paseo",
+      "feature_id": "G02",
+      "feature_area": "Registered owner-machine targets and acknowledged continuation",
+      "product": "Paseo",
+      "product_n": 2,
+      "repo": "getpaseo/paseo",
+      "product_source_sha": "b8bb335c563279be45544b1b20a1fa5b3e56d422",
+      "product_evidence_status": "Current official orchestration documentation inspected; no runtime execution.",
+      "competitor_feature": "Official orchestration guide links a separate other-machine workflow; details are not asserted from the link alone.",
+      "source_refs": [
+        {
+          "url": "https://github.com/getpaseo/paseo/blob/b8bb335c563279be45544b1b20a1fa5b3e56d422/public-docs/orchestration.md",
+          "source_sha": "b8bb335c563279be45544b1b20a1fa5b3e56d422",
+          "source_class": "Official public documentation",
+          "source_evidence_status": "Current official orchestration documentation inspected; no runtime execution.",
+          "runtime_status": "Not executed by this audit; source/document evidence only.",
+          "feature_note": "The reviewed guide links other-machine workflows but does not establish their complete transport semantics.",
+          "boundary": "Adjacent evidence only; no hosted relay or pairing claim is ported."
+        }
+      ],
+      "neokod_feature_status": "partial",
+      "neokod_present_slices": [
+        "Local/browser access, WSL and generic connection contracts are present."
+      ],
+      "neokod_planned_or_unverified_slices": [
+        "Saved named target, pin-before-acceptance and acknowledged continuation remain W5 scope."
+      ],
+      "neokod_actual_paths": [
+        "apps/web/src/components/settings/ConnectionsSettings.tsx",
+        "apps/desktop/src/app/DesktopConnectionCatalogStore.ts",
+        "packages/client-runtime/src/connection/registry.ts",
+        "packages/client-runtime/src/environment/knownEnvironment.ts",
+        "apps/web/src/environments/primary/target.ts",
+        "plan.md §16.16 W5"
+      ],
+      "scope_fit": "Only direct owner-controlled connections are in scope.",
+      "gate_or_priority": "Track B, W5 after Track A; separately gated owner-machine continuation",
+      "limitation": "The source is a documentation link, not proof of an equivalent direct transport or live connection."
+    },
+    {
+      "id": "G02/MonoCode",
+      "feature_id": "G02",
+      "feature_area": "Registered owner-machine targets and acknowledged continuation",
+      "product": "MonoCode",
+      "product_n": 4,
+      "repo": "hardbeat920/monocode",
+      "product_source_sha": "26465c620977f3951d0a532a0f7db32c3c179007",
+      "product_evidence_status": "Current official remote-access documentation inspected; no runtime execution.",
+      "competitor_feature": "Official remote-access documentation describes a user-operated SSH host, per-device tokens, persistent sessions and uncertain-send receipts.",
+      "source_refs": [
+        {
+          "url": "https://github.com/hardbeat920/monocode/blob/26465c620977f3951d0a532a0f7db32c3c179007/docs/remote-access.md",
+          "source_sha": "26465c620977f3951d0a532a0f7db32c3c179007",
+          "source_class": "Official public implementation documentation",
+          "source_evidence_status": "Current official remote-access documentation inspected; no runtime execution.",
+          "runtime_status": "Not executed by this audit; source/document evidence only.",
+          "feature_note": "Remote access and continuation semantics in official public documentation."
+        }
+      ],
+      "neokod_feature_status": "partial",
+      "neokod_present_slices": [
+        "Local/browser access, WSL and generic connection contracts are present."
+      ],
+      "neokod_planned_or_unverified_slices": [
+        "Saved/pinned owner target and durable acknowledged continuation remain W5 scope."
+      ],
+      "neokod_actual_paths": [
+        "apps/web/src/components/settings/ConnectionsSettings.tsx",
+        "apps/desktop/src/app/DesktopConnectionCatalogStore.ts",
+        "packages/client-runtime/src/connection/registry.ts",
+        "packages/client-runtime/src/environment/knownEnvironment.ts",
+        "apps/web/src/environments/primary/target.ts",
+        "plan.md §16.16 W5"
+      ],
+      "scope_fit": "Direct user-owned machines fit; hosted pairing, relay and shared tenancy do not.",
+      "gate_or_priority": "Track B, W5 after Track A; separately gated owner-machine continuation",
+      "limitation": "Documentation only; no MonoCode runtime connection was made."
+    },
+    {
+      "id": "G02/Orca",
+      "feature_id": "G02",
+      "feature_area": "Registered owner-machine targets and acknowledged continuation",
+      "product": "Orca",
+      "product_n": 10,
+      "repo": "stablyai/orca",
+      "product_source_sha": "d3d429c15614062cc8764a546d85e3d9d9a852d2",
+      "product_evidence_status": "Current public implementation source inspected.",
+      "competitor_feature": "Dispatch source records accepted/starting receipts and environment/peer identity; federated transport is not an owner-machine equivalence.",
+      "source_refs": [
+        {
+          "url": "https://github.com/stablyai/orca/blob/d3d429c15614062cc8764a546d85e3d9d9a852d2/src/main/runtime/orchestration/db/worker-dispatch/worker-dispatch-start.ts",
+          "source_sha": "d3d429c15614062cc8764a546d85e3d9d9a852d2",
+          "source_class": "Primary OSS implementation source",
+          "source_evidence_status": "Current public implementation source inspected.",
+          "runtime_status": "Not executed by this audit; source/document evidence only.",
+          "feature_note": "Accepted-versus-started state and dispatch identity.",
+          "boundary": "Federated transport slice is excluded; use only as a lifecycle/receipt reference."
+        }
+      ],
+      "neokod_feature_status": "partial",
+      "neokod_present_slices": [
+        "Local/browser/WSL and generic connection abstractions are present."
+      ],
+      "neokod_planned_or_unverified_slices": [
+        "Pinned direct target and end-to-end continuation remain W5 scope."
+      ],
+      "neokod_actual_paths": [
+        "apps/web/src/components/settings/ConnectionsSettings.tsx",
+        "apps/desktop/src/app/DesktopConnectionCatalogStore.ts",
+        "packages/client-runtime/src/connection/registry.ts",
+        "packages/client-runtime/src/environment/knownEnvironment.ts",
+        "apps/web/src/environments/primary/target.ts",
+        "plan.md §16.16 W5"
+      ],
+      "scope_fit": "Only the receipt/identity distinction is a possible reference; federation is not in scope.",
+      "gate_or_priority": "Track B, W5 after Track A; separately gated owner-machine continuation",
+      "limitation": "Source-only; does not prove a Neokod-compatible user-owned transport."
+    },
+    {
+      "id": "G03/T3",
+      "feature_id": "G03",
+      "feature_area": "Local historical provider usage, cost and model graphs",
+      "product": "T3",
+      "product_n": 1,
+      "repo": "pingdotgg/t3code",
+      "product_source_sha": "27e0c684c585f955252d65f06206dd11a143bff5",
+      "product_evidence_status": "Current public implementation source inspected; not executed.",
+      "competitor_feature": "Usage page warm scans and cache/walk aggregation optimization; PR body reports bounded historical windows and scan-performance work.",
+      "source_refs": [
+        {
+          "url": "https://github.com/pingdotgg/t3code/pull/15149",
+          "source_sha": "27e0c684c585f955252d65f06206dd11a143bff5",
+          "source_tag": "v0.1.3-nightly.20261024.3617",
+          "source_class": "Public GitHub PR API body (preserved raw body; primary historical feature evidence)",
+          "source_evidence_status": "Body read from retained API capture; merge metadata is recorded in the closed-PR census.",
+          "merge_commit": "71dbaf1f94b580491d033f2e347a9b1c507fd793",
+          "merge_commit_in_retained_latest_prerelease": true,
+          "runtime_status": "Not executed by this audit. Author-reported tests/probes in the PR body were not rerun.",
+          "preserved_body_capture": "all-closed-prs.json.gz",
+          "feature_note": "Warm UsageService scans, incremental cache persistence and bounded-window aggregation; use as performance/design input, not a usage-parity claim.",
+          "author_reported_validation": "PR body reports a 44 GB frozen transcript benchmark and warm scan changes from 1.7–3.2 s to 54–246 ms; not repeated here."
+        }
+      ],
+      "neokod_feature_status": "planned (gated)",
+      "neokod_present_slices": [
+        "Current context occupancy, selected provider quota and optional per-turn usage facts are present."
+      ],
+      "neokod_planned_or_unverified_slices": [
+        "Normalized durable history/graphs U-1–U–7 remain held by §13.2; known-zero preservation needs work."
+      ],
+      "neokod_actual_paths": [
+        "packages/contracts/src/providerRuntime.ts:428–491",
+        "packages/contracts/src/server.ts:157–184",
+        "apps/server/src/provider/providerSnapshot.ts:283",
+        "apps/server/src/provider/copilot/CopilotQuota.ts",
+        "apps/server/src/provider/Layers/ClaudeUsageLimit.ts",
+        "apps/server/src/provider/Layers/CodexAdapter.ts:160–183",
+        "apps/server/src/provider/Layers/ClaudeAdapter.ts:2186–2201",
+        "apps/server/src/orchestration/Layers/ProviderRuntimeIngestion.ts:215–221",
+        "apps/web/src/components/chat/ContextWindowMeter.tsx",
+        "apps/web/src/lib/contextWindow.ts",
+        "plan.md §12 U-1–U-7; §13.2 hold"
+      ],
+      "scope_fit": "Local usage history fits the product; preserve source, counter and price provenance.",
+      "gate_or_priority": "Section 12 U-1–U-7 is planned; §13.2 holds the usage/cost dashboard until Tracks A–C are complete",
+      "limitation": "PR body is public and its merge commit is reachable in the retained prerelease nightly; benchmark claims are author-reported, not independently rerun. The §13.2 hold remains."
+    },
+    {
+      "id": "G03/OpenCodeX",
+      "feature_id": "G03",
+      "feature_area": "Local historical provider usage, cost and model graphs",
+      "product": "OpenCodeX",
+      "product_n": 5,
+      "repo": "lidge-jun/opencodex",
+      "product_source_sha": "9f0d40a25f8b842c33ab233d466d0bd991d86052",
+      "product_evidence_status": "Current official README and usage source inspected.",
+      "competitor_feature": "Usage page displays gateway/account-pool request and cost summaries; this is not Neokod-local provider history.",
+      "source_refs": [
+        {
+          "url": "https://github.com/lidge-jun/opencodex/blob/9f0d40a25f8b842c33ab233d466d0bd991d86052/gui/src/pages/Usage.tsx",
+          "source_sha": "9f0d40a25f8b842c33ab233d466d0bd991d86052",
+          "source_class": "Primary OSS implementation source; usage inventory",
+          "source_evidence_status": "Current official README and usage source inspected.",
+          "runtime_status": "Not executed by this audit; source/document evidence only.",
+          "feature_note": "Usage implementation source, not the general README."
+        }
+      ],
+      "neokod_feature_status": "planned (gated)",
+      "neokod_present_slices": ["Current Neokod usage/context/quota facts are present."],
+      "neokod_planned_or_unverified_slices": [
+        "Local normalized historical usage remains planned and held under §13.2."
+      ],
+      "neokod_actual_paths": [
+        "packages/contracts/src/providerRuntime.ts:428–491",
+        "packages/contracts/src/server.ts:157–184",
+        "apps/server/src/provider/providerSnapshot.ts:283",
+        "apps/server/src/provider/copilot/CopilotQuota.ts",
+        "apps/server/src/provider/Layers/ClaudeUsageLimit.ts",
+        "apps/server/src/provider/Layers/CodexAdapter.ts:160–183",
+        "apps/server/src/provider/Layers/ClaudeAdapter.ts:2186–2201",
+        "apps/server/src/orchestration/Layers/ProviderRuntimeIngestion.ts:215–221",
+        "apps/web/src/components/chat/ContextWindowMeter.tsx",
+        "apps/web/src/lib/contextWindow.ts",
+        "plan.md §12 U-1–U-7; §13.2 hold"
+      ],
+      "scope_fit": "Gateway routing and account-pool features are excluded; accounting provenance is reference-only.",
+      "gate_or_priority": "Section 12 U-1–U-7 is planned; §13.2 holds the usage/cost dashboard until Tracks A–C are complete",
+      "limitation": "Do not infer provider subscription spend or equivalent local telemetry from gateway charts."
+    },
+    {
+      "id": "G03/Agent Orchestrator",
+      "feature_id": "G03",
+      "feature_area": "Local historical provider usage, cost and model graphs",
+      "product": "Agent Orchestrator",
+      "product_n": 11,
+      "repo": "OrchestratorInc/agent-orchestrator",
+      "product_source_sha": "7e1bb8f0b740eff6a2663f36d22f9db064bd9a8a",
+      "product_evidence_status": "Current official repository README/source inventory inspected; no runtime execution.",
+      "competitor_feature": "Public usage domain types include attribution/provenance fields.",
+      "source_refs": [
+        {
+          "url": "https://github.com/OrchestratorInc/agent-orchestrator/blob/7e1bb8f0b740eff6a2663f36d22f9db064bd9a8a/backend/internal/domain/usage.go",
+          "source_sha": "7e1bb8f0b740eff6a2663f36d22f9db064bd9a8a",
+          "source_class": "Primary OSS implementation source for usage provenance",
+          "source_evidence_status": "Current official repository README/source inventory inspected; no runtime execution.",
+          "runtime_status": "Not executed by this audit; source/document evidence only.",
+          "feature_note": "Usage provenance source; separate from README task-flow description."
+        }
+      ],
+      "neokod_feature_status": "planned (gated)",
+      "neokod_present_slices": ["Some provider usage/context facts are produced and projected."],
+      "neokod_planned_or_unverified_slices": [
+        "Durable cross-session Neokod facts and aggregates remain U-1–U–7, held by §13.2."
+      ],
+      "neokod_actual_paths": [
+        "packages/contracts/src/providerRuntime.ts:428–491",
+        "packages/contracts/src/server.ts:157–184",
+        "apps/server/src/provider/providerSnapshot.ts:283",
+        "apps/server/src/provider/copilot/CopilotQuota.ts",
+        "apps/server/src/provider/Layers/ClaudeUsageLimit.ts",
+        "apps/server/src/provider/Layers/CodexAdapter.ts:160–183",
+        "apps/server/src/provider/Layers/ClaudeAdapter.ts:2186–2201",
+        "apps/server/src/orchestration/Layers/ProviderRuntimeIngestion.ts:215–221",
+        "apps/web/src/components/chat/ContextWindowMeter.tsx",
+        "apps/web/src/lib/contextWindow.ts",
+        "plan.md §12 U-1–U-7; §13.2 hold"
+      ],
+      "scope_fit": "Local attribution semantics may inform design.",
+      "gate_or_priority": "Section 12 U-1–U-7 is planned; §13.2 holds the usage/cost dashboard until Tracks A–C are complete",
+      "limitation": "Selective public source inspection; no runtime or provider bill verification."
+    },
+    {
+      "id": "G03/Hermes",
+      "feature_id": "G03",
+      "feature_area": "Local historical provider usage, cost and model graphs",
+      "product": "Hermes",
+      "product_n": 12,
+      "repo": "NousResearch/hermes-agent",
+      "product_source_sha": "bac34e9e9946c9c6a9ce7ce64efadd47f8fa375b",
+      "product_evidence_status": "Current official user documentation inspected; runtime implementation not independently verified.",
+      "competitor_feature": "Official dashboard docs describe usage/session analytics.",
+      "source_refs": [
+        {
+          "url": "https://github.com/NousResearch/hermes-agent/blob/bac34e9e9946c9c6a9ce7ce64efadd47f8fa375b/website/docs/user-guide/features/web-dashboard.md",
+          "source_sha": "bac34e9e9946c9c6a9ce7ce64efadd47f8fa375b",
+          "source_class": "Official user documentation",
+          "source_evidence_status": "Current official user documentation inspected; runtime implementation not independently verified.",
+          "runtime_status": "Not executed by this audit; source/document evidence only.",
+          "feature_note": "Usage/session analytics only; cron and skills are linked in their own feature rows."
+        }
+      ],
+      "neokod_feature_status": "planned (gated)",
+      "neokod_present_slices": ["Context meters and optional runtime usage facts are present."],
+      "neokod_planned_or_unverified_slices": [
+        "Historical normalized view remains planned and held by §13.2."
+      ],
+      "neokod_actual_paths": [
+        "packages/contracts/src/providerRuntime.ts:428–491",
+        "packages/contracts/src/server.ts:157–184",
+        "apps/server/src/provider/providerSnapshot.ts:283",
+        "apps/server/src/provider/copilot/CopilotQuota.ts",
+        "apps/server/src/provider/Layers/ClaudeUsageLimit.ts",
+        "apps/server/src/provider/Layers/CodexAdapter.ts:160–183",
+        "apps/server/src/provider/Layers/ClaudeAdapter.ts:2186–2201",
+        "apps/server/src/orchestration/Layers/ProviderRuntimeIngestion.ts:215–221",
+        "apps/web/src/components/chat/ContextWindowMeter.tsx",
+        "apps/web/src/lib/contextWindow.ts",
+        "plan.md §12 U-1–U-7; §13.2 hold"
+      ],
+      "scope_fit": "Local facts can inform coverage labels; third-party delivery channels remain excluded by default.",
+      "gate_or_priority": "Section 12 U-1–U-7 is planned; §13.2 holds the usage/cost dashboard until Tracks A–C are complete",
+      "limitation": "Official documentation; backend/accounting semantics were not independently executed."
+    },
+    {
+      "id": "G03/Oh My Pi",
+      "feature_id": "G03",
+      "feature_area": "Local historical provider usage, cost and model graphs",
+      "product": "Oh My Pi",
+      "product_n": 13,
+      "repo": "can1357/oh-my-pi",
+      "product_source_sha": "0b5c27ab24719c86a5986b95ee55f4e75bc1aaa0",
+      "product_evidence_status": "Current public implementation/docs inspected.",
+      "competitor_feature": "Local stats package imports session JSONL and incrementally maintains hourly SQLite rollups/dashboard.",
+      "source_refs": [
+        {
+          "url": "https://github.com/can1357/oh-my-pi/blob/0b5c27ab24719c86a5986b95ee55f4e75bc1aaa0/packages/stats/README.md",
+          "source_sha": "0b5c27ab24719c86a5986b95ee55f4e75bc1aaa0",
+          "source_class": "Official package documentation",
+          "source_evidence_status": "Current public implementation/docs inspected.",
+          "runtime_status": "Not executed by this audit; source/document evidence only.",
+          "feature_note": "Usage package docs; compaction source is linked under G10."
+        }
+      ],
+      "neokod_feature_status": "planned (gated)",
+      "neokod_present_slices": [
+        "Current-thread context and optional turn usage/cost facts are present."
+      ],
+      "neokod_planned_or_unverified_slices": [
+        "Durable cross-session facts/cursors/aggregates remain planned and held by §13.2."
+      ],
+      "neokod_actual_paths": [
+        "packages/contracts/src/providerRuntime.ts:428–491",
+        "packages/contracts/src/server.ts:157–184",
+        "apps/server/src/provider/providerSnapshot.ts:283",
+        "apps/server/src/provider/copilot/CopilotQuota.ts",
+        "apps/server/src/provider/Layers/ClaudeUsageLimit.ts",
+        "apps/server/src/provider/Layers/CodexAdapter.ts:160–183",
+        "apps/server/src/provider/Layers/ClaudeAdapter.ts:2186–2201",
+        "apps/server/src/orchestration/Layers/ProviderRuntimeIngestion.ts:215–221",
+        "apps/web/src/components/chat/ContextWindowMeter.tsx",
+        "apps/web/src/lib/contextWindow.ts",
+        "plan.md §12 U-1–U-7; §13.2 hold"
+      ],
+      "scope_fit": "Local opt-in ingestion and coverage semantics are relevant design references.",
+      "gate_or_priority": "Section 12 U-1–U-7 is planned; §13.2 holds the usage/cost dashboard until Tracks A–C are complete",
+      "limitation": "Source/docs only; no local user history or live provider record was examined."
+    },
+    {
+      "id": "G03/Traycer",
+      "feature_id": "G03",
+      "feature_area": "Local historical provider usage, cost and model graphs",
+      "product": "Traycer",
+      "product_n": 17,
+      "repo": "traycerai/traycer",
+      "product_source_sha": "08bdf4e09e6365619911b52159fabd40f84fb5a6",
+      "product_evidence_status": "Current public client source inspected; execution host/backend source unavailable.",
+      "competitor_feature": "Public client shows usage summary/coverage and host/service attribution; private host semantics are unavailable.",
+      "source_refs": [
+        {
+          "url": "https://github.com/traycerai/traycer/blob/08bdf4e09e6365619911b52159fabd40f84fb5a6/clients/gui-app/src/components/usage-analytics/usage-summary-panel.tsx",
+          "source_sha": "08bdf4e09e6365619911b52159fabd40f84fb5a6",
+          "source_class": "Public client implementation; private host/backend unavailable",
+          "source_evidence_status": "Current public client source inspected; execution host/backend source unavailable.",
+          "runtime_status": "Not executed by this audit; source/document evidence only.",
+          "feature_note": "Public client usage surface only; the execution host/backend is private."
+        }
+      ],
+      "neokod_feature_status": "planned (gated)",
+      "neokod_present_slices": ["Current Neokod usage/context/quota facts are present."],
+      "neokod_planned_or_unverified_slices": [
+        "Historical usage remains U-1–U–7 and held by §13.2."
+      ],
+      "neokod_actual_paths": [
+        "packages/contracts/src/providerRuntime.ts:428–491",
+        "packages/contracts/src/server.ts:157–184",
+        "apps/server/src/provider/providerSnapshot.ts:283",
+        "apps/server/src/provider/copilot/CopilotQuota.ts",
+        "apps/server/src/provider/Layers/ClaudeUsageLimit.ts",
+        "apps/server/src/provider/Layers/CodexAdapter.ts:160–183",
+        "apps/server/src/provider/Layers/ClaudeAdapter.ts:2186–2201",
+        "apps/server/src/orchestration/Layers/ProviderRuntimeIngestion.ts:215–221",
+        "apps/web/src/components/chat/ContextWindowMeter.tsx",
+        "apps/web/src/lib/contextWindow.ts",
+        "plan.md §12 U-1–U-7; §13.2 hold"
+      ],
+      "scope_fit": "Client presentation can inform source-coverage labels only.",
+      "gate_or_priority": "Section 12 U-1–U-7 is planned; §13.2 holds the usage/cost dashboard until Tracks A–C are complete",
+      "limitation": "Private backend prevents claims about totals, persistence, completeness or pricing; do not infer them."
+    },
+    {
+      "id": "G03/HarnessRouter",
+      "feature_id": "G03",
+      "feature_area": "Local historical provider usage, cost and model graphs",
+      "product": "HarnessRouter",
+      "product_n": 18,
+      "repo": "HarnessRouter/harnessrouter",
+      "product_source_sha": "91f12963cc2c92be2f8ce89a384b4222417aadb1",
+      "product_evidence_status": "Current official README and public usage source inspected.",
+      "competitor_feature": "Usage page reports platform-credit billing for a unified harness gateway.",
+      "source_refs": [
+        {
+          "url": "https://github.com/HarnessRouter/harnessrouter/blob/91f12963cc2c92be2f8ce89a384b4222417aadb1/ui/src/app/%28app%29/billing/usage/page.tsx",
+          "source_sha": "91f12963cc2c92be2f8ce89a384b4222417aadb1",
+          "source_class": "Primary OSS implementation source; usage inventory",
+          "source_evidence_status": "Current official README and public usage source inspected.",
+          "runtime_status": "Not executed by this audit; source/document evidence only.",
+          "feature_note": "Usage source only; gateway product scope comes from its README."
+        }
+      ],
+      "neokod_feature_status": "planned (gated)",
+      "neokod_present_slices": ["Current Neokod usage/context/quota facts are present."],
+      "neokod_planned_or_unverified_slices": [
+        "Local historical usage remains planned/held; no gateway credit account is planned by this comparison."
+      ],
+      "neokod_actual_paths": [
+        "packages/contracts/src/providerRuntime.ts:428–491",
+        "packages/contracts/src/server.ts:157–184",
+        "apps/server/src/provider/providerSnapshot.ts:283",
+        "apps/server/src/provider/copilot/CopilotQuota.ts",
+        "apps/server/src/provider/Layers/ClaudeUsageLimit.ts",
+        "apps/server/src/provider/Layers/CodexAdapter.ts:160–183",
+        "apps/server/src/provider/Layers/ClaudeAdapter.ts:2186–2201",
+        "apps/server/src/orchestration/Layers/ProviderRuntimeIngestion.ts:215–221",
+        "apps/web/src/components/chat/ContextWindowMeter.tsx",
+        "apps/web/src/lib/contextWindow.ts",
+        "plan.md §12 U-1–U-7; §13.2 hold"
+      ],
+      "scope_fit": "Gateway/platform credits are excluded; do not conflate them with local usage or provider charges.",
+      "gate_or_priority": "Section 12 U-1–U-7 is planned; §13.2 holds the usage/cost dashboard until Tracks A–C are complete",
+      "limitation": "Public source only; no gateway/provider execution was exercised."
+    },
+    {
+      "id": "G03/CodexMonitor",
+      "feature_id": "G03",
+      "feature_area": "Local historical provider usage, cost and model graphs",
+      "product": "CodexMonitor",
+      "product_n": 19,
+      "repo": "Dimillian/CodexMonitor",
+      "product_source_sha": "dd61b9abd37de5ded86e82b9fe8a83fd49d46fa5",
+      "product_evidence_status": "Current official README and usage UI source inspected.",
+      "competitor_feature": "Local Codex usage section presents a weekly workspace-filtered usage snapshot.",
+      "source_refs": [
+        {
+          "url": "https://github.com/Dimillian/CodexMonitor/blob/dd61b9abd37de5ded86e82b9fe8a83fd49d46fa5/src/features/home/components/HomeUsageSection.tsx",
+          "source_sha": "dd61b9abd37de5ded86e82b9fe8a83fd49d46fa5",
+          "source_class": "Primary OSS implementation source; usage inventory",
+          "source_evidence_status": "Current official README and usage UI source inspected.",
+          "runtime_status": "Not executed by this audit; source/document evidence only.",
+          "feature_note": "Usage UI source, not general Git/search README claims."
+        }
+      ],
+      "neokod_feature_status": "planned (gated)",
+      "neokod_present_slices": [
+        "Current context meter and optional per-turn usage facts are present."
+      ],
+      "neokod_planned_or_unverified_slices": [
+        "Historical multi-session aggregates remain U-1–U–7 and held by §13.2."
+      ],
+      "neokod_actual_paths": [
+        "packages/contracts/src/providerRuntime.ts:428–491",
+        "packages/contracts/src/server.ts:157–184",
+        "apps/server/src/provider/providerSnapshot.ts:283",
+        "apps/server/src/provider/copilot/CopilotQuota.ts",
+        "apps/server/src/provider/Layers/ClaudeUsageLimit.ts",
+        "apps/server/src/provider/Layers/CodexAdapter.ts:160–183",
+        "apps/server/src/provider/Layers/ClaudeAdapter.ts:2186–2201",
+        "apps/server/src/orchestration/Layers/ProviderRuntimeIngestion.ts:215–221",
+        "apps/web/src/components/chat/ContextWindowMeter.tsx",
+        "apps/web/src/lib/contextWindow.ts",
+        "plan.md §12 U-1–U-7; §13.2 hold"
+      ],
+      "scope_fit": "Local Codex-only snapshot is a narrow reference; keep provider attribution explicit.",
+      "gate_or_priority": "Section 12 U-1–U-7 is planned; §13.2 holds the usage/cost dashboard until Tracks A–C are complete",
+      "limitation": "Source only; no binary/runtime or provider data was run."
+    },
+    {
+      "id": "G03/CodexHost",
+      "feature_id": "G03",
+      "feature_area": "Local historical provider usage, cost and model graphs",
+      "product": "CodexHost",
+      "product_n": 20,
+      "repo": "BytePioneer-AI/codex-host",
+      "product_source_sha": "82e4839808ae692ac5cd0c23339c3db8e7a043c9",
+      "product_evidence_status": "Current capability-boundary documentation and usage source inspected.",
+      "competitor_feature": "Usage source records multi-harness request/latency/cost/cache metrics and pricing provenance.",
+      "source_refs": [
+        {
+          "url": "https://github.com/BytePioneer-AI/codex-host/blob/82e4839808ae692ac5cd0c23339c3db8e7a043c9/packages/renderer-extension/src/renderer-usage-control.ts",
+          "source_sha": "82e4839808ae692ac5cd0c23339c3db8e7a043c9",
+          "source_class": "Primary OSS implementation source; usage inventory",
+          "source_evidence_status": "Current capability-boundary documentation and usage source inspected.",
+          "runtime_status": "Not executed by this audit; source/document evidence only.",
+          "feature_note": "Usage metrics source, separate from the harness-boundary documentation."
+        }
+      ],
+      "neokod_feature_status": "partial",
+      "neokod_present_slices": [
+        "Provider-specific adapters and optional turn-level usage facts are present."
+      ],
+      "neokod_planned_or_unverified_slices": [
+        "Normalized machine-wide cross-session facts need U-1–U–7 and proven environment identity; §13.2 holds the dashboard."
+      ],
+      "neokod_actual_paths": [
+        "packages/contracts/src/providerRuntime.ts:428–491",
+        "packages/contracts/src/server.ts:157–184",
+        "apps/server/src/provider/providerSnapshot.ts:283",
+        "apps/server/src/provider/copilot/CopilotQuota.ts",
+        "apps/server/src/provider/Layers/ClaudeUsageLimit.ts",
+        "apps/server/src/provider/Layers/CodexAdapter.ts:160–183",
+        "apps/server/src/provider/Layers/ClaudeAdapter.ts:2186–2201",
+        "apps/server/src/orchestration/Layers/ProviderRuntimeIngestion.ts:215–221",
+        "apps/web/src/components/chat/ContextWindowMeter.tsx",
+        "apps/web/src/lib/contextWindow.ts",
+        "plan.md §12 U-1–U-7; §13.2 hold"
+      ],
+      "scope_fit": "Local telemetry provenance is relevant; W5 machine scope remains separately gated.",
+      "gate_or_priority": "Section 12 U-1–U-7 is planned; §13.2 holds the usage/cost dashboard until Tracks A–C are complete",
+      "limitation": "Public source only; no private host integration or live multi-harness telemetry was exercised."
+    },
+    {
+      "id": "G04/Superset",
+      "feature_id": "G04",
+      "feature_area": "GitHub Issues handoff to a Symphony task, PR and result in the originating chat",
+      "product": "Superset",
+      "product_n": 16,
+      "repo": "superset-sh/superset",
+      "product_source_sha": "86a6414296d3242693ac898bc785b942be58514f",
+      "product_evidence_status": "Current public implementation source inspected.",
+      "competitor_feature": "Tasks view lists native tasks and separate GitHub Issues/Linear sources with filters and per-task details.",
+      "source_refs": [
+        {
+          "url": "https://github.com/superset-sh/superset/blob/86a6414296d3242693ac898bc785b942be58514f/apps/desktop/src/renderer/routes/_authenticated/_dashboard/tasks/components/TasksView/TasksView.tsx",
+          "source_sha": "86a6414296d3242693ac898bc785b942be58514f",
+          "source_class": "Primary OSS implementation source",
+          "source_evidence_status": "Current public implementation source inspected.",
+          "runtime_status": "Not executed by this audit; source/document evidence only.",
+          "feature_note": "Task-source and detail surface; not evidence of Neokod source-message delivery."
+        }
+      ],
+      "neokod_feature_status": "planned (gated)",
+      "neokod_present_slices": [
+        "Symphony tracker adapter registrations and manual delegateFromThread foundation are present."
+      ],
+      "neokod_planned_or_unverified_slices": [
+        "Canonical reference resolution plus durable source thread/message/result receipt is W6 Track C."
+      ],
+      "neokod_actual_paths": [
+        "apps/server/src/symphony/HandoffService.ts:515–566",
+        "apps/server/src/symphony/Trackers/Registry.ts",
+        "apps/server/src/symphony/Persistence/Layers/WorkItemRepository.ts",
+        "apps/web/src/components/symphony/SymphonyWorkView.tsx",
+        "packages/contracts/src/rpc.ts:symphony.delegateFromThread",
+        "plan.md §13.1 Track C; §W6 items 1–8 (lines 783–798)"
+      ],
+      "scope_fit": "One GitHub Issues path is planned; UI remains Neokod-owned.",
+      "gate_or_priority": "Track C in §13.1: W6 GitHub Issues handoff after Tracks A and B",
+      "limitation": "Source-only UI evidence; no live Superset account or tracker integration."
+    },
+    {
+      "id": "G04/Agent Orchestrator",
+      "feature_id": "G04",
+      "feature_area": "GitHub Issues handoff to a Symphony task, PR and result in the originating chat",
+      "product": "Agent Orchestrator",
+      "product_n": 11,
+      "repo": "OrchestratorInc/agent-orchestrator",
+      "product_source_sha": "7e1bb8f0b740eff6a2663f36d22f9db064bd9a8a",
+      "product_evidence_status": "Current official repository README/source inventory inspected; no runtime execution.",
+      "competitor_feature": "README product description follows project tasks through workers, PR, CI and review; source-chat receipt is not established.",
+      "source_refs": [
+        {
+          "url": "https://github.com/OrchestratorInc/agent-orchestrator/blob/7e1bb8f0b740eff6a2663f36d22f9db064bd9a8a/README.md",
+          "source_sha": "7e1bb8f0b740eff6a2663f36d22f9db064bd9a8a",
+          "source_class": "Official repository README product description",
+          "source_evidence_status": "Current official repository README/source inventory inspected; no runtime execution.",
+          "runtime_status": "Not executed by this audit; source/document evidence only.",
+          "feature_note": "Task/worker/PR product description only; not its usage source."
+        }
+      ],
+      "neokod_feature_status": "planned (gated)",
+      "neokod_present_slices": ["Symphony board and manual handoff foundation are present."],
+      "neokod_planned_or_unverified_slices": [
+        "W6 Track C still specifies canonical issue identity and typed originating-chat result delivery."
+      ],
+      "neokod_actual_paths": [
+        "apps/server/src/symphony/HandoffService.ts:515–566",
+        "apps/server/src/symphony/Trackers/Registry.ts",
+        "apps/server/src/symphony/Persistence/Layers/WorkItemRepository.ts",
+        "apps/web/src/components/symphony/SymphonyWorkView.tsx",
+        "packages/contracts/src/rpc.ts:symphony.delegateFromThread",
+        "plan.md §13.1 Track C; §W6 items 1–8 (lines 783–798)"
+      ],
+      "scope_fit": "Task-to-PR flow is an adjacent design reference; no hosted marketplace is in scope.",
+      "gate_or_priority": "Track C in §13.1: W6 GitHub Issues handoff after Tracks A and B",
+      "limitation": "README description, not independently runtime-verified and not proof of source-message linking."
+    },
+    {
+      "id": "G04/CodexMonitor",
+      "feature_id": "G04",
+      "feature_area": "GitHub Issues handoff to a Symphony task, PR and result in the originating chat",
+      "product": "CodexMonitor",
+      "product_n": 19,
+      "repo": "Dimillian/CodexMonitor",
+      "product_source_sha": "dd61b9abd37de5ded86e82b9fe8a83fd49d46fa5",
+      "product_evidence_status": "Current official README and usage UI source inspected.",
+      "competitor_feature": "README documents GitHub Issues/PR integration through gh; it does not establish an originating-chat receipt.",
+      "source_refs": [
+        {
+          "url": "https://github.com/Dimillian/CodexMonitor/blob/dd61b9abd37de5ded86e82b9fe8a83fd49d46fa5/README.md",
+          "source_sha": "dd61b9abd37de5ded86e82b9fe8a83fd49d46fa5",
+          "source_class": "Official repository README",
+          "source_evidence_status": "Current official README and usage UI source inspected.",
+          "runtime_status": "Not executed by this audit; source/document evidence only.",
+          "feature_note": "GitHub issue/PR capability only; usage source is linked under G03."
+        }
+      ],
+      "neokod_feature_status": "planned (gated)",
+      "neokod_present_slices": [
+        "Neokod already has GitHub-related Symphony adapter and PR evidence paths."
+      ],
+      "neokod_planned_or_unverified_slices": [
+        "Durable source chat/message binding and typed result delivery remain in planned W6 Track C."
+      ],
+      "neokod_actual_paths": [
+        "apps/server/src/symphony/HandoffService.ts:515–566",
+        "apps/server/src/symphony/Trackers/Registry.ts",
+        "apps/server/src/symphony/Persistence/Layers/WorkItemRepository.ts",
+        "apps/web/src/components/symphony/SymphonyWorkView.tsx",
+        "packages/contracts/src/rpc.ts:symphony.delegateFromThread",
+        "plan.md §13.1 Track C; §W6 items 1–8 (lines 783–798)"
+      ],
+      "scope_fit": "Issue/PR integration is adjacent; no upstream UI is ported.",
+      "gate_or_priority": "Track C in §13.1: W6 GitHub Issues handoff after Tracks A and B",
+      "limitation": "README/source evidence only; no GitHub account or live flow was exercised."
+    },
+    {
+      "id": "G05/T3",
+      "feature_id": "G05",
+      "feature_area": "Durable user-owned schedules in ordinary chat",
+      "product": "T3",
+      "product_n": 1,
+      "repo": "pingdotgg/t3code",
+      "product_source_sha": "27e0c684c585f955252d65f06206dd11a143bff5",
+      "product_evidence_status": "Current public implementation source inspected; not executed.",
+      "competitor_feature": "Thread-bound scheduled-task semantics: current provider selection (#18467), launched-thread receipt (#17458), elapsed-time DST intervals (#15768), and thread-deletion cleanup (#22070).",
+      "source_refs": [
+        {
+          "url": "https://github.com/pingdotgg/t3code/pull/18467",
+          "source_sha": "27e0c684c585f955252d65f06206dd11a143bff5",
+          "source_tag": "v0.1.3-nightly.20261024.3617",
+          "source_class": "Public GitHub PR API body (preserved raw body; primary historical feature evidence)",
+          "source_evidence_status": "Body read from retained API capture; merge metadata is recorded in the closed-PR census.",
+          "merge_commit": "a27e32fba7a7a8368a6a106c691ec0cc6af147d4",
+          "merge_commit_in_retained_latest_prerelease": true,
+          "runtime_status": "Not executed by this audit. Author-reported tests/probes in the PR body were not rerun.",
+          "preserved_body_capture": "all-closed-prs.json.gz",
+          "feature_note": "Bound scheduled tasks inherit the thread current provider/model at dispatch.",
+          "author_reported_validation": "Body reports service regression tests with provider execution disabled; no live provider turn."
+        },
+        {
+          "url": "https://github.com/pingdotgg/t3code/pull/17458",
+          "source_sha": "27e0c684c585f955252d65f06206dd11a143bff5",
+          "source_tag": "v0.1.3-nightly.20261024.3617",
+          "source_class": "Public GitHub PR API body (preserved raw body; primary historical feature evidence)",
+          "source_evidence_status": "Body read from retained API capture; merge metadata is recorded in the closed-PR census.",
+          "merge_commit": "ec967f3e823ced78b67e88dcace4f87c71bcd32e",
+          "merge_commit_in_retained_latest_prerelease": true,
+          "runtime_status": "Not executed by this audit. Author-reported tests/probes in the PR body were not rerun.",
+          "preserved_body_capture": "all-closed-prs.json.gz",
+          "feature_note": "Run-now returns the thread actually launched and preserves bound-task behavior.",
+          "author_reported_validation": "Body reports focused service/MCP tests; no live provider launch."
+        },
+        {
+          "url": "https://github.com/pingdotgg/t3code/pull/15768",
+          "source_sha": "27e0c684c585f955252d65f06206dd11a143bff5",
+          "source_tag": "v0.1.3-nightly.20261024.3617",
+          "source_class": "Public GitHub PR API body (preserved raw body; primary historical feature evidence)",
+          "source_evidence_status": "Body read from retained API capture; merge metadata is recorded in the closed-PR census.",
+          "merge_commit": "b18a9bf5b1729723a36903a8d6c9e113ba0cf5d5",
+          "merge_commit_in_retained_latest_prerelease": true,
+          "runtime_status": "Not executed by this audit. Author-reported tests/probes in the PR body were not rerun.",
+          "preserved_body_capture": "all-closed-prs.json.gz",
+          "feature_note": "Fixed-millisecond schedule intervals remain elapsed-time based across DST.",
+          "author_reported_validation": "Body reports focused scheduler service regressions; not rerun."
+        },
+        {
+          "url": "https://github.com/pingdotgg/t3code/pull/22070",
+          "source_sha": "27e0c684c585f955252d65f06206dd11a143bff5",
+          "source_tag": "v0.1.3-nightly.20261024.3617",
+          "source_class": "Public GitHub PR API body (preserved raw body; primary historical feature evidence)",
+          "source_evidence_status": "Body read from retained API capture; merge metadata is recorded in the closed-PR census.",
+          "merge_commit": "2edeeda61677c059a87ef6eadafa155acb8c6b26",
+          "merge_commit_in_retained_latest_prerelease": true,
+          "runtime_status": "Not executed by this audit. Author-reported tests/probes in the PR body were not rerun.",
+          "preserved_body_capture": "all-closed-prs.json.gz",
+          "feature_note": "Thread deletion queues retryable cleanup for tasks still bound to that thread.",
+          "author_reported_validation": "Body reports cleanup/retry tests; not rerun."
+        }
+      ],
+      "neokod_feature_status": "candidate (not found in inspected normal-chat paths; not an absence claim)",
+      "neokod_present_slices": [
+        "Symphony retry scheduling and bounded PR-status refresh/rechecks are present for configured work items."
+      ],
+      "neokod_planned_or_unverified_slices": [
+        "User-owned ordinary-chat schedule identity, pause/cancel and per-occurrence outcome were not identified in inspected paths; candidate after Tracks A–C."
+      ],
+      "neokod_actual_paths": [
+        "apps/server/src/symphony/Orchestrator/Layers/SymphonyOrchestratorLive.ts:877–1010",
+        "apps/server/src/symphony/Persistence/Layers/WorkItemRepository.ts",
+        "apps/server/src/symphony/Orchestrator/Retry.ts",
+        "plan.md §13.2; schedules are not the Symphony retry/poll loop"
+      ],
+      "scope_fit": "Local-only scheduling could be considered only after normal admission/result semantics; webhooks/hosted delivery are not assumed.",
+      "gate_or_priority": "Candidate after Tracks A–C; §13.2 holds competitor features outside those tracks; no scope decision assumed",
+      "limitation": "T3 evidence is specific to schedule behavior/fixes. PR bodies and author-reported tests were not independently rerun; §13.2 priority hold remains."
+    },
+    {
+      "id": "G05/Synara",
+      "feature_id": "G05",
+      "feature_area": "Durable user-owned schedules in ordinary chat",
+      "product": "Synara",
+      "product_n": 3,
+      "repo": "Emanuele-web04/synara",
+      "product_source_sha": "29b11e105200c7bc6e2c71a06a375513d4c8a72d",
+      "product_evidence_status": "Current official repository README inspected; public product documentation only.",
+      "competitor_feature": "Official README describes recurring automations with outcomes attached to projects/threads.",
+      "source_refs": [
+        {
+          "url": "https://github.com/Emanuele-web04/synara/blob/29b11e105200c7bc6e2c71a06a375513d4c8a72d/README.md",
+          "source_sha": "29b11e105200c7bc6e2c71a06a375513d4c8a72d",
+          "source_class": "Official repository README",
+          "source_evidence_status": "Current official repository README inspected; public product documentation only.",
+          "runtime_status": "Not executed by this audit; source/document evidence only.",
+          "feature_note": "Recurring automation claim only; scoped MCP is linked under G10."
+        }
+      ],
+      "neokod_feature_status": "candidate (not found in inspected normal-chat paths; not an absence claim)",
+      "neokod_present_slices": ["Symphony has a server-owned poll/retry lifecycle."],
+      "neokod_planned_or_unverified_slices": [
+        "Normal-chat durable schedule remains unestablished in the inspected paths."
+      ],
+      "neokod_actual_paths": [
+        "apps/server/src/symphony/Orchestrator/Layers/SymphonyOrchestratorLive.ts:877–1010",
+        "apps/server/src/symphony/Persistence/Layers/WorkItemRepository.ts",
+        "apps/server/src/symphony/Orchestrator/Retry.ts",
+        "plan.md §13.2; schedules are not the Symphony retry/poll loop"
+      ],
+      "scope_fit": "A user-owned local schedule may fit if permission and target are rechecked.",
+      "gate_or_priority": "Candidate after Tracks A–C; §13.2 holds competitor features outside those tracks; no scope decision assumed",
+      "limitation": "Official README/product documentation only; no runtime verification."
+    },
+    {
+      "id": "G05/Paseo",
+      "feature_id": "G05",
+      "feature_area": "Durable user-owned schedules in ordinary chat",
+      "product": "Paseo",
+      "product_n": 2,
+      "repo": "getpaseo/paseo",
+      "product_source_sha": "b8bb335c563279be45544b1b20a1fa5b3e56d422",
+      "product_evidence_status": "Current official orchestration documentation inspected; no runtime execution.",
+      "competitor_feature": "Official guide links recurring-job and heartbeat workflows.",
+      "source_refs": [
+        {
+          "url": "https://github.com/getpaseo/paseo/blob/b8bb335c563279be45544b1b20a1fa5b3e56d422/public-docs/orchestration.md",
+          "source_sha": "b8bb335c563279be45544b1b20a1fa5b3e56d422",
+          "source_class": "Official public documentation",
+          "source_evidence_status": "Current official orchestration documentation inspected; no runtime execution.",
+          "runtime_status": "Not executed by this audit; source/document evidence only.",
+          "feature_note": "Schedule/heartbeat references in official guide; not its child-launch claim."
+        }
+      ],
+      "neokod_feature_status": "candidate (not found in inspected normal-chat paths; not an absence claim)",
+      "neokod_present_slices": ["Symphony poll/retry scheduling is present for tracker work."],
+      "neokod_planned_or_unverified_slices": [
+        "A normal-chat durable schedule is not established in the inspected paths."
+      ],
+      "neokod_actual_paths": [
+        "apps/server/src/symphony/Orchestrator/Layers/SymphonyOrchestratorLive.ts:877–1010",
+        "apps/server/src/symphony/Persistence/Layers/WorkItemRepository.ts",
+        "apps/server/src/symphony/Orchestrator/Retry.ts",
+        "plan.md §13.2; schedules are not the Symphony retry/poll loop"
+      ],
+      "scope_fit": "Consider only local, user-owned, cancellable occurrences after core/W6.",
+      "gate_or_priority": "Candidate after Tracks A–C; §13.2 holds competitor features outside those tracks; no scope decision assumed",
+      "limitation": "Documentation links only; runtime and complete scheduler semantics were not independently checked."
+    },
+    {
+      "id": "G05/Hermes",
+      "feature_id": "G05",
+      "feature_area": "Durable user-owned schedules in ordinary chat",
+      "product": "Hermes",
+      "product_n": 12,
+      "repo": "NousResearch/hermes-agent",
+      "product_source_sha": "bac34e9e9946c9c6a9ce7ce64efadd47f8fa375b",
+      "product_evidence_status": "Current official user documentation inspected; runtime implementation not independently verified.",
+      "competitor_feature": "Official dashboard documentation describes cron-job create/edit/pause/resume/trigger controls.",
+      "source_refs": [
+        {
+          "url": "https://github.com/NousResearch/hermes-agent/blob/bac34e9e9946c9c6a9ce7ce64efadd47f8fa375b/website/docs/user-guide/features/web-dashboard.md",
+          "source_sha": "bac34e9e9946c9c6a9ce7ce64efadd47f8fa375b",
+          "source_class": "Official user documentation",
+          "source_evidence_status": "Current official user documentation inspected; runtime implementation not independently verified.",
+          "runtime_status": "Not executed by this audit; source/document evidence only.",
+          "feature_note": "Cron/schedule feature only; analytics and profiles are separate feature rows."
+        }
+      ],
+      "neokod_feature_status": "candidate (not found in inspected normal-chat paths; not an absence claim)",
+      "neokod_present_slices": ["Symphony retry/poll behavior is present for configured work."],
+      "neokod_planned_or_unverified_slices": [
+        "Ordinary-chat durable schedule and per-occurrence result are not established in inspected paths."
+      ],
+      "neokod_actual_paths": [
+        "apps/server/src/symphony/Orchestrator/Layers/SymphonyOrchestratorLive.ts:877–1010",
+        "apps/server/src/symphony/Persistence/Layers/WorkItemRepository.ts",
+        "apps/server/src/symphony/Orchestrator/Retry.ts",
+        "plan.md §13.2; schedules are not the Symphony retry/poll loop"
+      ],
+      "scope_fit": "Local schedule only if user-owned and permission-checked; external chat delivery excluded by default.",
+      "gate_or_priority": "Candidate after Tracks A–C; §13.2 holds competitor features outside those tracks; no scope decision assumed",
+      "limitation": "Official documentation only; runtime implementation was not independently verified."
+    },
+    {
+      "id": "G06/T3",
+      "feature_id": "G06",
+      "feature_area": "Parallel managed-child worktree isolation",
+      "product": "T3",
+      "product_n": 1,
+      "repo": "pingdotgg/t3code",
+      "product_source_sha": "27e0c684c585f955252d65f06206dd11a143bff5",
+      "product_evidence_status": "Current public implementation source inspected; not executed.",
+      "competitor_feature": "T3 managed-child tool source describes optional child worktree isolation.",
+      "source_refs": [
+        {
+          "url": "https://github.com/pingdotgg/t3code/blob/27e0c684c585f955252d65f06206dd11a143bff5/apps/server/src/mcp/toolkits/orchestrator/tools.ts",
+          "source_sha": "27e0c684c585f955252d65f06206dd11a143bff5",
+          "source_class": "Primary OSS implementation source",
+          "source_evidence_status": "Current public implementation source inspected; not executed.",
+          "runtime_status": "Not executed by this audit; source/document evidence only.",
+          "feature_note": "Current pinned implementation source; optional worktree isolation in managed-child flow."
+        }
+      ],
+      "neokod_feature_status": "planned (gated)",
+      "neokod_present_slices": [
+        "Local/per-thread Git worktrees, branches, PR and diff paths are present."
+      ],
+      "neokod_planned_or_unverified_slices": [
+        "Child-specific isolated worktree setup/cleanup and exact base/dirty-state provenance remain W6-C scope."
+      ],
+      "neokod_actual_paths": [
+        "apps/server/src/git/GitManager.ts",
+        "apps/server/src/git/GitWorkflowService.ts",
+        "apps/server/src/git/WorktreeRemovalLease.ts",
+        "apps/web/src/components/DiffPanel.tsx",
+        "apps/web/src/components/GitActionsControl.tsx",
+        "apps/web/src/components/chat/ThreadWorkspaceRail.tsx",
+        "plan.md §16.6 W6-C1 child worktree scope"
+      ],
+      "scope_fit": "Local child isolation may fit; no shared-writer default and no upstream UI port.",
+      "gate_or_priority": "W6-C child-worktree scope after formal core exit; not a separate Git platform and not G04",
+      "limitation": "Source only; not proof of Neokod child-worktree support or runtime behavior."
+    },
+    {
+      "id": "G06/bb",
+      "feature_id": "G06",
+      "feature_area": "Parallel managed-child worktree isolation",
+      "product": "bb",
+      "product_n": 15,
+      "repo": "get-bb/bb",
+      "product_source_sha": "5e1acd765039e874643f34c4d35409e58484e408",
+      "product_evidence_status": "Current official worktree documentation inspected.",
+      "competitor_feature": "Official worktree docs describe managed per-thread worktrees, separate branches, setup/teardown and optional ignored-file inclusion.",
+      "source_refs": [
+        {
+          "url": "https://github.com/get-bb/bb/blob/5e1acd765039e874643f34c4d35409e58484e408/docs/worktrees.md",
+          "source_sha": "5e1acd765039e874643f34c4d35409e58484e408",
+          "source_class": "Official public implementation documentation",
+          "source_evidence_status": "Current official worktree documentation inspected.",
+          "runtime_status": "Not executed by this audit; source/document evidence only.",
+          "feature_note": "Per-thread worktree documentation; it does not itself prove child-team isolation."
+        }
+      ],
+      "neokod_feature_status": "planned (gated)",
+      "neokod_present_slices": ["Local/per-thread Git worktrees and setup handling are present."],
+      "neokod_planned_or_unverified_slices": [
+        "Managed-child isolation remains W6-C gated; ignored-file copy policy is not selected."
+      ],
+      "neokod_actual_paths": [
+        "apps/server/src/git/GitManager.ts",
+        "apps/server/src/git/GitWorkflowService.ts",
+        "apps/server/src/git/WorktreeRemovalLease.ts",
+        "apps/web/src/components/DiffPanel.tsx",
+        "apps/web/src/components/GitActionsControl.tsx",
+        "apps/web/src/components/chat/ThreadWorkspaceRail.tsx",
+        "plan.md §16.6 W6-C1 child worktree scope"
+      ],
+      "scope_fit": "Local worktree concepts fit; copied ignored/secrets files need explicit policy.",
+      "gate_or_priority": "W6-C child-worktree scope after formal core exit; not a separate Git platform and not G04",
+      "limitation": "Official documentation; do not generalize per-thread worktrees to app-managed children."
+    },
+    {
+      "id": "G07/Agent Orchestrator",
+      "feature_id": "G07",
+      "feature_area": "Derived lifecycle and attention overview",
+      "product": "Agent Orchestrator",
+      "product_n": 11,
+      "repo": "OrchestratorInc/agent-orchestrator",
+      "product_source_sha": "7e1bb8f0b740eff6a2663f36d22f9db064bd9a8a",
+      "product_evidence_status": "Current official repository README/source inventory inspected; no runtime execution.",
+      "competitor_feature": "README product description presents task-to-worker/PR/CI/review supervision.",
+      "source_refs": [
+        {
+          "url": "https://github.com/OrchestratorInc/agent-orchestrator/blob/7e1bb8f0b740eff6a2663f36d22f9db064bd9a8a/README.md",
+          "source_sha": "7e1bb8f0b740eff6a2663f36d22f9db064bd9a8a",
+          "source_class": "Official repository README product description",
+          "source_evidence_status": "Current official repository README/source inventory inspected; no runtime execution.",
+          "runtime_status": "Not executed by this audit; source/document evidence only.",
+          "feature_note": "Project task lifecycle product description; not usage provenance."
+        }
+      ],
+      "neokod_feature_status": "present in inspected production source",
+      "neokod_present_slices": [
+        "Symphony Work/Project/Run/Attention/History surfaces and lifecycle/evidence paths are present."
+      ],
+      "neokod_planned_or_unverified_slices": [
+        "Formal core, provider and live recovery acceptance remains open."
+      ],
+      "neokod_actual_paths": [
+        "apps/web/src/symphonyWork.logic.ts",
+        "apps/web/src/components/symphony/SymphonyWorkView.tsx",
+        "apps/web/src/components/symphony/SymphonyWorkList.tsx",
+        "apps/server/src/symphony/Orchestrator/Recovery.ts",
+        "apps/server/src/symphony/Orchestrator/ProjectBoard.ts",
+        "plan.md §16.15–§16.19"
+      ],
+      "scope_fit": "Local task lifecycle is in scope; status must remain grounded in Neokod evidence.",
+      "gate_or_priority": "Track A: current Symphony lifecycle and core acceptance work",
+      "limitation": "README description is not independently runtime-verified; do not infer runtime acceptance."
+    },
+    {
+      "id": "G07/Orca",
+      "feature_id": "G07",
+      "feature_area": "Derived lifecycle and attention overview",
+      "product": "Orca",
+      "product_n": 10,
+      "repo": "stablyai/orca",
+      "product_source_sha": "d3d429c15614062cc8764a546d85e3d9d9a852d2",
+      "product_evidence_status": "Current public implementation source inspected.",
+      "competitor_feature": "Dispatch source distinguishes accepted receipt from starting/running lifecycle and records target identity.",
+      "source_refs": [
+        {
+          "url": "https://github.com/stablyai/orca/blob/d3d429c15614062cc8764a546d85e3d9d9a852d2/src/main/runtime/orchestration/db/worker-dispatch/worker-dispatch-start.ts",
+          "source_sha": "d3d429c15614062cc8764a546d85e3d9d9a852d2",
+          "source_class": "Primary OSS implementation source",
+          "source_evidence_status": "Current public implementation source inspected.",
+          "runtime_status": "Not executed by this audit; source/document evidence only.",
+          "feature_note": "Receipt and lifecycle transition source; federation is not ported."
+        }
+      ],
+      "neokod_feature_status": "present in inspected production source",
+      "neokod_present_slices": [
+        "Neokod has server-owned attempts, run events, leases, lifecycle projection and recovery paths."
+      ],
+      "neokod_planned_or_unverified_slices": ["Formal core/restart acceptance remains open."],
+      "neokod_actual_paths": [
+        "apps/web/src/symphonyWork.logic.ts",
+        "apps/web/src/components/symphony/SymphonyWorkView.tsx",
+        "apps/web/src/components/symphony/SymphonyWorkList.tsx",
+        "apps/server/src/symphony/Orchestrator/Recovery.ts",
+        "apps/server/src/symphony/Orchestrator/ProjectBoard.ts",
+        "plan.md §16.15–§16.19"
+      ],
+      "scope_fit": "Receipt/state distinction can inform local evidence; federated transport excluded.",
+      "gate_or_priority": "Track A: current Symphony lifecycle and core acceptance work",
+      "limitation": "Source only; receipt does not prove provider execution."
+    },
+    {
+      "id": "G07/Superset",
+      "feature_id": "G07",
+      "feature_area": "Derived lifecycle and attention overview",
+      "product": "Superset",
+      "product_n": 16,
+      "repo": "superset-sh/superset",
+      "product_source_sha": "86a6414296d3242693ac898bc785b942be58514f",
+      "product_evidence_status": "Current public implementation source inspected.",
+      "competitor_feature": "Tasks view supports list/board selection, filters and per-task detail; this is a surface comparison only.",
+      "source_refs": [
+        {
+          "url": "https://github.com/superset-sh/superset/blob/86a6414296d3242693ac898bc785b942be58514f/apps/desktop/src/renderer/routes/_authenticated/_dashboard/tasks/components/TasksView/TasksView.tsx",
+          "source_sha": "86a6414296d3242693ac898bc785b942be58514f",
+          "source_class": "Primary OSS implementation source",
+          "source_evidence_status": "Current public implementation source inspected.",
+          "runtime_status": "Not executed by this audit; source/document evidence only.",
+          "feature_note": "Task browse surface only; no execution lifecycle inferred."
+        }
+      ],
+      "neokod_feature_status": "present in inspected production source",
+      "neokod_present_slices": [
+        "Neokod Symphony Work/Project/Run/Attention/History surfaces are present."
+      ],
+      "neokod_planned_or_unverified_slices": [
+        "Formal core acceptance remains open; do not infer Ready from board position or PR presence."
+      ],
+      "neokod_actual_paths": [
+        "apps/web/src/symphonyWork.logic.ts",
+        "apps/web/src/components/symphony/SymphonyWorkView.tsx",
+        "apps/web/src/components/symphony/SymphonyWorkList.tsx",
+        "apps/server/src/symphony/Orchestrator/Recovery.ts",
+        "apps/server/src/symphony/Orchestrator/ProjectBoard.ts",
+        "plan.md §16.15–§16.19"
+      ],
+      "scope_fit": "Information hierarchy only; Neokod UI remains its own.",
+      "gate_or_priority": "Track A: current Symphony lifecycle and core acceptance work",
+      "limitation": "Public source only; no Superset account/backend was exercised."
+    },
+    {
+      "id": "G07/GOAT",
+      "feature_id": "G07",
+      "feature_area": "Derived lifecycle and attention overview",
+      "product": "GOAT",
+      "product_n": 9,
+      "repo": "goat-si/goat",
+      "product_source_sha": "4a04fa32548e792122bdb5ff954e29b6be905bf8",
+      "product_evidence_status": "Current dev-branch implementation source inspected; packaged release linkage/runtime not established.",
+      "competitor_feature": "Dev-branch FleetConsole derives cross-environment running/attention counts and host telemetry.",
+      "source_refs": [
+        {
+          "url": "https://github.com/goat-si/goat/blob/4a04fa32548e792122bdb5ff954e29b6be905bf8/apps/web/src/components/fleet/FleetConsole.tsx",
+          "source_sha": "4a04fa32548e792122bdb5ff954e29b6be905bf8",
+          "source_class": "Primary OSS implementation source on dev branch",
+          "source_evidence_status": "Current dev-branch implementation source inspected; packaged release linkage/runtime not established.",
+          "runtime_status": "Not executed by this audit; source/document evidence only.",
+          "feature_note": "Fleet/cloud source only; not direct owner-machine telemetry."
+        }
+      ],
+      "neokod_feature_status": "present in inspected production source",
+      "neokod_present_slices": ["Neokod Symphony lifecycle and attention overview is present."],
+      "neokod_planned_or_unverified_slices": [
+        "No Neokod fleet-wide host telemetry is claimed or planned by this feature assessment."
+      ],
+      "neokod_actual_paths": [
+        "apps/web/src/symphonyWork.logic.ts",
+        "apps/web/src/components/symphony/SymphonyWorkView.tsx",
+        "apps/web/src/components/symphony/SymphonyWorkList.tsx",
+        "apps/server/src/symphony/Orchestrator/Recovery.ts",
+        "apps/server/src/symphony/Orchestrator/ProjectBoard.ts",
+        "plan.md §16.15–§16.19"
+      ],
+      "scope_fit": "Excluded by policy for cloud/fleet/shared-tenancy slice; no direct-machine parity inference.",
+      "gate_or_priority": "Track A: current Symphony lifecycle and core acceptance work",
+      "limitation": "GOAT source is a dev branch with no packaged-release linkage; no runtime was executed."
+    },
+    {
+      "id": "G08/Empryo",
+      "feature_id": "G08",
+      "feature_area": "Code-aware project briefing and durable project memory",
+      "product": "Empryo",
+      "product_n": 7,
+      "repo": "proxysoul/Empryo",
+      "product_source_sha": "c27dac116d2ee1637abfc6634bebf08b5c379454",
+      "product_evidence_status": "Current public README/source inspected; current v3 backend and newest surfaces unavailable.",
+      "competitor_feature": "Public v2 README describes a project map/memory workflow; current v3 implementation is private/unavailable.",
+      "source_refs": [
+        {
+          "url": "https://github.com/proxysoul/Empryo/blob/c27dac116d2ee1637abfc6634bebf08b5c379454/README.md",
+          "source_sha": "c27dac116d2ee1637abfc6634bebf08b5c379454",
+          "source_class": "Official repository README; v2 public core, v3 partly private",
+          "source_evidence_status": "Current public README/source inspected; current v3 backend and newest surfaces unavailable.",
+          "runtime_status": "Not executed by this audit; source/document evidence only.",
+          "feature_note": "Public v2 README only; private v3 is not inferred."
+        }
+      ],
+      "neokod_feature_status": "partial",
+      "neokod_present_slices": [
+        "Workspace file browsing, indexed WorkspaceSearchIndex and contextual editing are present."
+      ],
+      "neokod_planned_or_unverified_slices": [
+        "Durable project-memory retrieval or a symbol/dependency graph is not established in inspected paths; investigate only after measured failures."
+      ],
+      "neokod_actual_paths": [
+        "apps/server/src/workspace/WorkspaceSearchIndex.ts",
+        "packages/contracts/src/project.ts",
+        "apps/web/src/lib/composerPathSearchState.ts (workspace/file search callers)",
+        "existing project/thread provider context"
+      ],
+      "scope_fit": "Potential local benefit, not a universal product requirement.",
+      "gate_or_priority": "P3; investigate only after a measured repository-task failure",
+      "limitation": "Public v2 claims do not establish v3 behavior or retrieval accuracy; no private source was accessed."
+    },
+    {
+      "id": "G09/T3",
+      "feature_id": "G09",
+      "feature_area": "History, transcript search and stable result windows",
+      "product": "T3",
+      "product_n": 1,
+      "repo": "pingdotgg/t3code",
+      "product_source_sha": "27e0c684c585f955252d65f06206dd11a143bff5",
+      "product_evidence_status": "Current public implementation source inspected; not executed.",
+      "competitor_feature": "Mod+F in-thread find across projected conversation history; bounded query snapshots, revision invalidation and match identity without message bodies.",
+      "source_refs": [
+        {
+          "url": "https://github.com/pingdotgg/t3code/pull/10439",
+          "source_sha": "27e0c684c585f955252d65f06206dd11a143bff5",
+          "source_tag": "v0.1.3-nightly.20261024.3617",
+          "source_class": "Public GitHub PR API body (preserved raw body; primary historical feature evidence)",
+          "source_evidence_status": "Body read from retained API capture; merge metadata is recorded in the closed-PR census.",
+          "merge_commit": "12069eefd707f78eafc27812027c994eea0613cf",
+          "merge_commit_in_retained_latest_prerelease": true,
+          "runtime_status": "Not executed by this audit. Author-reported tests/probes in the PR body were not rerun.",
+          "preserved_body_capture": "all-closed-prs.json.gz",
+          "feature_note": "Find messages/plans in the current thread with bounded cached counts and server-side match identity.",
+          "author_reported_validation": "PR body reports focused tests and browser navigation; not rerun in this audit."
+        }
+      ],
+      "neokod_feature_status": "partial",
+      "neokod_present_slices": [
+        "Thread title/project/branch search and indexed workspace-file search are present."
+      ],
+      "neokod_planned_or_unverified_slices": [
+        "In-thread full-text find was not located by name search in apps/web/src; candidate only, not a negative feature certification."
+      ],
+      "neokod_actual_paths": [
+        "apps/web/src/components/CommandPalette.logic.ts:177–199",
+        "apps/server/src/workspace/WorkspaceSearchIndex.ts",
+        "packages/contracts/src/project.ts",
+        "apps/web/src/state/threads.ts"
+      ],
+      "scope_fit": "Local bounded transcript search could fit if a concrete need is selected; UI is Neokod-owned.",
+      "gate_or_priority": "Candidate only; no validated missing feature; rank only against a concrete workflow need",
+      "limitation": "Public PR body and merge metadata only; no competitor runtime or Neokod absence claim."
+    },
+    {
+      "id": "G10/Synara",
+      "feature_id": "G10",
+      "feature_area": "Context/compaction, skills/MCP and harness extension APIs",
+      "product": "Synara",
+      "product_n": 3,
+      "repo": "Emanuele-web04/synara",
+      "product_source_sha": "29b11e105200c7bc6e2c71a06a375513d4c8a72d",
+      "product_evidence_status": "Current official repository README inspected; public product documentation only.",
+      "competitor_feature": "Official README describes scoped external MCP configuration.",
+      "source_refs": [
+        {
+          "url": "https://github.com/Emanuele-web04/synara/blob/29b11e105200c7bc6e2c71a06a375513d4c8a72d/README.md",
+          "source_sha": "29b11e105200c7bc6e2c71a06a375513d4c8a72d",
+          "source_class": "Official repository README",
+          "source_evidence_status": "Current official repository README inspected; public product documentation only.",
+          "runtime_status": "Not executed by this audit; source/document evidence only.",
+          "feature_note": "Scoped MCP claim only; automations are linked under G05."
+        }
+      ],
+      "neokod_feature_status": "present in inspected production source",
+      "neokod_present_slices": [
+        "Provider-specific skills/configuration and Copilot-specific MCP controls are present."
+      ],
+      "neokod_planned_or_unverified_slices": [
+        "No universal Neokod MCP/extension framework is validated or proposed."
+      ],
+      "neokod_actual_paths": [
+        "apps/web/src/components/chat/ContextWindowMeter.tsx",
+        "apps/web/src/lib/contextWindow.ts",
+        "apps/web/src/providerSkillSearch.ts",
+        "apps/web/src/components/chat/SkillInlineText.tsx",
+        "apps/web/src/components/chat/CopilotMcpControls.tsx",
+        "packages/contracts/src/providerRuntime.ts"
+      ],
+      "scope_fit": "User-approved provider-specific configuration may fit; no upstream UI port.",
+      "gate_or_priority": "No generic gap validated; keep capability truth provider-specific",
+      "limitation": "README claim only; competitor runtime not independently verified."
+    },
+    {
+      "id": "G10/Hermes",
+      "feature_id": "G10",
+      "feature_area": "Context/compaction, skills/MCP and harness extension APIs",
+      "product": "Hermes",
+      "product_n": 12,
+      "repo": "NousResearch/hermes-agent",
+      "product_source_sha": "bac34e9e9946c9c6a9ce7ce64efadd47f8fa375b",
+      "product_evidence_status": "Current official user documentation inspected; runtime implementation not independently verified.",
+      "competitor_feature": "Official dashboard docs describe isolated profiles with provider/model/skills/MCP configuration.",
+      "source_refs": [
+        {
+          "url": "https://github.com/NousResearch/hermes-agent/blob/bac34e9e9946c9c6a9ce7ce64efadd47f8fa375b/website/docs/user-guide/features/web-dashboard.md",
+          "source_sha": "bac34e9e9946c9c6a9ce7ce64efadd47f8fa375b",
+          "source_class": "Official user documentation",
+          "source_evidence_status": "Current official user documentation inspected; runtime implementation not independently verified.",
+          "runtime_status": "Not executed by this audit; source/document evidence only.",
+          "feature_note": "Profile/skills/MCP claim only; schedules and usage have separate rows."
+        }
+      ],
+      "neokod_feature_status": "present in inspected production source",
+      "neokod_present_slices": [
+        "Provider-specific skills/configuration and Copilot-specific MCP controls are present."
+      ],
+      "neokod_planned_or_unverified_slices": [
+        "No generic marketplace or universal capability layer is validated."
+      ],
+      "neokod_actual_paths": [
+        "apps/web/src/components/chat/ContextWindowMeter.tsx",
+        "apps/web/src/lib/contextWindow.ts",
+        "apps/web/src/providerSkillSearch.ts",
+        "apps/web/src/components/chat/SkillInlineText.tsx",
+        "apps/web/src/components/chat/CopilotMcpControls.tsx",
+        "packages/contracts/src/providerRuntime.ts"
+      ],
+      "scope_fit": "Keep Neokod capability declarations provider-specific.",
+      "gate_or_priority": "No generic gap validated; keep capability truth provider-specific",
+      "limitation": "Official documentation only; runtime implementation was not independently verified."
+    },
+    {
+      "id": "G10/Oh My Pi",
+      "feature_id": "G10",
+      "feature_area": "Context/compaction, skills/MCP and harness extension APIs",
+      "product": "Oh My Pi",
+      "product_n": 13,
+      "repo": "can1357/oh-my-pi",
+      "product_source_sha": "0b5c27ab24719c86a5986b95ee55f4e75bc1aaa0",
+      "product_evidence_status": "Current public implementation/docs inspected.",
+      "competitor_feature": "Compaction source estimates transcript tokens from provider-observed anchors rather than naive text only.",
+      "source_refs": [
+        {
+          "url": "https://github.com/can1357/oh-my-pi/blob/0b5c27ab24719c86a5986b95ee55f4e75bc1aaa0/packages/agent/src/compaction/transcript-tokens.ts",
+          "source_sha": "0b5c27ab24719c86a5986b95ee55f4e75bc1aaa0",
+          "source_class": "Primary OSS implementation source",
+          "source_evidence_status": "Current public implementation/docs inspected.",
+          "runtime_status": "Not executed by this audit; source/document evidence only.",
+          "feature_note": "Compaction implementation source; stats package is linked under G03."
+        }
+      ],
+      "neokod_feature_status": "partial",
+      "neokod_present_slices": ["Current context occupancy is shown in Neokod source."],
+      "neokod_planned_or_unverified_slices": [
+        "Compaction semantics remain harness-specific; no cross-provider generic estimator is established."
+      ],
+      "neokod_actual_paths": [
+        "apps/web/src/components/chat/ContextWindowMeter.tsx",
+        "apps/web/src/lib/contextWindow.ts",
+        "apps/web/src/providerSkillSearch.ts",
+        "apps/web/src/components/chat/SkillInlineText.tsx",
+        "apps/web/src/components/chat/CopilotMcpControls.tsx",
+        "packages/contracts/src/providerRuntime.ts"
+      ],
+      "scope_fit": "Use only for adapter-specific capability comparisons.",
+      "gate_or_priority": "No generic gap validated; keep capability truth provider-specific",
+      "limitation": "Source only; no live harness compaction was exercised."
+    },
+    {
+      "id": "G10/Pi",
+      "feature_id": "G10",
+      "feature_area": "Context/compaction, skills/MCP and harness extension APIs",
+      "product": "Pi",
+      "product_n": 14,
+      "repo": "earendil-works/pi",
+      "product_source_sha": "bdb151774ed6bef2b5676bbff4669f20a0c233fe",
+      "product_evidence_status": "Current official extension documentation inspected.",
+      "competitor_feature": "Official extension documentation exposes harness-level commands/tools/UI lifecycle APIs.",
+      "source_refs": [
+        {
+          "url": "https://github.com/earendil-works/pi/blob/bdb151774ed6bef2b5676bbff4669f20a0c233fe/packages/coding-agent/docs/extensions.md",
+          "source_sha": "bdb151774ed6bef2b5676bbff4669f20a0c233fe",
+          "source_class": "Official public implementation documentation",
+          "source_evidence_status": "Current official extension documentation inspected.",
+          "runtime_status": "Not executed by this audit; source/document evidence only.",
+          "feature_note": "Harness extension API docs; the optional subagent example is not Neokod-managed delegation."
+        }
+      ],
+      "neokod_feature_status": "present in inspected production source",
+      "neokod_present_slices": [
+        "Neokod provider adapters, skills and provider-specific configuration are present."
+      ],
+      "neokod_planned_or_unverified_slices": [
+        "No generic extension marketplace or app-level code execution framework is validated."
+      ],
+      "neokod_actual_paths": [
+        "apps/web/src/components/chat/ContextWindowMeter.tsx",
+        "apps/web/src/lib/contextWindow.ts",
+        "apps/web/src/providerSkillSearch.ts",
+        "apps/web/src/components/chat/SkillInlineText.tsx",
+        "apps/web/src/components/chat/CopilotMcpControls.tsx",
+        "packages/contracts/src/providerRuntime.ts"
+      ],
+      "scope_fit": "Keep capabilities explicit per supported provider.",
+      "gate_or_priority": "No generic gap validated; keep capability truth provider-specific",
+      "limitation": "Pi is a harness rather than a direct desktop-orchestrator peer; no provider turn was run."
+    },
+    {
+      "id": "G10/CodexHost",
+      "feature_id": "G10",
+      "feature_area": "Context/compaction, skills/MCP and harness extension APIs",
+      "product": "CodexHost",
+      "product_n": 20,
+      "repo": "BytePioneer-AI/codex-host",
+      "product_source_sha": "82e4839808ae692ac5cd0c23339c3db8e7a043c9",
+      "product_evidence_status": "Current capability-boundary documentation and usage source inspected.",
+      "competitor_feature": "Capability-boundary documentation distinguishes host-specific limits and harness semantics.",
+      "source_refs": [
+        {
+          "url": "https://github.com/BytePioneer-AI/codex-host/blob/82e4839808ae692ac5cd0c23339c3db8e7a043c9/docs/harnesses/capability-boundaries.md",
+          "source_sha": "82e4839808ae692ac5cd0c23339c3db8e7a043c9",
+          "source_class": "Official public capability documentation",
+          "source_evidence_status": "Current capability-boundary documentation and usage source inspected.",
+          "runtime_status": "Not executed by this audit; source/document evidence only.",
+          "feature_note": "Capability boundary documentation only; usage source is linked under G03."
+        }
+      ],
+      "neokod_feature_status": "present in inspected production source",
+      "neokod_present_slices": [
+        "Neokod provider-specific contracts/adapters and Copilot-specific MCP controls are present."
+      ],
+      "neokod_planned_or_unverified_slices": [
+        "Live per-provider capability claims still require adapter/runtime evidence; no universal parity inferred."
+      ],
+      "neokod_actual_paths": [
+        "apps/web/src/components/chat/ContextWindowMeter.tsx",
+        "apps/web/src/lib/contextWindow.ts",
+        "apps/web/src/providerSkillSearch.ts",
+        "apps/web/src/components/chat/SkillInlineText.tsx",
+        "apps/web/src/components/chat/CopilotMcpControls.tsx",
+        "packages/contracts/src/providerRuntime.ts"
+      ],
+      "scope_fit": "Capability honesty maps to existing adapters; no universal harness control plane.",
+      "gate_or_priority": "No generic gap validated; keep capability truth provider-specific",
+      "limitation": "Documentation/source only; no live host integration or provider turn was run."
+    },
+    {
+      "id": "G11/T3",
+      "feature_id": "G11",
+      "feature_area": "Terminal subscriber output budget and recovery",
+      "product": "T3",
+      "product_n": 1,
+      "repo": "pingdotgg/t3code",
+      "product_source_sha": "27e0c684c585f955252d65f06206dd11a143bff5",
+      "product_evidence_status": "Current public implementation source inspected; not executed.",
+      "competitor_feature": "Per-subscriber synchronous mailbox with an 8 MiB budget; overflow drops only that subscriber, whose next pull receives a bounded history snapshot then live output.",
+      "source_refs": [
+        {
+          "url": "https://github.com/pingdotgg/t3code/pull/18429",
+          "source_sha": "27e0c684c585f955252d65f06206dd11a143bff5",
+          "source_tag": "v0.1.3-nightly.20261024.3617",
+          "source_class": "Public GitHub PR API body (preserved raw body; primary historical feature evidence)",
+          "source_evidence_status": "Body read from retained API capture; merge metadata is recorded in the closed-PR census.",
+          "merge_commit": "3284143b454f2353ab3e0101c894986fe429123d",
+          "merge_commit_in_retained_latest_prerelease": true,
+          "runtime_status": "Not executed by this audit. Author-reported tests/probes in the PR body were not rerun.",
+          "preserved_body_capture": "all-closed-prs.json.gz",
+          "feature_note": "Slow terminal clients no longer retain an unbounded event backlog; overflow/reconnect semantics are described in the PR body.",
+          "author_reported_validation": "PR body reports terminal/WebSocket tests and a live isolated Linux web/PTY ACK-withholding probe; not rerun here.",
+          "boundary": "The body says the 8 MiB subscriber budget is not an exact heap or JSON-frame ceiling."
+        }
+      ],
+      "neokod_feature_status": "partial",
+      "neokod_present_slices": [
+        "PTY sessions, byte/line-capped persisted history, UTF-8 boundary handling, xterm scrollback and acknowledged/serialized input writes are present."
+      ],
+      "neokod_planned_or_unverified_slices": [
+        "No explicit byte budget is visible at the ws.ts Stream.callback/Queue.offer seam; downstream ACK backpressure was not traced, so end-to-end unbounded buffering is not claimed."
+      ],
+      "neokod_actual_paths": [
+        "apps/server/src/ws.ts:2810–2819",
+        "apps/server/src/terminal/Manager.ts:888–909,2720–2725",
+        "packages/contracts/src/terminal.ts:65–67",
+        "packages/client-runtime/src/state/terminalSession.ts:235–430",
+        "apps/web/src/components/ThreadTerminalDrawer.tsx:488"
+      ],
+      "scope_fit": "Local terminal flow control is in scope if owner selects it; no rewrite or UI port assumed.",
+      "gate_or_priority": "Bounded candidate from #18429; owner scoping/priority remains open and §13.2 applies to competitor work outside A–C",
+      "limitation": "PR body is public and merge commit is in retained prerelease ancestry; author-reported runtime checks are not this audit’s runtime evidence."
+    },
+    {
+      "id": "G12/T3",
+      "feature_id": "G12",
+      "feature_area": "PR watch, thread settlement and settled-worktree cleanup",
+      "product": "T3",
+      "product_n": 1,
+      "repo": "pingdotgg/t3code",
+      "product_source_sha": "27e0c684c585f955252d65f06206dd11a143bff5",
+      "product_evidence_status": "Current public implementation source inspected; not executed.",
+      "competitor_feature": "PR watch, auto-settle policy, merge-triggered refresh and optional settled-worktree cleanup are separate source-backed behaviors; this cluster does not imply a single required Neokod feature.",
+      "source_refs": [
+        {
+          "url": "https://github.com/pingdotgg/t3code/pull/15057",
+          "source_sha": "27e0c684c585f955252d65f06206dd11a143bff5",
+          "source_tag": "v0.1.3-nightly.20261024.3617",
+          "source_class": "Public GitHub PR API body (preserved raw body; primary historical feature evidence)",
+          "source_evidence_status": "Body read from retained API capture; merge metadata is recorded in the closed-PR census.",
+          "merge_commit": "18b21325c3ab1ff4f0ee7b017d9c4eefc2b2d307",
+          "merge_commit_in_retained_latest_prerelease": true,
+          "runtime_status": "Not executed by this audit. Author-reported tests/probes in the PR body were not rerun.",
+          "preserved_body_capture": "all-closed-prs.json.gz",
+          "feature_note": "Server-owned watch_pull_request wakes only on meaningful check/review/conflict changes and records watch progress with the wake.",
+          "author_reported_validation": "PR body describes the V2 watcher and author-reported behavior; not independently executed."
+        },
+        {
+          "url": "https://github.com/pingdotgg/t3code/pull/11846",
+          "source_sha": "27e0c684c585f955252d65f06206dd11a143bff5",
+          "source_tag": "v0.1.3-nightly.20261024.3617",
+          "source_class": "Public GitHub PR API body (preserved raw body; primary historical feature evidence)",
+          "source_evidence_status": "Body read from retained API capture; merge metadata is recorded in the closed-PR census.",
+          "merge_commit": "0109670411d13b9e380766e98b386b2f756ecf5b",
+          "merge_commit_in_retained_latest_prerelease": true,
+          "runtime_status": "Not executed by this audit. Author-reported tests/probes in the PR body were not rerun.",
+          "preserved_body_capture": "all-closed-prs.json.gz",
+          "feature_note": "Per-thread auto-settle opt-out for inactivity and merged/closed-PR settlement.",
+          "author_reported_validation": "PR body describes UI and behavior; upstream UI is intent-only."
+        },
+        {
+          "url": "https://github.com/pingdotgg/t3code/pull/14642",
+          "source_sha": "27e0c684c585f955252d65f06206dd11a143bff5",
+          "source_tag": "v0.1.3-nightly.20261024.3617",
+          "source_class": "Public GitHub PR API body (preserved raw body; primary historical feature evidence)",
+          "source_evidence_status": "Body read from retained API capture; merge metadata is recorded in the closed-PR census.",
+          "merge_commit": "bf8ffe81a63c82d3de5fbaa9991fd5f30034a452",
+          "merge_commit_in_retained_latest_prerelease": true,
+          "runtime_status": "Not executed by this audit. Author-reported tests/probes in the PR body were not rerun.",
+          "preserved_body_capture": "all-closed-prs.json.gz",
+          "feature_note": "Optional keep-threads-with-PR rule for inactivity auto-settlement; default is off.",
+          "author_reported_validation": "PR body describes setting and server policy; upstream UI is not ported."
+        },
+        {
+          "url": "https://github.com/pingdotgg/t3code/pull/15024",
+          "source_sha": "27e0c684c585f955252d65f06206dd11a143bff5",
+          "source_tag": "v0.1.3-nightly.20261024.3617",
+          "source_class": "Public GitHub PR API body (preserved raw body; primary historical feature evidence)",
+          "source_evidence_status": "Body read from retained API capture; merge metadata is recorded in the closed-PR census.",
+          "merge_commit": "ca4f84e702428656665d53635e16251112091657",
+          "merge_commit_in_retained_latest_prerelease": true,
+          "runtime_status": "Not executed by this audit. Author-reported tests/probes in the PR body were not rerun.",
+          "preserved_body_capture": "all-closed-prs.json.gz",
+          "feature_note": "Fresh PR sync after a run uses gh pr merge/close so merge settlement need not await the normal sweep.",
+          "author_reported_validation": "PR body reports bounded host reads and focused tests; not rerun."
+        },
+        {
+          "url": "https://github.com/pingdotgg/t3code/pull/15783",
+          "source_sha": "27e0c684c585f955252d65f06206dd11a143bff5",
+          "source_tag": "v0.1.3-nightly.20261024.3617",
+          "source_class": "Public GitHub PR API body (preserved raw body; primary historical feature evidence)",
+          "source_evidence_status": "Body read from retained API capture; merge metadata is recorded in the closed-PR census.",
+          "merge_commit": "d5fdfdcf05330680c2947bbb458772f63dba964f",
+          "merge_commit_in_retained_latest_prerelease": true,
+          "runtime_status": "Not executed by this audit. Author-reported tests/probes in the PR body were not rerun.",
+          "preserved_body_capture": "all-closed-prs.json.gz",
+          "feature_note": "Automatic settlement handles empty inactive threads using creation time as activity anchor.",
+          "author_reported_validation": "PR body describes source-level fix and tests; not rerun."
+        },
+        {
+          "url": "https://github.com/pingdotgg/t3code/pull/15208",
+          "source_sha": "27e0c684c585f955252d65f06206dd11a143bff5",
+          "source_tag": "v0.1.3-nightly.20261024.3617",
+          "source_class": "Public GitHub PR API body (preserved raw body; primary historical feature evidence)",
+          "source_evidence_status": "Body read from retained API capture; merge metadata is recorded in the closed-PR census.",
+          "merge_commit": "21bedfb175b9eec8652adc35d7882bdc3c3c9d59",
+          "merge_commit_in_retained_latest_prerelease": true,
+          "runtime_status": "Not executed by this audit. Author-reported tests/probes in the PR body were not rerun.",
+          "preserved_body_capture": "all-closed-prs.json.gz",
+          "feature_note": "Optional settled-thread worktree retention cleanup through regular sweeps; branch/history remain.",
+          "author_reported_validation": "PR body keeps an open scope question for clean unmerged worktree removal; not rerun.",
+          "boundary": "Cleanup is optional/off by default in the body; do not infer a Neokod cleanup policy."
+        }
+      ],
+      "neokod_feature_status": "candidate (not a missing verdict)",
+      "neokod_present_slices": [
+        "Server-owned ordinary-turn settlement, Symphony PR refresh/merged-outcome settlement and a worktree-removal safety lease are present."
+      ],
+      "neokod_planned_or_unverified_slices": [
+        "A T3-style ordinary-chat PR watcher, PR-driven wake/auto-settle policy and automatic settled-thread cleanup were not identified in the inspected paths; no absence certification is made."
+      ],
+      "neokod_actual_paths": [
+        "apps/server/src/orchestration/Layers/TurnSettlementReactor.ts",
+        "apps/server/src/orchestration/decider.ts:620–641",
+        "apps/server/src/symphony/Orchestrator/Layers/SymphonyOrchestratorLive.ts:877–1010,2201–2271",
+        "apps/server/src/git/WorktreeRemovalLease.ts"
+      ],
+      "scope_fit": "Potentially local only with explicit owner scope and authenticated PR authority; no hosted relay/shared tenancy assumed.",
+      "gate_or_priority": "Owner-scoped candidate after Tracks A–C; no implementation authority assumed",
+      "limitation": "T3 PR bodies are public; six cited merge commits are reachable in the retained latest prerelease commit list, but no T3 runtime was executed here. Related stacked #13476 is not observed in that retained list and is excluded as current-source evidence."
+    }
+  ]
+}

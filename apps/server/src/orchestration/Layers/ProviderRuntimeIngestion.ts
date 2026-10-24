@@ -20,6 +20,7 @@ import {
   type OrchestrationThread,
   type OrchestrationThreadActivity,
   type ProviderRuntimeEvent,
+  type RuntimeTurnState,
 } from "@neokod/contracts";
 import * as Cache from "effect/Cache";
 import * as Cause from "effect/Cause";
@@ -232,6 +233,23 @@ function normalizeRuntimeTurnState(
       return value;
     default:
       return "completed";
+  }
+}
+
+/**
+ * Provider-authoritative session outcome for a completed runtime turn.
+ * Session readiness stays separate: an interrupted or cancelled turn returns
+ * the provider session to ready without becoming completed.
+ */
+function runtimeTurnOutcome(state: RuntimeTurnState): "completed" | "interrupted" | "error" {
+  switch (state) {
+    case "completed":
+      return "completed";
+    case "failed":
+      return "error";
+    case "interrupted":
+    case "cancelled":
+      return "interrupted";
   }
 }
 
@@ -1819,6 +1837,12 @@ const make = Effect.gen(function* () {
               : status === "ready"
                 ? null
                 : (thread.session?.lastError ?? null);
+        // Only a targeted provider turn end carries an authoritative outcome.
+        // Everything else keeps legacy session-status inference.
+        const latestTurnOutcome =
+          event.type === "turn.completed" && endedTurnId !== undefined
+            ? runtimeTurnOutcome(event.payload.state)
+            : undefined;
 
         if (shouldApplyThreadLifecycle) {
           if (event.type === "turn.started" && acceptedTurnStartedSourcePlan !== null) {
@@ -1858,6 +1882,7 @@ const make = Effect.gen(function* () {
               updatedAt: now,
             },
             ...(endedTurnId !== undefined ? { interruptedTurnId: endedTurnId } : {}),
+            ...(latestTurnOutcome !== undefined ? { latestTurnOutcome } : {}),
             createdAt: now,
           });
         }

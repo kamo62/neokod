@@ -1,0 +1,16 @@
+{
+  "status": "passed",
+  "head": "c8fef250e3b2ff6d4d8055d3ae9913d1b1ccba37",
+  "proof": "backend restarted, authenticated config read, read-only persisted result; not Chrome or Symphony recovery",
+  "driver": "githubCopilot",
+  "stoppedTurnState": {
+    "state": "interrupted",
+    "completed_at": "2026-10-24T11:18:40.868Z"
+  },
+  "latestTurnState": {
+    "state": "completed",
+    "completed_at": "2026-10-24T11:18:44.991Z"
+  },
+  "exactReplyRetained": true,
+  "providerSnapshotRetained": true
+}

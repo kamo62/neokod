@@ -1,0 +1,47 @@
+{
+  "finalSourceHead": "c8fef250e3b2ff6d4d8055d3ae9913d1b1ccba37",
+  "focusedFinalSource": [
+    {
+      "files": 7,
+      "testsPassed": 202,
+      "log": "root-outcomes-focused.log"
+    },
+    {
+      "files": 5,
+      "testsPassed": 135,
+      "log": "root-symphony-focused.log"
+    }
+  ],
+  "reusedUnchangedComponentEvidence": [
+    {
+      "head": "f64dd8ca1",
+      "files": 3,
+      "testsPassed": 143,
+      "log": "root-performance-focused.log"
+    },
+    {
+      "head": "0c05baa3f",
+      "files": 12,
+      "testsPassed": 241,
+      "note": "registry/adapters,SDK,native UI logic; nonoverlapping files"
+    }
+  ],
+  "typecheck": {
+    "command": "vp run typecheck",
+    "packages": 10,
+    "exitCode": 0,
+    "kind": "noEmit; scripts inspected, no build dependencies"
+  },
+  "check": {
+    "command": "vp check",
+    "exitCode": 0,
+    "errors": 0,
+    "warnings": 54,
+    "files": 1762,
+    "log": "root-final-vp-check.log",
+    "initialFailure": "Two copied receipt formatting issues corrected; subsequent check passed"
+  },
+  "fullCI": "not run: owner prohibits installs/builds/Playwright",
+  "liveVisualStop": "passed current-source Chrome: approval, Stop, persisted Stopped after Reload, exact same-thread continuation; chrome-final-receipt.json",
+  "symphonyAutonomousTrackerToPR": "not established"
+}

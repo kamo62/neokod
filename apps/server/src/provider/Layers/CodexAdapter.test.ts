@@ -541,10 +541,370 @@ lifecycleLayer("CodexAdapterLive lifecycle", (it) => {
       NodeAssert.ok(started && started.type === "task.started");
       // Keyed on the receiver (child) thread id, matching child progress events.
       NodeAssert.equal(started.payload.taskId, "worker-thread-1");
+      NodeAssert.equal(started.eventId, "codex:subagent-started:worker-thread-1");
       NodeAssert.equal(started.payload.agentId, "worker-thread-1");
       NodeAssert.equal(started.payload.model, "gpt-5-codex");
       NodeAssert.equal(started.payload.parentToolCallId, "collab_1");
       NodeAssert.equal(started.payload.description, "Review the diff");
+    }),
+  );
+
+  it.effect(
+    "emits a child-keyed task.started from a subAgentActivity start item (new Codex shape)",
+    () =>
+      Effect.gen(function* () {
+        const { adapter, runtime } = yield* startLifecycleRuntime();
+        const eventsFiber = yield* Stream.runCollect(
+          Stream.take(
+            Stream.filter(
+              adapter.streamEvents,
+              (event) => event.type === "task.started" || event.type === "item.started",
+            ),
+            1,
+          ),
+        ).pipe(Effect.forkChild);
+
+        yield* runtime.emit({
+          id: asEventId("evt-subagent-activity-started"),
+          kind: "notification",
+          provider: ProviderDriverKind.make("codex"),
+          createdAt: "2026-01-01T00:00:00.000Z",
+          method: "item/started",
+          threadId: asThreadId("thread-1"),
+          turnId: asTurnId("turn-1"),
+          itemId: asItemId("call_fixture_a"),
+          payload: {
+            startedAtMs: 1_778_000_000_000,
+            threadId: "thread-1",
+            turnId: "turn-1",
+            item: {
+              agentPath: "/root/fixture_child_a",
+              agentThreadId: "child-thread-fixture-a",
+              id: "call_fixture_a",
+              kind: "started",
+              type: "subAgentActivity",
+            },
+          },
+        });
+
+        const events = Array.from(yield* Fiber.join(eventsFiber).pipe(Effect.timeout("1 second")));
+        NodeAssert.equal(
+          events.some((event) => event.type === "item.started"),
+          false,
+        );
+        const started = events.find((event) => event.type === "task.started");
+        NodeAssert.ok(started && started.type === "task.started");
+        NodeAssert.equal(started.eventId, "codex:subagent-started:child-thread-fixture-a");
+        NodeAssert.deepStrictEqual(started.payload, {
+          taskId: "child-thread-fixture-a",
+          agentId: "child-thread-fixture-a",
+          description: "/root/fixture_child_a",
+          parentToolCallId: "call_fixture_a",
+        });
+      }),
+  );
+
+  it.effect("creates the same task.started from a completed subAgentActivity start item", () =>
+    Effect.gen(function* () {
+      const { adapter, runtime } = yield* startLifecycleRuntime();
+      const eventsFiber = yield* Stream.runCollect(Stream.take(adapter.streamEvents, 2)).pipe(
+        Effect.forkChild,
+      );
+
+      yield* runtime.emit({
+        id: asEventId("evt-subagent-activity-completed"),
+        kind: "notification",
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: "2026-01-01T00:00:00.000Z",
+        method: "item/completed",
+        threadId: asThreadId("thread-1"),
+        turnId: asTurnId("turn-1"),
+        itemId: asItemId("call_fixture_a"),
+        payload: {
+          completedAtMs: 1_778_000_000_000,
+          threadId: "thread-1",
+          turnId: "turn-1",
+          item: {
+            agentPath: "/root/fixture_child_a",
+            agentThreadId: "child-thread-fixture-a",
+            id: "call_fixture_a",
+            kind: "started",
+            type: "subAgentActivity",
+          },
+        },
+      });
+      yield* runtime.emit({
+        id: asEventId("evt-parent-sentinel-after-subagent-activity"),
+        kind: "notification",
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: "2026-01-01T00:00:01.000Z",
+        method: "item/completed",
+        threadId: asThreadId("thread-1"),
+        turnId: asTurnId("turn-1"),
+        itemId: asItemId("msg_parent_sentinel"),
+        payload: {
+          completedAtMs: 1_778_000_001_000,
+          threadId: "thread-1",
+          turnId: "turn-1",
+          item: {
+            type: "agentMessage",
+            id: "msg_parent_sentinel",
+            text: "sentinel",
+          },
+        },
+      });
+
+      const events = Array.from(yield* Fiber.join(eventsFiber).pipe(Effect.timeout("1 second")));
+      NodeAssert.deepStrictEqual(
+        events.map((event) => event.type),
+        ["task.started", "item.completed"],
+      );
+      const started = events[0];
+      NodeAssert.ok(started && started.type === "task.started");
+      NodeAssert.equal(started.eventId, "codex:subagent-started:child-thread-fixture-a");
+      NodeAssert.equal(started.payload.taskId, "child-thread-fixture-a");
+    }),
+  );
+
+  it.effect("uses one stable event id for repeated subAgentActivity start observations", () =>
+    Effect.gen(function* () {
+      const { adapter, runtime } = yield* startLifecycleRuntime();
+      const eventsFiber = yield* Stream.runCollect(Stream.take(adapter.streamEvents, 2)).pipe(
+        Effect.forkChild,
+      );
+
+      const item = {
+        agentPath: "/root/fixture_child_a",
+        agentThreadId: "child-thread-fixture-a",
+        id: "call_fixture_a",
+        kind: "started" as const,
+        type: "subAgentActivity" as const,
+      };
+      yield* runtime.emit({
+        id: asEventId("evt-subagent-activity-started"),
+        kind: "notification",
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: "2026-01-01T00:00:00.000Z",
+        method: "item/started",
+        threadId: asThreadId("thread-1"),
+        turnId: asTurnId("turn-1"),
+        itemId: asItemId("call_fixture_a"),
+        payload: {
+          startedAtMs: 1_778_000_000_000,
+          threadId: "thread-1",
+          turnId: "turn-1",
+          item,
+        },
+      });
+      yield* runtime.emit({
+        id: asEventId("evt-subagent-activity-completed"),
+        kind: "notification",
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: "2026-01-01T00:00:01.000Z",
+        method: "item/completed",
+        threadId: asThreadId("thread-1"),
+        turnId: asTurnId("turn-1"),
+        itemId: asItemId("call_fixture_a"),
+        payload: {
+          completedAtMs: 1_778_000_001_000,
+          threadId: "thread-1",
+          turnId: "turn-1",
+          item,
+        },
+      });
+
+      const events = Array.from(yield* Fiber.join(eventsFiber).pipe(Effect.timeout("1 second")));
+      NodeAssert.deepStrictEqual(
+        events.map((event) => event.type),
+        ["task.started", "task.started"],
+      );
+      const started = events[0];
+      const completedObservation = events[1];
+      NodeAssert.ok(started && started.type === "task.started");
+      NodeAssert.ok(completedObservation && completedObservation.type === "task.started");
+      NodeAssert.equal(started.eventId, completedObservation.eventId);
+      NodeAssert.equal(started.eventId, "codex:subagent-started:child-thread-fixture-a");
+    }),
+  );
+
+  it.effect("does not create a card for interacted or interrupted subAgentActivity", () =>
+    Effect.gen(function* () {
+      const { adapter, runtime } = yield* startLifecycleRuntime();
+      const firstEventFiber = yield* Stream.runHead(adapter.streamEvents).pipe(Effect.forkChild);
+
+      yield* runtime.emit({
+        id: asEventId("evt-subagent-activity-interacted"),
+        kind: "notification",
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: "2026-01-01T00:00:00.000Z",
+        method: "item/completed",
+        threadId: asThreadId("thread-1"),
+        turnId: asTurnId("turn-1"),
+        itemId: asItemId("call_fixture_a"),
+        payload: {
+          completedAtMs: 1_778_000_000_000,
+          threadId: "thread-1",
+          turnId: "turn-1",
+          item: {
+            agentPath: "/root/fixture_child_a",
+            agentThreadId: "child-thread-fixture-a",
+            id: "call_fixture_a",
+            kind: "interacted",
+            type: "subAgentActivity",
+          },
+        },
+      });
+      yield* runtime.emit({
+        id: asEventId("evt-subagent-activity-interrupted"),
+        kind: "notification",
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: "2026-01-01T00:00:00.500Z",
+        method: "item/completed",
+        threadId: asThreadId("thread-1"),
+        turnId: asTurnId("turn-1"),
+        itemId: asItemId("call_fixture_a"),
+        payload: {
+          completedAtMs: 1_778_000_000_500,
+          threadId: "thread-1",
+          turnId: "turn-1",
+          item: {
+            agentPath: "/root/fixture_child_a",
+            agentThreadId: "child-thread-fixture-a",
+            id: "call_fixture_a",
+            kind: "interrupted",
+            type: "subAgentActivity",
+          },
+        },
+      });
+      yield* runtime.emit({
+        id: asEventId("evt-parent-sentinel-after-subagent-interrupt"),
+        kind: "notification",
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: "2026-01-01T00:00:01.000Z",
+        method: "item/completed",
+        threadId: asThreadId("thread-1"),
+        turnId: asTurnId("turn-1"),
+        itemId: asItemId("msg_parent_sentinel"),
+        payload: {
+          completedAtMs: 1_778_000_001_000,
+          threadId: "thread-1",
+          turnId: "turn-1",
+          item: {
+            type: "agentMessage",
+            id: "msg_parent_sentinel",
+            text: "sentinel",
+          },
+        },
+      });
+
+      const firstEvent = yield* Fiber.join(firstEventFiber);
+      NodeAssert.equal(firstEvent._tag, "Some");
+      if (firstEvent._tag !== "Some") {
+        return;
+      }
+      NodeAssert.equal(firstEvent.value.type, "item.completed");
+    }),
+  );
+
+  it.effect("keeps a child turn completion out of the parent timeline", () =>
+    Effect.gen(function* () {
+      const { adapter, runtime } = yield* startLifecycleRuntime();
+      const eventsFiber = yield* Stream.runCollect(Stream.take(adapter.streamEvents, 2)).pipe(
+        Effect.forkChild,
+      );
+
+      yield* runtime.emit({
+        id: asEventId("evt-child-turn-completed-only"),
+        kind: "notification",
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: "2026-01-01T00:00:00.000Z",
+        method: "turn/completed",
+        threadId: asThreadId("thread-1"),
+        childThreadId: "child-thread-fixture-a",
+        turnId: asTurnId("turn-1"),
+        payload: {
+          threadId: "child-thread-fixture-a",
+          turn: { id: "child-turn-1", items: [], status: "completed" },
+        },
+      });
+      yield* runtime.emit({
+        id: asEventId("evt-parent-sentinel-after-child-turn"),
+        kind: "notification",
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: "2026-01-01T00:00:01.000Z",
+        method: "item/completed",
+        threadId: asThreadId("thread-1"),
+        turnId: asTurnId("turn-1"),
+        itemId: asItemId("msg_parent_sentinel"),
+        payload: {
+          completedAtMs: 1_778_000_001_000,
+          threadId: "thread-1",
+          turnId: "turn-1",
+          item: {
+            type: "agentMessage",
+            id: "msg_parent_sentinel",
+            text: "sentinel",
+          },
+        },
+      });
+
+      const events = Array.from(yield* Fiber.join(eventsFiber).pipe(Effect.timeout("1 second")));
+      NodeAssert.deepStrictEqual(
+        events.map((event) => event.type),
+        ["task.completed", "item.completed"],
+      );
+      const completed = events[0];
+      NodeAssert.ok(completed && completed.type === "task.completed");
+      NodeAssert.equal(completed.payload.taskId, "child-thread-fixture-a");
+      NodeAssert.equal(completed.payload.status, "completed");
+    }),
+  );
+
+  it.effect("leaves a malformed child turn completion unknown instead of completed", () =>
+    Effect.gen(function* () {
+      const { adapter, runtime } = yield* startLifecycleRuntime();
+      const firstEventFiber = yield* Stream.runHead(adapter.streamEvents).pipe(Effect.forkChild);
+
+      yield* runtime.emit({
+        id: asEventId("evt-child-turn-completed-malformed"),
+        kind: "notification",
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: "2026-01-01T00:00:00.000Z",
+        method: "turn/completed",
+        threadId: asThreadId("thread-1"),
+        childThreadId: "child-thread-fixture-a",
+        turnId: asTurnId("turn-1"),
+        payload: {
+          threadId: "child-thread-fixture-a",
+        },
+      });
+      yield* runtime.emit({
+        id: asEventId("evt-parent-sentinel-after-malformed-child-turn"),
+        kind: "notification",
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: "2026-01-01T00:00:01.000Z",
+        method: "item/completed",
+        threadId: asThreadId("thread-1"),
+        turnId: asTurnId("turn-1"),
+        itemId: asItemId("msg_parent_sentinel"),
+        payload: {
+          completedAtMs: 1_778_000_001_000,
+          threadId: "thread-1",
+          turnId: "turn-1",
+          item: {
+            type: "agentMessage",
+            id: "msg_parent_sentinel",
+            text: "sentinel",
+          },
+        },
+      });
+
+      const firstEvent = yield* Fiber.join(firstEventFiber);
+      NodeAssert.equal(firstEvent._tag, "Some");
+      if (firstEvent._tag !== "Some") {
+        return;
+      }
+      NodeAssert.equal(firstEvent.value.type, "item.completed");
     }),
   );
 

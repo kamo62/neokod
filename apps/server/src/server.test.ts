@@ -531,6 +531,7 @@ const buildAppUnderTest = (options?: {
             issues: [],
           }),
           streamChanges: Stream.empty,
+          subscribeChanges: Effect.succeed(Stream.empty),
           ...options?.layers?.keybindings,
         }),
       ),
@@ -545,6 +546,7 @@ const buildAppUnderTest = (options?: {
             ),
           setProviderMaintenanceActionState: () => Effect.succeed([]),
           streamChanges: Stream.empty,
+          subscribeChanges: Effect.succeed(Stream.empty),
           ...options?.layers?.providerRegistry,
         }),
       ),
@@ -555,6 +557,7 @@ const buildAppUnderTest = (options?: {
           getSettings: Effect.succeed(DEFAULT_SERVER_SETTINGS),
           updateSettings: () => Effect.succeed(DEFAULT_SERVER_SETTINGS),
           streamChanges: Stream.empty,
+          subscribeChanges: Effect.succeed(Stream.empty),
           ...options?.layers?.serverSettings,
         }),
       ),
@@ -1702,7 +1705,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
               keybindings: [],
               issues: [],
             }),
-            streamChanges: Stream.succeed(changeEvent),
+            subscribeChanges: Effect.succeed(Stream.succeed(changeEvent)),
           },
           providerRegistry: {
             getProviders: Effect.succeed(providers),
@@ -1769,7 +1772,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
           },
           providerRegistry: {
             getProviders: Effect.succeed([]),
-            streamChanges: Stream.succeed(nextProviders),
+            subscribeChanges: Effect.succeed(Stream.succeed(nextProviders)),
           },
         },
       });
