@@ -1925,18 +1925,20 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
         });
       }
       const replayFrom = Math.min(...states.map((state) => state.lastAppliedSequence));
-      yield* Stream.runForEach(eventStore.readFromSequence(replayFrom), (event) =>
-        Effect.forEach(
-          states,
-          (state) => {
-            if (state.lastAppliedSequence >= event.sequence) {
-              return Effect.void;
-            }
-            state.lastAppliedSequence = event.sequence;
-            return runProjectorForEvent(state.projector, event);
-          },
-          { concurrency: 1 },
-        ),
+      yield* Stream.runForEach(
+        eventStore.readFromSequence(replayFrom, Number.MAX_SAFE_INTEGER),
+        (event) =>
+          Effect.forEach(
+            states,
+            (state) => {
+              if (state.lastAppliedSequence >= event.sequence) {
+                return Effect.void;
+              }
+              state.lastAppliedSequence = event.sequence;
+              return runProjectorForEvent(state.projector, event);
+            },
+            { concurrency: 1 },
+          ),
       );
     }).pipe(
       Effect.provideService(FileSystem.FileSystem, fileSystem),
