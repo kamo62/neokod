@@ -8,14 +8,18 @@ import * as Stream from "effect/Stream";
 import { describe, expect } from "vite-plus/test";
 
 import {
+  DEFAULT_SERVER_SETTINGS,
+  ProviderDriverKind,
   ProviderInstanceId,
   type ModelSelection,
   type ServerProvider,
   type ServerProviderModel,
+  type ServerSettings,
   TextGenerationError,
 } from "@neokod/contracts";
 import { createModelSelection } from "@neokod/shared/model";
 
+import { providerModelsFromSettings } from "../provider/providerSnapshot.ts";
 import type { ProviderInstance } from "../provider/ProviderDriver.ts";
 import * as ProviderInstanceRegistry from "../provider/Services/ProviderInstanceRegistry.ts";
 import * as TextGeneration from "./TextGeneration.ts";
@@ -126,6 +130,11 @@ const makeStubRegistry = (
   };
 };
 
+const makeTextGeneration = (
+  registry: ProviderInstanceRegistry.ProviderInstanceRegistry["Service"],
+  settings: Pick<ServerSettings, "providers" | "providerInstances"> = DEFAULT_SERVER_SETTINGS,
+) => TextGeneration.makeTextGenerationFromRegistry(registry, Effect.succeed(settings));
+
 interface RecordedCall {
   readonly operation: string;
   readonly modelSelection: ModelSelection;
@@ -180,7 +189,7 @@ describe("makeTextGenerationFromRegistry", () => {
         { models: [model("gpt-5")] },
       );
 
-      const tg = TextGeneration.makeTextGenerationFromRegistry(makeStubRegistry([personal, work]));
+      const tg = makeTextGeneration(makeStubRegistry([personal, work]));
 
       const result = yield* tg.generateBranchName({
         cwd: process.cwd(),
@@ -211,7 +220,7 @@ describe("makeTextGenerationFromRegistry", () => {
         }),
         { models: [model("claude-fable-5")] },
       );
-      const tg = TextGeneration.makeTextGenerationFromRegistry(makeStubRegistry([claude]));
+      const tg = makeTextGeneration(makeStubRegistry([claude]));
 
       const result = yield* tg.generateCodeReview({
         cwd: process.cwd(),
@@ -230,7 +239,7 @@ describe("makeTextGenerationFromRegistry", () => {
 
   it.effect("fails with TextGenerationError when the instance is unknown", () =>
     Effect.gen(function* () {
-      const tg = TextGeneration.makeTextGenerationFromRegistry(makeStubRegistry([]));
+      const tg = makeTextGeneration(makeStubRegistry([]));
 
       const result = yield* tg
         .generateBranchName({
@@ -266,7 +275,7 @@ describe("auxiliary text generation admission", () => {
       const instance = makeStubInstance(INSTANCE_ID, makeRecordingTextGeneration(calls), {
         models: [model("gpt-5")],
       });
-      const tg = TextGeneration.makeTextGenerationFromRegistry(makeStubRegistry([instance]));
+      const tg = makeTextGeneration(makeStubRegistry([instance]));
 
       const cases: ReadonlyArray<{
         readonly operation: RecordedCall["operation"];
@@ -349,7 +358,7 @@ describe("auxiliary text generation admission", () => {
       const instance = makeStubInstance(INSTANCE_ID, makeRecordingTextGeneration(calls), {
         models: [model("gpt-5"), model("team-custom-model", true)],
       });
-      const tg = TextGeneration.makeTextGenerationFromRegistry(makeStubRegistry([instance]));
+      const tg = makeTextGeneration(makeStubRegistry([instance]));
       const selection = createModelSelection(INSTANCE_ID, "team-custom-model");
 
       const result = yield* tg.generateThreadTitle({
@@ -384,7 +393,7 @@ describe("auxiliary text generation admission", () => {
       const other = makeStubInstance(otherId, makeRecordingTextGeneration(otherCalls), {
         models: [model("gpt-6")],
       });
-      const tg = TextGeneration.makeTextGenerationFromRegistry(makeStubRegistry([instance, other]));
+      const tg = makeTextGeneration(makeStubRegistry([instance, other]));
 
       const result = yield* tg
         .generateThreadTitle({
@@ -422,7 +431,7 @@ describe("auxiliary text generation admission", () => {
           return refreshedSnapshot;
         }),
       });
-      const tg = TextGeneration.makeTextGenerationFromRegistry(makeStubRegistry([instance]));
+      const tg = makeTextGeneration(makeStubRegistry([instance]));
       const selection = createModelSelection(INSTANCE_ID, "gpt-5.4-mini", [
         { id: "reasoningEffort", value: "low" },
       ]);
@@ -456,7 +465,7 @@ describe("auxiliary text generation admission", () => {
           return snapshot;
         }),
       });
-      const tg = TextGeneration.makeTextGenerationFromRegistry(makeStubRegistry([instance]));
+      const tg = makeTextGeneration(makeStubRegistry([instance]));
 
       const result = yield* tg
         .generateCommitMessage({
@@ -531,7 +540,7 @@ describe("auxiliary text generation admission", () => {
             makeRecordingTextGeneration(calls),
             testCase.options,
           );
-          const tg = TextGeneration.makeTextGenerationFromRegistry(makeStubRegistry([instance]));
+          const tg = makeTextGeneration(makeStubRegistry([instance]));
 
           const result = yield* tg
             .generateThreadTitle({
@@ -568,7 +577,7 @@ describe("auxiliary text generation admission", () => {
           });
         }),
       });
-      const tg = TextGeneration.makeTextGenerationFromRegistry(makeStubRegistry([instance]));
+      const tg = makeTextGeneration(makeStubRegistry([instance]));
       const selection = createModelSelection(INSTANCE_ID, "gpt-5");
 
       const result = yield* tg.generateThreadTitle({
@@ -598,7 +607,7 @@ describe("auxiliary text generation admission", () => {
           });
         }),
       });
-      const tg = TextGeneration.makeTextGenerationFromRegistry(makeStubRegistry([instance]));
+      const tg = makeTextGeneration(makeStubRegistry([instance]));
 
       const result = yield* tg
         .generateThreadTitle({
@@ -626,7 +635,7 @@ describe("auxiliary text generation admission", () => {
         models: [model("gpt-5")],
         getSnapshot: Effect.die("disabled instances must not be probed"),
       });
-      const tg = TextGeneration.makeTextGenerationFromRegistry(makeStubRegistry([instance]));
+      const tg = makeTextGeneration(makeStubRegistry([instance]));
 
       const result = yield* tg
         .generateThreadTitle({
@@ -656,7 +665,7 @@ describe("auxiliary text generation admission", () => {
           models: [],
         },
       });
-      const tg = TextGeneration.makeTextGenerationFromRegistry(makeStubRegistry([instance]));
+      const tg = makeTextGeneration(makeStubRegistry([instance]));
 
       const result = yield* tg
         .generateThreadTitle({
@@ -695,7 +704,7 @@ describe("auxiliary text generation admission", () => {
               return snapshot;
             }),
           });
-          const tg = TextGeneration.makeTextGenerationFromRegistry(makeStubRegistry([instance]));
+          const tg = makeTextGeneration(makeStubRegistry([instance]));
 
           const result = yield* tg
             .generateThreadTitle({
@@ -764,7 +773,7 @@ describe("auxiliary text generation admission", () => {
               });
             }),
           });
-          const tg = TextGeneration.makeTextGenerationFromRegistry(makeStubRegistry([instance]));
+          const tg = makeTextGeneration(makeStubRegistry([instance]));
 
           const result = yield* tg
             .generateThreadTitle({
@@ -793,7 +802,7 @@ describe("auxiliary text generation admission", () => {
         models: [model("gpt-5")],
         snapshotExtras: { status: "warning", auth: { status: "unknown" } },
       });
-      const tg = TextGeneration.makeTextGenerationFromRegistry(makeStubRegistry([instance]));
+      const tg = makeTextGeneration(makeStubRegistry([instance]));
       const selection = createModelSelection(INSTANCE_ID, "gpt-5");
 
       const result = yield* tg.generateThreadTitle({
@@ -822,7 +831,7 @@ describe("auxiliary text generation admission", () => {
           });
         }),
       });
-      const tg = TextGeneration.makeTextGenerationFromRegistry(makeStubRegistry([instance]));
+      const tg = makeTextGeneration(makeStubRegistry([instance]));
 
       const result = yield* tg
         .generateThreadTitle({
@@ -875,7 +884,7 @@ describe("auxiliary text generation admission", () => {
             makeRecordingTextGeneration(calls),
             testCase.options,
           );
-          const tg = TextGeneration.makeTextGenerationFromRegistry(makeStubRegistry([instance]));
+          const tg = makeTextGeneration(makeStubRegistry([instance]));
 
           const exit = yield* tg
             .generateThreadTitle({
@@ -892,6 +901,87 @@ describe("auxiliary text generation admission", () => {
           expect(calls, testCase.name).toEqual([]);
         }),
       );
+    }),
+  );
+
+  it.effect("admits an exactly configured custom alias despite snapshot normalization", () =>
+    Effect.gen(function* () {
+      const instanceId = ProviderInstanceId.make("claudeAgent");
+      const driverKind = ProviderDriverKind.make("claudeAgent");
+      const normalizedModels = providerModelsFromSettings(
+        [model("claude-opus-4-6")],
+        driverKind,
+        ["sonnet-4.6"],
+        {},
+      );
+      const calls: Array<RecordedCall> = [];
+      let refreshCount = 0;
+      const instance = makeStubInstance(instanceId, makeRecordingTextGeneration(calls), {
+        driverKind,
+        models: normalizedModels,
+        refresh: Effect.sync(() => {
+          refreshCount += 1;
+          return makeSnapshot({ instanceId, driverKind, models: normalizedModels });
+        }),
+      });
+      const settings: Pick<ServerSettings, "providers" | "providerInstances"> = {
+        ...DEFAULT_SERVER_SETTINGS,
+        providerInstances: {
+          [instanceId]: {
+            driver: driverKind,
+            enabled: true,
+            config: { customModels: ["sonnet-4.6"] },
+          },
+        },
+      };
+      const tg = makeTextGeneration(makeStubRegistry([instance]), settings);
+      const selection = createModelSelection(instanceId, "sonnet-4.6");
+
+      const result = yield* tg.generateThreadTitle({
+        cwd: process.cwd(),
+        message: "configured alias",
+        modelSelection: selection,
+      });
+
+      expect(result.title).toBe("Recorded title");
+      expect(refreshCount).toBe(0);
+      expect(calls).toEqual([{ operation: "generateThreadTitle", modelSelection: selection }]);
+    }),
+  );
+
+  it.effect("treats an invalid refreshed snapshot as unverified evidence", () =>
+    Effect.gen(function* () {
+      const calls: Array<RecordedCall> = [];
+      let refreshCount = 0;
+      const instance = makeStubInstance(INSTANCE_ID, makeRecordingTextGeneration(calls), {
+        models: [model("gpt-5")],
+        refresh: Effect.sync(() => {
+          refreshCount += 1;
+          return makeSnapshot({
+            instanceId: INSTANCE_ID,
+            driverKind: INSTANCE_ID as unknown as ProviderInstance["driverKind"],
+            models: [model("team-custom", true)],
+            status: "error",
+          });
+        }),
+      });
+      const tg = makeTextGeneration(makeStubRegistry([instance]));
+
+      const result = yield* tg
+        .generateThreadTitle({
+          cwd: process.cwd(),
+          message: "invalid refreshed snapshot",
+          modelSelection: createModelSelection(INSTANCE_ID, "gpt-missing"),
+        })
+        .pipe(Effect.result);
+
+      expect(Result.isFailure(result)).toBe(true);
+      if (Result.isFailure(result)) {
+        expect(result.failure.detail).toContain("evidence");
+        expect(result.failure.detail).not.toContain("not advertised");
+      }
+      expect(refreshCount).toBe(1);
+      expect(calls).toEqual([]);
     }),
   );
 });

@@ -1,6 +1,7 @@
 import {
   DEFAULT_MODEL,
   DEFAULT_MODEL_BY_PROVIDER,
+  defaultInstanceIdForDriver,
   MODEL_SLUG_ALIASES_BY_PROVIDER,
   type ModelCapabilities,
   type ModelSelection,
@@ -11,6 +12,7 @@ import {
   type ServerProviderAuthStatus,
   type ServerProviderAvailability,
   type ServerProviderState,
+  type ServerSettings,
 } from "@neokod/contracts";
 
 const DEFAULT_PROVIDER_DRIVER_KIND = ProviderDriverKind.make("codex");
@@ -348,6 +350,73 @@ export function evaluateModelCatalogueEvidence(
   }
 
   return { status: "not-listed" };
+}
+
+/**
+ * Read the configured custom-model slugs that belong to one exact provider
+ * instance. Precedence matches `deriveProviderInstanceConfigMap` hydration:
+ * an explicit `providerInstances[id]` entry is authoritative, so an explicit
+ * default-slot instance without `config.customModels` does NOT inherit the
+ * legacy `providers[driverKind].customModels` mirror. Only instances that are
+ * absent from the explicit map may fall back to that legacy mirror, and only
+ * when they are the driver's default slot.
+ *
+ * Slugs are returned exactly as authored (trailing whitespace trimmed). They
+ * are configuration evidence, not a discovered catalogue, and no alias
+ * normalization happens here.
+ */
+export function readConfiguredCustomModels(input: {
+  readonly settings: Pick<ServerSettings, "providers" | "providerInstances">;
+  readonly instanceId: ProviderInstanceId;
+  readonly driverKind: ProviderDriverKind;
+}): ReadonlyArray<string> {
+  const instance = input.settings.providerInstances[input.instanceId];
+  if (instance !== undefined) {
+    const config = instance.config;
+    if (config !== null && typeof config === "object") {
+      const value = (config as Record<string, unknown>).customModels;
+      if (Array.isArray(value)) {
+        return value.filter((entry): entry is string => typeof entry === "string");
+      }
+    }
+    // Explicit instance config wins over the legacy mirror even when it does
+    // not carry a custom-model list.
+    return [];
+  }
+
+  if (input.instanceId !== defaultInstanceIdForDriver(input.driverKind)) {
+    return [];
+  }
+
+  const legacyProviders = input.settings.providers as Record<
+    string,
+    { readonly customModels?: ReadonlyArray<string> } | undefined
+  >;
+  return legacyProviders[input.driverKind]?.customModels ?? [];
+}
+
+/**
+ * Append configured custom models to snapshot catalogue entries as
+ * configuration evidence without normalizing or reordering them. The snapshot
+ * may already contain an alias-normalized form of the same configured slug;
+ * the raw configured slug is preserved so admission and Settings evaluate the
+ * exact slug that execution receives.
+ */
+export function mergeConfiguredCustomModelEvidence(
+  models: ReadonlyArray<{ readonly slug: string; readonly isCustom: boolean }>,
+  configuredCustomModels: ReadonlyArray<string>,
+): ReadonlyArray<{ readonly slug: string; readonly isCustom: boolean }> {
+  const merged = [...models];
+  const seen = new Set(merged.map((model) => model.slug));
+  for (const raw of configuredCustomModels) {
+    const slug = raw.trim();
+    if (!slug || seen.has(slug)) {
+      continue;
+    }
+    seen.add(slug);
+    merged.push({ slug, isCustom: true });
+  }
+  return merged;
 }
 
 function resolveModelSlug(model: string | null | undefined, provider: ProviderDriverKind): string {

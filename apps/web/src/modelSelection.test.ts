@@ -475,6 +475,96 @@ describe("auxiliary text generation selection display", () => {
     expect(resolveAuxiliaryTextGenerationSelection(settings, providers).status).toBe("listed");
   });
 
+  it("matches server custom-model evidence despite snapshot alias normalization", () => {
+    const instanceId = ProviderInstanceId.make("claudeAgent");
+    const providers = [
+      {
+        ...provider({ instanceId: "claudeAgent", models: [] }),
+        models: [
+          {
+            slug: "claude-opus-4-6",
+            name: "claude-opus-4-6",
+            isCustom: false,
+            capabilities: {},
+          },
+          {
+            slug: "claude-sonnet-4-6",
+            name: "claude-sonnet-4-6",
+            isCustom: true,
+            capabilities: {},
+          },
+        ],
+      },
+    ];
+    const settings: UnifiedSettings = {
+      ...settingsWithProviderInstances(),
+      providerInstances: {
+        [instanceId]: {
+          driver: ProviderDriverKind.make("claudeAgent"),
+          enabled: true,
+          config: { customModels: ["sonnet-4.6"] },
+        },
+      },
+      textGenerationModelSelection: {
+        instanceId,
+        model: "sonnet-4.6",
+      },
+    };
+
+    const resolution = resolveAuxiliaryTextGenerationSelection(settings, providers);
+    expect(resolution.selection.model).toBe("sonnet-4.6");
+    expect(resolution.status).toBe("listed");
+    expect(resolution.reason).toBeNull();
+  });
+
+  it("does not inherit stale legacy custom models for an explicit default instance", () => {
+    const instanceId = ProviderInstanceId.make("claudeAgent");
+    const providers = [
+      {
+        ...provider({ instanceId: "claudeAgent", models: [] }),
+        models: [
+          {
+            slug: "claude-opus-4-6",
+            name: "claude-opus-4-6",
+            isCustom: false,
+            capabilities: {},
+          },
+          {
+            slug: "claude-sonnet-4-6",
+            name: "claude-sonnet-4-6",
+            isCustom: true,
+            capabilities: {},
+          },
+        ],
+      },
+    ];
+    const settings: UnifiedSettings = {
+      ...settingsWithProviderInstances(),
+      providers: {
+        ...DEFAULT_UNIFIED_SETTINGS.providers,
+        claudeAgent: {
+          ...DEFAULT_UNIFIED_SETTINGS.providers.claudeAgent,
+          customModels: ["sonnet-4.6"],
+        },
+      },
+      providerInstances: {
+        [instanceId]: {
+          driver: ProviderDriverKind.make("claudeAgent"),
+          enabled: true,
+          config: {},
+        },
+      },
+      textGenerationModelSelection: {
+        instanceId,
+        model: "sonnet-4.6",
+      },
+    };
+
+    const resolution = resolveAuxiliaryTextGenerationSelection(settings, providers);
+    expect(resolution.status).toBe("not-listed");
+    expect(resolution.reason).toContain("not in the current catalogue");
+  });
+
   it("preserves the exact instance/model for traits-only and explicit selections", () => {
     const instanceId = ProviderInstanceId.make("claudeAgent");
     const providers = [

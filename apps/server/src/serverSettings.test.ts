@@ -2,6 +2,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
   DEFAULT_SERVER_SETTINGS,
   ProviderDriverKind,
+  type ProviderInstanceConfig,
   ProviderInstanceId,
   ServerSettings,
   ServerSettingsMutationId,
@@ -278,6 +279,40 @@ it.layer(NodeServices.layer)("server settings", (it) => {
 
       assert.deepEqual(acknowledgement.settings.textGenerationModelSelection, selection);
       assert.deepEqual((yield* serverSettings.getSettings).textGenerationModelSelection, selection);
+    }).pipe(Effect.provide(makeServerSettingsLayer())),
+  );
+
+  it.effect("preserves the auxiliary selection when its provider instance is disabled", () =>
+    Effect.gen(function* () {
+      const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+      const instanceId = ProviderInstanceId.make("codex_personal");
+      const selection = createModelSelection(instanceId, "custom-auxiliary-model", [
+        { id: "reasoningEffort", value: "high" },
+      ]);
+      const instanceConfig = (enabled: boolean): ProviderInstanceConfig => ({
+        driver: ProviderDriverKind.make("codex"),
+        enabled,
+        config: { customModels: ["custom-auxiliary-model"] },
+      });
+
+      const created = yield* serverSettings.updateSettings({
+        providerInstances: { [instanceId]: instanceConfig(true) },
+        textGenerationModelSelection: selection,
+      });
+      assert.deepEqual(created.textGenerationModelSelection, selection);
+
+      const disabled = yield* serverSettings.updateSettings({
+        providerInstances: { [instanceId]: instanceConfig(false) },
+      });
+      assert.deepEqual(disabled.textGenerationModelSelection, selection);
+      assert.deepEqual((yield* serverSettings.getSettings).textGenerationModelSelection, selection);
+
+      const acknowledgement = yield* serverSettings.updateSettingsMutation({
+        mutationId: ServerSettingsMutationId.make("settings:test:textgen-disable"),
+        expectedRevision: disabled.revision,
+        patch: { enableAssistantStreaming: true },
+      });
+      assert.deepEqual(acknowledgement.settings.textGenerationModelSelection, selection);
     }).pipe(Effect.provide(makeServerSettingsLayer())),
   );
 

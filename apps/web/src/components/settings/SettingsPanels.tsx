@@ -1252,8 +1252,6 @@ export function ProviderSettingsPanel() {
           provider.instanceId === defaultInstanceIdForDriver(ProviderDriverKind.make("cursor")),
       ),
   );
-  const textGenInstanceId = resolveAuxiliaryTextGenerationSelection(settings, serverProviders)
-    .selection.instanceId;
   const lastCheckedAt =
     serverProviders.length > 0
       ? serverProviders.reduce(
@@ -1420,15 +1418,7 @@ export function ProviderSettingsPanel() {
     }
   }
 
-  const updateProviderInstance = (
-    row: InstanceRow,
-    next: ProviderInstanceConfig,
-    options?: {
-      readonly textGenerationModelSelection?: Parameters<
-        typeof buildProviderInstanceUpdatePatch
-      >[0]["textGenerationModelSelection"];
-    },
-  ) => {
+  const updateProviderInstance = (row: InstanceRow, next: ProviderInstanceConfig) => {
     updateSettings(
       buildProviderInstanceUpdatePatch({
         settings,
@@ -1436,7 +1426,6 @@ export function ProviderSettingsPanel() {
         instance: next,
         driver: row.driver,
         isDefault: row.isDefault,
-        textGenerationModelSelection: options?.textGenerationModelSelection,
       }),
     );
   };
@@ -1679,17 +1668,7 @@ export function ProviderSettingsPanel() {
                 }))
               }
               onUpdate={(next) => {
-                const wasEnabled = row.instance.enabled ?? true;
-                const isDisabling = next.enabled === false && wasEnabled;
-                const shouldClearTextGen = isDisabling && textGenInstanceId === row.instanceId;
-                if (shouldClearTextGen) {
-                  updateProviderInstance(row, next, {
-                    textGenerationModelSelection:
-                      DEFAULT_UNIFIED_SETTINGS.textGenerationModelSelection,
-                  });
-                } else {
-                  updateProviderInstance(row, next);
-                }
+                updateProviderInstance(row, next);
               }}
               onDelete={row.isDefault ? undefined : () => deleteProviderInstance(row.instanceId)}
               headerAction={headerAction}

@@ -101,4 +101,35 @@ describe("buildProviderInstanceUpdatePatch", () => {
     expect(patch.providerInstances?.[instanceId]).toEqual(nextInstance);
     expect(patch.providers).toBeUndefined();
   });
+
+  it("does not alter the saved auxiliary selection when its provider is disabled", () => {
+    const instanceId = ProviderInstanceId.make("codex_personal");
+    const savedSelection = {
+      instanceId,
+      model: "custom-auxiliary-model",
+      options: [{ id: "reasoningEffort", value: "high" }],
+    };
+    const disabledInstance = {
+      driver: ProviderDriverKind.make("codex"),
+      enabled: false,
+      config: {
+        customModels: ["custom-auxiliary-model"],
+      },
+    } satisfies ProviderInstanceConfig;
+    const settingsWithSavedSelection = {
+      ...DEFAULT_SERVER_SETTINGS,
+      textGenerationModelSelection: savedSelection,
+    };
+
+    const patch = buildProviderInstanceUpdatePatch({
+      settings: settingsWithSavedSelection,
+      instanceId,
+      instance: disabledInstance,
+      driver: ProviderDriverKind.make("codex"),
+      isDefault: false,
+    });
+
+    expect(patch).not.toHaveProperty("textGenerationModelSelection");
+    expect(patch.providerInstances?.[instanceId]?.enabled).toBe(false);
+  });
 });

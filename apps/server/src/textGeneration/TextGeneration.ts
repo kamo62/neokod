@@ -1,21 +1,27 @@
 import * as Context from "effect/Context";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import type {
   ChatAttachment,
   ModelSelection,
   ProviderInstanceId,
   ServerProvider,
+  ServerSettings,
+  ServerSettingsError,
 } from "@neokod/contracts";
 import { TextGenerationError } from "@neokod/contracts";
 import {
   evaluateModelCatalogueEvidence,
+  mergeConfiguredCustomModelEvidence,
   type ModelCatalogueEvidenceInput,
+  readConfiguredCustomModels,
 } from "@neokod/shared/model";
 
 import * as ProviderInstanceRegistry from "../provider/Services/ProviderInstanceRegistry.ts";
 import type { ProviderInstance } from "../provider/ProviderDriver.ts";
+import { ServerSettingsService } from "../serverSettings.ts";
 
 export type TextGenerationProvider = "codex" | "claudeAgent" | "cursor" | "grok" | "opencode";
 
@@ -164,19 +170,22 @@ type TextGenerationOp =
 
 const SETTINGS_RECOVERY_HINT = "Settings → Text generation model";
 
+type AuxiliarySettingsEvidence = Pick<ServerSettings, "providers" | "providerInstances">;
+
 const failAdmission = (operation: TextGenerationOp, detail: string) =>
   Effect.fail(new TextGenerationError({ operation, detail }));
 
 const catalogueEvidenceFor = (
   instance: ProviderInstance,
   snapshot: ServerProvider,
+  configuredCustomModels: ReadonlyArray<string>,
 ): ModelCatalogueEvidenceInput => ({
   enabled: instance.enabled,
   installed: snapshot.installed,
   status: snapshot.status,
   ...(snapshot.availability !== undefined ? { availability: snapshot.availability } : {}),
   auth: snapshot.auth,
-  models: snapshot.models,
+  models: mergeConfiguredCustomModelEvidence(snapshot.models, configuredCustomModels),
 });
 
 /**
@@ -184,18 +193,21 @@ const catalogueEvidenceFor = (
  * interruption-only cause intact so the reactor's auxiliary-activity
  * suppression can still recognise cancellation.
  */
-const runAuxiliaryProbe = <A>(
+const runAuxiliaryProbe = <A, E>(
   operation: TextGenerationOp,
   detail: string,
-  probe: Effect.Effect<A>,
+  probe: Effect.Effect<A, E>,
 ): Effect.Effect<A, TextGenerationError> =>
-  probe.pipe(
-    Effect.catchCause((cause) =>
-      Cause.hasInterruptsOnly(cause)
-        ? Effect.failCause(cause)
-        : Effect.fail(new TextGenerationError({ operation, detail })),
-    ),
-  );
+  Effect.gen(function* () {
+    const exit = yield* Effect.exit(probe);
+    if (Exit.isSuccess(exit)) {
+      return exit.value;
+    }
+    if (Cause.hasInterruptsOnly(exit.cause)) {
+      return yield* Effect.failCause(exit.cause as Cause.Cause<never>);
+    }
+    return yield* failAdmission(operation, detail);
+  });
 
 const instanceDisabledDetail = (instanceId: ProviderInstanceId, model: string): string =>
   `Provider instance '${instanceId}' is disabled, so model '${model}' cannot be used for auxiliary text generation. Enable the instance or choose another one in ${SETTINGS_RECOVERY_HINT}.`;
@@ -234,6 +246,7 @@ const modelNotAdvertisedDetail = (instanceId: ProviderInstanceId, model: string)
  */
 const resolveAdmittedTextGeneration = (
   registry: ProviderInstanceRegistry.ProviderInstanceRegistry["Service"],
+  readSettings: Effect.Effect<AuxiliarySettingsEvidence, ServerSettingsError>,
   operation: TextGenerationOp,
   selection: ModelSelection,
 ): Effect.Effect<ProviderInstance["textGeneration"], TextGenerationError> =>
@@ -252,6 +265,17 @@ const resolveAdmittedTextGeneration = (
       );
     }
 
+    const settings = yield* runAuxiliaryProbe(
+      operation,
+      evidenceUnavailableDetail(selection.instanceId, selection.model),
+      readSettings,
+    );
+    const configuredCustomModels = readConfiguredCustomModels({
+      settings,
+      instanceId: selection.instanceId,
+      driverKind: instance.driverKind,
+    });
+
     const snapshot = yield* runAuxiliaryProbe(
       operation,
       evidenceUnavailableDetail(selection.instanceId, selection.model),
@@ -265,7 +289,7 @@ const resolveAdmittedTextGeneration = (
     }
 
     const initialEvidence = evaluateModelCatalogueEvidence(
-      catalogueEvidenceFor(instance, snapshot),
+      catalogueEvidenceFor(instance, snapshot, configuredCustomModels),
       selection.model,
     );
     if (initialEvidence.status === "listed") {
@@ -287,7 +311,7 @@ const resolveAdmittedTextGeneration = (
       instance.snapshot.refresh,
     );
     const refreshedEvidence = evaluateModelCatalogueEvidence(
-      catalogueEvidenceFor(instance, refreshed),
+      catalogueEvidenceFor(instance, refreshed, configuredCustomModels),
       selection.model,
     );
     if (refreshedEvidence.status === "listed") {
@@ -309,33 +333,50 @@ const resolveAdmittedTextGeneration = (
 
 export const makeTextGenerationFromRegistry = (
   registry: ProviderInstanceRegistry.ProviderInstanceRegistry["Service"],
+  readSettings: Effect.Effect<AuxiliarySettingsEvidence, ServerSettingsError>,
 ): TextGeneration["Service"] =>
   TextGeneration.of({
     generateCommitMessage: (input) =>
-      resolveAdmittedTextGeneration(registry, "generateCommitMessage", input.modelSelection).pipe(
-        Effect.flatMap((textGeneration) => textGeneration.generateCommitMessage(input)),
-      ),
+      resolveAdmittedTextGeneration(
+        registry,
+        readSettings,
+        "generateCommitMessage",
+        input.modelSelection,
+      ).pipe(Effect.flatMap((textGeneration) => textGeneration.generateCommitMessage(input))),
     generatePrContent: (input) =>
-      resolveAdmittedTextGeneration(registry, "generatePrContent", input.modelSelection).pipe(
-        Effect.flatMap((textGeneration) => textGeneration.generatePrContent(input)),
-      ),
+      resolveAdmittedTextGeneration(
+        registry,
+        readSettings,
+        "generatePrContent",
+        input.modelSelection,
+      ).pipe(Effect.flatMap((textGeneration) => textGeneration.generatePrContent(input))),
     generateCodeReview: (input) =>
-      resolveAdmittedTextGeneration(registry, "generateCodeReview", input.modelSelection).pipe(
-        Effect.flatMap((textGeneration) => textGeneration.generateCodeReview(input)),
-      ),
+      resolveAdmittedTextGeneration(
+        registry,
+        readSettings,
+        "generateCodeReview",
+        input.modelSelection,
+      ).pipe(Effect.flatMap((textGeneration) => textGeneration.generateCodeReview(input))),
     generateBranchName: (input) =>
-      resolveAdmittedTextGeneration(registry, "generateBranchName", input.modelSelection).pipe(
-        Effect.flatMap((textGeneration) => textGeneration.generateBranchName(input)),
-      ),
+      resolveAdmittedTextGeneration(
+        registry,
+        readSettings,
+        "generateBranchName",
+        input.modelSelection,
+      ).pipe(Effect.flatMap((textGeneration) => textGeneration.generateBranchName(input))),
     generateThreadTitle: (input) =>
-      resolveAdmittedTextGeneration(registry, "generateThreadTitle", input.modelSelection).pipe(
-        Effect.flatMap((textGeneration) => textGeneration.generateThreadTitle(input)),
-      ),
+      resolveAdmittedTextGeneration(
+        registry,
+        readSettings,
+        "generateThreadTitle",
+        input.modelSelection,
+      ).pipe(Effect.flatMap((textGeneration) => textGeneration.generateThreadTitle(input))),
   });
 
 export const make = Effect.gen(function* () {
   const registry = yield* ProviderInstanceRegistry.ProviderInstanceRegistry;
-  return makeTextGenerationFromRegistry(registry);
+  const serverSettings = yield* ServerSettingsService;
+  return makeTextGenerationFromRegistry(registry, serverSettings.getSettings);
 });
 
 export const layer = Layer.effect(TextGeneration, make);

@@ -11,7 +11,9 @@ import {
 import {
   createModelSelection,
   evaluateModelCatalogueEvidence,
+  mergeConfiguredCustomModelEvidence,
   normalizeModelSlug,
+  readConfiguredCustomModels,
   resolveSelectableModel,
 } from "@neokod/shared/model";
 import { getComposerProviderState } from "./components/chat/composerProviderState";
@@ -314,29 +316,23 @@ const TEXT_GENERATION_SETTINGS_ROW = "Settings → Text generation model";
 
 /**
  * Catalogue/config entries used for auxiliary evidence. Configured custom
- * models are configuration evidence (exact slugs, trimmed only) even when the
- * provider has not reported a discovered catalogue. No alias normalisation or
- * built-in filtering happens here: membership checks must match the slug that
- * execution receives.
+ * models come from the same shared exact-instance extraction the server uses,
+ * then merge as raw configuration evidence with the snapshot's normalized
+ * entries. No alias normalization or built-in filtering happens here:
+ * membership checks must match the slug that execution receives.
  */
 function getCatalogueEvidenceModels(
   settings: UnifiedSettings,
   entry: ProviderInstanceEntry,
-): Array<{ readonly slug: string; readonly isCustom: boolean }> {
-  const models = entry.models.map((model) => ({
-    slug: model.slug,
-    isCustom: model.isCustom,
-  }));
-  const seen = new Set(models.map((model) => model.slug));
-  for (const raw of readInstanceCustomModels(settings, entry.instanceId, entry.driverKind)) {
-    const slug = raw.trim();
-    if (!slug || seen.has(slug)) {
-      continue;
-    }
-    seen.add(slug);
-    models.push({ slug, isCustom: true });
-  }
-  return models;
+): ReadonlyArray<{ readonly slug: string; readonly isCustom: boolean }> {
+  return mergeConfiguredCustomModelEvidence(
+    entry.models,
+    readConfiguredCustomModels({
+      settings,
+      instanceId: entry.instanceId,
+      driverKind: entry.driverKind,
+    }),
+  );
 }
 
 /**

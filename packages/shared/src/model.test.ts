@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
-import { ProviderDriverKind, ProviderInstanceId, type ModelCapabilities } from "@neokod/contracts";
+import {
+  DEFAULT_SERVER_SETTINGS,
+  ProviderDriverKind,
+  ProviderInstanceId,
+  type ModelCapabilities,
+} from "@neokod/contracts";
 
 import {
   buildProviderOptionSelectionsFromDescriptors,
@@ -11,7 +16,9 @@ import {
   getProviderOptionDescriptors,
   getProviderOptionBooleanSelectionValue,
   getProviderOptionStringSelectionValue,
+  mergeConfiguredCustomModelEvidence,
   normalizeModelSlug,
+  readConfiguredCustomModels,
 } from "./model.ts";
 
 const codexCaps: ModelCapabilities = createModelCapabilities({
@@ -248,5 +255,92 @@ describe("model catalogue evidence", () => {
     expect(evaluateModelCatalogueEvidence(evidence(), "absent-model")).toEqual({
       status: "not-listed",
     });
+  });
+});
+
+describe("configured custom model evidence", () => {
+  const instanceId = ProviderInstanceId.make("claudeAgent");
+  const driverKind = ProviderDriverKind.make("claudeAgent");
+
+  const settingsWith = (input: {
+    readonly legacyCustomModels?: ReadonlyArray<string> | undefined;
+    readonly explicitInstance?: boolean;
+    readonly explicitCustomModels?: ReadonlyArray<string> | undefined;
+  }) => ({
+    ...DEFAULT_SERVER_SETTINGS,
+    providers: {
+      ...DEFAULT_SERVER_SETTINGS.providers,
+      claudeAgent: {
+        ...DEFAULT_SERVER_SETTINGS.providers.claudeAgent,
+        ...(input.legacyCustomModels !== undefined
+          ? { customModels: input.legacyCustomModels }
+          : {}),
+      },
+    },
+    providerInstances:
+      input.explicitInstance === true
+        ? {
+            [instanceId]: {
+              driver: driverKind,
+              enabled: true,
+              config:
+                input.explicitCustomModels !== undefined
+                  ? { customModels: input.explicitCustomModels }
+                  : {},
+            },
+          }
+        : {},
+  });
+
+  it("prefers explicit instance custom models over the legacy mirror", () => {
+    expect(
+      readConfiguredCustomModels({
+        settings: settingsWith({
+          legacyCustomModels: ["legacy-model"],
+          explicitInstance: true,
+          explicitCustomModels: ["explicit-model"],
+        }),
+        instanceId,
+        driverKind,
+      }),
+    ).toEqual(["explicit-model"]);
+  });
+
+  it("does not inherit the legacy mirror for an explicit default instance without custom models", () => {
+    expect(
+      readConfiguredCustomModels({
+        settings: settingsWith({
+          legacyCustomModels: ["stale-legacy-model"],
+          explicitInstance: true,
+        }),
+        instanceId,
+        driverKind,
+      }),
+    ).toEqual([]);
+  });
+
+  it("falls back to the legacy mirror only for an absent default instance", () => {
+    expect(
+      readConfiguredCustomModels({
+        settings: settingsWith({ legacyCustomModels: ["legacy-model"] }),
+        instanceId,
+        driverKind,
+      }),
+    ).toEqual(["legacy-model"]);
+    expect(
+      readConfiguredCustomModels({
+        settings: settingsWith({ legacyCustomModels: ["legacy-model"] }),
+        instanceId: ProviderInstanceId.make("claude_personal"),
+        driverKind,
+      }),
+    ).toEqual([]);
+  });
+
+  it("merges the raw configured slug beside its normalized snapshot entry", () => {
+    const snapshot = [{ slug: "claude-sonnet-4-6", isCustom: true }];
+    expect(mergeConfiguredCustomModelEvidence(snapshot, [" sonnet-4.6 "])).toEqual([
+      { slug: "claude-sonnet-4-6", isCustom: true },
+      { slug: "sonnet-4.6", isCustom: true },
+    ]);
   });
 });
