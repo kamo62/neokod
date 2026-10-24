@@ -2182,6 +2182,25 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
       `;
 
       yield* appendAndProject({
+        type: "thread.turn-start-requested",
+        eventId: EventId.make("evt-explicit-outcome-pending-b"),
+        aggregateKind: "thread",
+        aggregateId: threadId,
+        occurredAt: "2026-03-01T13:00:35.000Z",
+        commandId: CommandId.make("cmd-explicit-outcome-pending-b"),
+        causationEventId: null,
+        correlationId: CorrelationId.make("cmd-explicit-outcome-pending-b"),
+        metadata: {},
+        payload: {
+          threadId,
+          messageId: MessageId.make("message-pending-newer"),
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          createdAt: "2026-03-01T13:00:35.000Z",
+        },
+      });
+
+      yield* appendAndProject({
         type: "thread.session-set",
         eventId: EventId.make("evt-explicit-outcome-3"),
         aggregateKind: "thread",
@@ -2214,7 +2233,7 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
       }>`
         SELECT turn_id AS "turnId", state, completed_at AS "completedAt"
         FROM projection_turns
-        WHERE thread_id = ${threadId}
+        WHERE thread_id = ${threadId} AND turn_id IS NOT NULL
         ORDER BY requested_at
       `;
       assert.deepEqual(rows, [
@@ -2249,6 +2268,78 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
         WHERE thread_id = ${threadId}
       `;
       assert.deepEqual(threadRows, [{ latestTurnId: newerTurnId }]);
+
+      // A delayed legacy running update for the terminal old turn must not
+      // supersede the running newer turn or consume its pending start.
+      yield* appendAndProject({
+        type: "thread.session-set",
+        eventId: EventId.make("evt-explicit-outcome-delayed-running"),
+        aggregateKind: "thread",
+        aggregateId: threadId,
+        occurredAt: "2026-03-01T13:01:30.000Z",
+        commandId: CommandId.make("cmd-explicit-outcome-delayed-running"),
+        causationEventId: null,
+        correlationId: CorrelationId.make("cmd-explicit-outcome-delayed-running"),
+        metadata: {},
+        payload: {
+          threadId,
+          session: {
+            threadId,
+            status: "running",
+            providerName: "codex",
+            runtimeMode: "full-access",
+            activeTurnId: staleTurnId,
+            lastError: null,
+            updatedAt: "2026-03-01T13:01:30.000Z",
+          },
+        },
+      });
+
+      const afterDelayedRunningTurns = yield* sql<{
+        readonly turnId: string;
+        readonly state: string;
+      }>`
+        SELECT turn_id AS "turnId", state
+        FROM projection_turns
+        WHERE thread_id = ${threadId} AND turn_id IS NOT NULL
+        ORDER BY requested_at
+      `;
+      assert.deepEqual(afterDelayedRunningTurns, [
+        { turnId: staleTurnId, state: "interrupted" },
+        { turnId: newerTurnId, state: "running" },
+      ]);
+      const afterDelayedRunningSession = yield* sql<{
+        readonly status: string;
+        readonly activeTurnId: string | null;
+      }>`
+        SELECT status, active_turn_id AS "activeTurnId"
+        FROM projection_thread_sessions
+        WHERE thread_id = ${threadId}
+      `;
+      assert.deepEqual(afterDelayedRunningSession, [
+        { status: "running", activeTurnId: newerTurnId },
+      ]);
+      const afterDelayedRunningPointer = yield* sql<{ readonly latestTurnId: string | null }>`
+        SELECT latest_turn_id AS "latestTurnId"
+        FROM projection_threads
+        WHERE thread_id = ${threadId}
+      `;
+      assert.deepEqual(afterDelayedRunningPointer, [{ latestTurnId: newerTurnId }]);
+      const pendingStarts = yield* sql<{
+        readonly messageId: string | null;
+        readonly state: string;
+      }>`
+        SELECT pending_message_id AS "messageId", state
+        FROM projection_turns
+        WHERE thread_id = ${threadId} AND turn_id IS NULL
+      `;
+      assert.deepEqual(pendingStarts, [{ messageId: "message-pending-newer", state: "pending" }]);
+      const falseSettlements = yield* sql<{ readonly turnId: string }>`
+        SELECT turn_id AS "turnId"
+        FROM projection_turn_settlements
+        WHERE thread_id = ${threadId} AND turn_id = ${newerTurnId}
+      `;
+      assert.deepEqual(falseSettlements, []);
 
       const appendOldCheckpoint = (
         eventId: string,
@@ -2352,6 +2443,221 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
         WHERE thread_id = ${threadId} AND turn_id = ${newerTurnId}
       `;
       assert.deepEqual(newerTurnRows, [{ state: "completed" }]);
+    }),
+  );
+
+  it.effect("replays a delayed old running update without mutating a newer turn", () =>
+    Effect.gen(function* () {
+      const projectionPipeline = yield* OrchestrationProjectionPipeline;
+      const eventStore = yield* OrchestrationEventStore;
+      const sql = yield* SqlClient.SqlClient;
+      const projectId = ProjectId.make("project-bootstrap-late-running");
+      const threadId = ThreadId.make("thread-bootstrap-late-running");
+      const oldTurnId = TurnId.make("turn-bootstrap-old");
+      const newTurnId = TurnId.make("turn-bootstrap-new");
+      const pendingMessageId = MessageId.make("message-bootstrap-pending");
+
+      const events: ReadonlyArray<Parameters<typeof eventStore.append>[0]> = [
+        {
+          type: "project.created",
+          eventId: EventId.make("evt-bootstrap-late-1"),
+          aggregateKind: "project",
+          aggregateId: projectId,
+          occurredAt: "2026-03-03T13:00:00.000Z",
+          commandId: CommandId.make("cmd-bootstrap-late-1"),
+          causationEventId: null,
+          correlationId: CorrelationId.make("cmd-bootstrap-late-1"),
+          metadata: {},
+          payload: {
+            projectId,
+            title: "Bootstrap late running",
+            workspaceRoot: "/tmp/bootstrap-late-running",
+            defaultModelSelection: null,
+            scripts: [],
+            createdAt: "2026-03-03T13:00:00.000Z",
+            updatedAt: "2026-03-03T13:00:00.000Z",
+          },
+        },
+        {
+          type: "thread.created",
+          eventId: EventId.make("evt-bootstrap-late-2"),
+          aggregateKind: "thread",
+          aggregateId: threadId,
+          occurredAt: "2026-03-03T13:00:01.000Z",
+          commandId: CommandId.make("cmd-bootstrap-late-2"),
+          causationEventId: null,
+          correlationId: CorrelationId.make("cmd-bootstrap-late-2"),
+          metadata: {},
+          payload: {
+            threadId,
+            projectId,
+            title: "Bootstrap late running",
+            modelSelection: {
+              instanceId: ProviderInstanceId.make("codex"),
+              model: "gpt-5-codex",
+            },
+            runtimeMode: "full-access",
+            branch: null,
+            worktreePath: null,
+            createdAt: "2026-03-03T13:00:01.000Z",
+            updatedAt: "2026-03-03T13:00:01.000Z",
+          },
+        },
+        {
+          type: "thread.session-set",
+          eventId: EventId.make("evt-bootstrap-late-3"),
+          aggregateKind: "thread",
+          aggregateId: threadId,
+          occurredAt: "2026-03-03T13:00:02.000Z",
+          commandId: CommandId.make("cmd-bootstrap-late-3"),
+          causationEventId: null,
+          correlationId: CorrelationId.make("cmd-bootstrap-late-3"),
+          metadata: {},
+          payload: {
+            threadId,
+            session: {
+              threadId,
+              status: "running",
+              providerName: "codex",
+              runtimeMode: "full-access",
+              activeTurnId: oldTurnId,
+              lastError: null,
+              updatedAt: "2026-03-03T13:00:02.000Z",
+            },
+          },
+        },
+        {
+          type: "thread.session-set",
+          eventId: EventId.make("evt-bootstrap-late-4"),
+          aggregateKind: "thread",
+          aggregateId: threadId,
+          occurredAt: "2026-03-03T13:00:03.000Z",
+          commandId: CommandId.make("cmd-bootstrap-late-4"),
+          causationEventId: null,
+          correlationId: CorrelationId.make("cmd-bootstrap-late-4"),
+          metadata: {},
+          payload: {
+            threadId,
+            session: {
+              threadId,
+              status: "ready",
+              providerName: "codex",
+              runtimeMode: "full-access",
+              activeTurnId: null,
+              lastError: null,
+              updatedAt: "2026-03-03T13:00:03.000Z",
+            },
+            interruptedTurnId: oldTurnId,
+            latestTurnOutcome: "interrupted",
+          },
+        },
+        {
+          type: "thread.session-set",
+          eventId: EventId.make("evt-bootstrap-late-5"),
+          aggregateKind: "thread",
+          aggregateId: threadId,
+          occurredAt: "2026-03-03T13:00:04.000Z",
+          commandId: CommandId.make("cmd-bootstrap-late-5"),
+          causationEventId: null,
+          correlationId: CorrelationId.make("cmd-bootstrap-late-5"),
+          metadata: {},
+          payload: {
+            threadId,
+            session: {
+              threadId,
+              status: "running",
+              providerName: "codex",
+              runtimeMode: "full-access",
+              activeTurnId: newTurnId,
+              lastError: null,
+              updatedAt: "2026-03-03T13:00:04.000Z",
+            },
+          },
+        },
+        {
+          type: "thread.turn-start-requested",
+          eventId: EventId.make("evt-bootstrap-late-6"),
+          aggregateKind: "thread",
+          aggregateId: threadId,
+          occurredAt: "2026-03-03T13:00:05.000Z",
+          commandId: CommandId.make("cmd-bootstrap-late-6"),
+          causationEventId: null,
+          correlationId: CorrelationId.make("cmd-bootstrap-late-6"),
+          metadata: {},
+          payload: {
+            threadId,
+            messageId: pendingMessageId,
+            runtimeMode: "full-access",
+            interactionMode: "default",
+            createdAt: "2026-03-03T13:00:05.000Z",
+          },
+        },
+        {
+          type: "thread.session-set",
+          eventId: EventId.make("evt-bootstrap-late-7"),
+          aggregateKind: "thread",
+          aggregateId: threadId,
+          occurredAt: "2026-03-03T13:00:06.000Z",
+          commandId: CommandId.make("cmd-bootstrap-late-7"),
+          causationEventId: null,
+          correlationId: CorrelationId.make("cmd-bootstrap-late-7"),
+          metadata: {},
+          payload: {
+            threadId,
+            session: {
+              threadId,
+              status: "running",
+              providerName: "codex",
+              runtimeMode: "full-access",
+              activeTurnId: oldTurnId,
+              lastError: null,
+              updatedAt: "2026-03-03T13:00:06.000Z",
+            },
+          },
+        },
+      ];
+
+      yield* Effect.forEach(events, (event) => eventStore.append(event), { concurrency: 1 });
+      yield* projectionPipeline.bootstrap;
+
+      const turns = yield* sql<{ readonly turnId: string; readonly state: string }>`
+        SELECT turn_id AS "turnId", state
+        FROM projection_turns
+        WHERE thread_id = ${threadId} AND turn_id IS NOT NULL
+        ORDER BY requested_at
+      `;
+      assert.deepEqual(turns, [
+        { turnId: oldTurnId, state: "interrupted" },
+        { turnId: newTurnId, state: "running" },
+      ]);
+      const sessions = yield* sql<{
+        readonly status: string;
+        readonly activeTurnId: string | null;
+      }>`
+        SELECT status, active_turn_id AS "activeTurnId"
+        FROM projection_thread_sessions
+        WHERE thread_id = ${threadId}
+      `;
+      assert.deepEqual(sessions, [{ status: "running", activeTurnId: newTurnId }]);
+      const threads = yield* sql<{ readonly latestTurnId: string | null }>`
+        SELECT latest_turn_id AS "latestTurnId"
+        FROM projection_threads
+        WHERE thread_id = ${threadId}
+      `;
+      assert.deepEqual(threads, [{ latestTurnId: newTurnId }]);
+      const pending = yield* sql<{ readonly messageId: string | null; readonly state: string }>`
+        SELECT pending_message_id AS "messageId", state
+        FROM projection_turns
+        WHERE thread_id = ${threadId} AND turn_id IS NULL
+      `;
+      assert.deepEqual(pending, [{ messageId: pendingMessageId, state: "pending" }]);
+      const settlements = yield* sql<{ readonly turnId: string }>`
+        SELECT turn_id AS "turnId"
+        FROM projection_turn_settlements
+        WHERE thread_id = ${threadId}
+        ORDER BY turn_id
+      `;
+      assert.deepEqual(settlements, [{ turnId: oldTurnId }]);
     }),
   );
 

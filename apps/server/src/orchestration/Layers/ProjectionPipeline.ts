@@ -790,6 +790,9 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
         }
 
         case "thread.session-set": {
+          if (!(yield* appliesRunningSessionSetEvent(event))) {
+            return;
+          }
           const existingRow = yield* projectionThreadRepository.getById({
             threadId: event.payload.threadId,
           });
@@ -1051,16 +1054,13 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
       }
     });
 
-    const applyThreadSessionsProjection: ProjectorDefinition["apply"] = Effect.fn(
-      "applyThreadSessionsProjection",
-    )(function* (event, _attachmentSideEffects) {
-      if (event.type !== "thread.session-set") {
-        return;
-      }
+    const appliesSessionSetEvent = Effect.fn("appliesSessionSetEvent")(function* (
+      event: Extract<OrchestrationEvent, { type: "thread.session-set" }>,
+    ) {
+      const incomingActiveTurnId = event.payload.session.activeTurnId;
       const currentSession = yield* projectionThreadSessionRepository.getByThreadId({
         threadId: event.payload.threadId,
       });
-      const incomingActiveTurnId = event.payload.session.activeTurnId;
       const currentTurn =
         incomingActiveTurnId === null
           ? Option.none()
@@ -1068,7 +1068,7 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
               threadId: event.payload.threadId,
               turnId: incomingActiveTurnId,
             });
-      const appliesSession = shouldApplySessionUpdate({
+      return shouldApplySessionUpdate({
         currentSession: Option.isSome(currentSession) ? currentSession.value : null,
         incomingSession: event.payload.session,
         outcome: event.payload.latestTurnOutcome,
@@ -1077,7 +1077,27 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
           ? { turnId: currentTurn.value.turnId, state: currentTurn.value.state }
           : null,
       });
-      if (!appliesSession) {
+    });
+
+    const appliesRunningSessionSetEvent = Effect.fn("appliesRunningSessionSetEvent")(function* (
+      event: Extract<OrchestrationEvent, { type: "thread.session-set" }>,
+    ) {
+      // Only running updates are late-event candidates here. Explicit
+      // outcomes for an old turn still settle their pinned historical row
+      // while the session and latest pointer remain on newer work.
+      if (event.payload.session.status !== "running") {
+        return true;
+      }
+      return yield* appliesSessionSetEvent(event);
+    });
+
+    const applyThreadSessionsProjection: ProjectorDefinition["apply"] = Effect.fn(
+      "applyThreadSessionsProjection",
+    )(function* (event, _attachmentSideEffects) {
+      if (event.type !== "thread.session-set") {
+        return;
+      }
+      if (!(yield* appliesSessionSetEvent(event))) {
         return;
       }
       yield* projectionThreadSessionRepository.upsert({
@@ -1149,6 +1169,9 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
         }
 
         case "thread.session-set": {
+          if (!(yield* appliesRunningSessionSetEvent(event))) {
+            return;
+          }
           const turnId = event.payload.session.activeTurnId;
           if (turnId === null || event.payload.session.status !== "running") {
             // Leaving the "running" session status is the turn-end signal:
@@ -1841,22 +1864,6 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
       );
     });
 
-    const bootstrapProjector = (projector: ProjectorDefinition) =>
-      projectionStateRepository
-        .getByProjector({
-          projector: projector.name,
-        })
-        .pipe(
-          Effect.flatMap((stateRow) =>
-            Stream.runForEach(
-              eventStore.readFromSequence(
-                Option.isSome(stateRow) ? stateRow.value.lastAppliedSequence : 0,
-              ),
-              (event) => runProjectorForEvent(projector, event),
-            ),
-          ),
-        );
-
     const projectEvent: OrchestrationProjectionPipelineShape["projectEvent"] = (event) =>
       Effect.forEach(projectors, (projector) => runProjectorForEvent(projector, event), {
         concurrency: 1,
@@ -1870,11 +1877,42 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
         ),
       );
 
-    const bootstrap: OrchestrationProjectionPipelineShape["bootstrap"] = Effect.forEach(
-      projectors,
-      bootstrapProjector,
-      { concurrency: 1 },
-    ).pipe(
+    // Replay events once in order, applying only projectors that have not seen
+    // each event. This keeps every projector's as-of state and evidence
+    // consistent during an independent catch-up, instead of relying on a
+    // previous projector having finished the whole history first.
+    const bootstrap: OrchestrationProjectionPipelineShape["bootstrap"] = Effect.gen(function* () {
+      const states = yield* Effect.forEach(
+        projectors,
+        (projector) =>
+          projectionStateRepository.getByProjector({ projector: projector.name }).pipe(
+            Effect.map((stateRow) => ({
+              projector,
+              lastAppliedSequence: Option.isSome(stateRow) ? stateRow.value.lastAppliedSequence : 0,
+            })),
+          ),
+        { concurrency: 1 },
+      );
+      const replayFrom = states.reduce(
+        (minimum, state) => Math.min(minimum, state.lastAppliedSequence),
+        Number.POSITIVE_INFINITY,
+      );
+      yield* Stream.runForEach(
+        eventStore.readFromSequence(Number.isFinite(replayFrom) ? replayFrom : 0),
+        (event) =>
+          Effect.forEach(
+            states,
+            (state) => {
+              if (state.lastAppliedSequence >= event.sequence) {
+                return Effect.void;
+              }
+              state.lastAppliedSequence = event.sequence;
+              return runProjectorForEvent(state.projector, event);
+            },
+            { concurrency: 1 },
+          ),
+      );
+    }).pipe(
       Effect.provideService(FileSystem.FileSystem, fileSystem),
       Effect.provideService(Path.Path, path),
       Effect.provideService(ServerConfig, serverConfig),
